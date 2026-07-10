@@ -1,7 +1,7 @@
 [versions]
 # Build tools
 kotlin = "2.4.0"
-ksp = "2.3.9"
+ksp = "2.3.10"
 kover = "0.9.8"
 
 # Third-party
@@ -17,7 +17,7 @@ coroutines-intellij = "1.10.2-intellij-1"  # JetBrains coroutines fork the bundl
 slf4j = "2.0.18"
 kotlin-logging = "8.0.4"       # matches the MCP SDK's transitive facade; needed to silence its stdout banner
 slf4j-android = "2.0.17-0"
-logback = "1.5.37"
+logback = "1.5.38"
 
 # Test
 junit = "4.13.2"
