@@ -16,8 +16,13 @@ Desktop. An optional Compose Desktop dashboard runs the same server in-process.
 
 <!-- mcp-name: io.github.aoreshkov/kotlin-lib-mcp -->
 
-<!-- TODO: demo — asciinema/GIF of Claude Code calling fetch_library → get_kdoc (assets/demo.gif)
-     and a dashboard screenshot (assets/dashboard.png). -->
+![Claude Code fetching a library and reading KDoc via kotlin-lib-mcp](assets/demo.gif)
+
+<details><summary>Compose Desktop dashboard</summary>
+
+![The dashboard: in-process MCP server, pre-warm form, cache browser and live logs](assets/dashboard.png)
+
+</details>
 
 ## Why this and not a docs-lookup server?
 
