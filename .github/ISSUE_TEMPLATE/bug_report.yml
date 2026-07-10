@@ -1,0 +1,49 @@
+name: Bug report
+description: Something doesn't work as documented
+title: "[bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What did you do, what did you expect, what happened instead?
+      placeholder: |
+        Called `fetch_library` with coordinate `io.ktor:ktor-client-core:3.5.1` and …
+    validations:
+      required: true
+  - type: input
+    id: coordinate
+    attributes:
+      label: Library coordinate (if applicable)
+      description: The Maven coordinate that triggers the problem, so it can be reproduced.
+      placeholder: "io.ktor:ktor-client-core:3.5.1"
+  - type: dropdown
+    id: transport
+    attributes:
+      label: Transport
+      options:
+        - stdio
+        - Streamable HTTP
+        - Dashboard (in-process)
+        - Not transport-related
+    validations:
+      required: true
+  - type: input
+    id: version
+    attributes:
+      label: kotlin-lib-mcp version
+      placeholder: "0.1.0 (release zip / docker / built from source @ commit)"
+    validations:
+      required: true
+  - type: input
+    id: environment
+    attributes:
+      label: OS and MCP client
+      placeholder: "Windows 11, Claude Code 2.x"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Relevant log output
+      description: stderr output or log file contents. Automatically formatted as code.
+      render: shell
