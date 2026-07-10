@@ -1,0 +1,50 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "url": "../../demo-lib/1.0.0/demo-lib-1.0.0.module",
+    "group": "com.example",
+    "module": "demo-lib-jvm",
+    "version": "1.0.0"
+  },
+  "variants": [
+    {
+      "name": "jvmApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "dependencies": [
+        {
+          "group": "com.example",
+          "module": "dep-a",
+          "version": {
+            "requires": "2.0.0"
+          }
+        }
+      ],
+      "files": [
+        {
+          "name": "demo-lib-jvm-1.0.0.jar",
+          "url": "demo-lib-jvm-1.0.0.jar",
+          "size": 100
+        }
+      ]
+    },
+    {
+      "name": "jvmSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "files": [
+        {
+          "name": "demo-lib-jvm-1.0.0-sources.jar",
+          "url": "demo-lib-jvm-1.0.0-sources.jar"
+        }
+      ]
+    }
+  ]
+}

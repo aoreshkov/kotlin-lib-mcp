@@ -1,0 +1,89 @@
+{
+  "formatVersion": "1.1",
+  "component": {
+    "group": "com.example",
+    "module": "demo-lib",
+    "version": "1.0.0"
+  },
+  "createdBy": {
+    "gradle": {
+      "version": "9.0"
+    }
+  },
+  "variants": [
+    {
+      "name": "metadataApiElements",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.usage": "kotlin-metadata",
+        "org.jetbrains.kotlin.platform.type": "common"
+      },
+      "files": [
+        {
+          "name": "demo-lib-1.0.0.jar",
+          "url": "demo-lib-1.0.0.jar",
+          "size": 100
+        }
+      ]
+    },
+    {
+      "name": "metadataSourcesElements",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.platform.type": "common"
+      },
+      "files": [
+        {
+          "name": "demo-lib-1.0.0-sources.jar",
+          "url": "demo-lib-1.0.0-sources.jar"
+        }
+      ]
+    },
+    {
+      "name": "jvmApiElements-published",
+      "attributes": {
+        "org.gradle.category": "library",
+        "org.gradle.usage": "java-api",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "available-at": {
+        "url": "../../demo-lib-jvm/1.0.0/demo-lib-jvm-1.0.0.module",
+        "group": "com.example",
+        "module": "demo-lib-jvm",
+        "version": "1.0.0"
+      }
+    },
+    {
+      "name": "jvmSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "java-runtime",
+        "org.jetbrains.kotlin.platform.type": "jvm"
+      },
+      "available-at": {
+        "url": "../../demo-lib-jvm/1.0.0/demo-lib-jvm-1.0.0.module",
+        "group": "com.example",
+        "module": "demo-lib-jvm",
+        "version": "1.0.0"
+      }
+    },
+    {
+      "name": "jsSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.platform.type": "js"
+      },
+      "available-at": {
+        "url": "../../demo-lib-js/1.0.0/demo-lib-js-1.0.0.module",
+        "group": "com.example",
+        "module": "demo-lib-js",
+        "version": "1.0.0"
+      }
+    }
+  ]
+}
