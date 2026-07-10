@@ -44,7 +44,7 @@ jobs:
           zip -qr "kotlin-lib-mcp-server-${VERSION}.zip" "kotlin-lib-mcp-server-${VERSION}"
 
       - name: Create GitHub release
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v3
         with:
           files: server/build/install/kotlin-lib-mcp-server-*.zip
           generate_release_notes: true
