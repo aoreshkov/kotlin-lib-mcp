@@ -1,0 +1,19 @@
+{
+  "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
+  "name": "io.github.aoreshkov/kotlin-lib-mcp",
+  "description": "Downloads the sources of Maven-published Kotlin/Java libraries and exposes their public API surface, KDoc, dependencies and raw source to MCP clients",
+  "version": "0.1.0",
+  "repository": {
+    "url": "https://github.com/aoreshkov/kotlin-lib-mcp",
+    "source": "github"
+  },
+  "packages": [
+    {
+      "registryType": "oci",
+      "identifier": "ghcr.io/aoreshkov/kotlin-lib-mcp:0.1.0",
+      "transport": {
+        "type": "stdio"
+      }
+    }
+  ]
+}

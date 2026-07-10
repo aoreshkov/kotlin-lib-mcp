@@ -1,0 +1,20 @@
+# Build
+.gradle/
+build/
+out/
+
+# IDE
+.idea/
+*.iml
+
+# Kotlin
+.kotlin/
+
+# Local machine config — never commit
+local.properties
+
+# Logs & OS noise
+*.log
+.DS_Store
+Thumbs.db
+captures/

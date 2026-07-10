@@ -1,0 +1,868 @@
+public final class app/oreshkov/kotlinlibmcp/analyze/AnalysisApiSourceAnalyzer : app/oreshkov/kotlinlibmcp/core/SourceAnalyzer {
+	public fun <init> ()V
+	public fun analyze (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;Ljava/util/List;)Lapp/oreshkov/kotlinlibmcp/model/LibraryIndex;
+}
+
+public final class app/oreshkov/kotlinlibmcp/cache/OnDiskLibraryCache : app/oreshkov/kotlinlibmcp/core/LibraryCache {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/cache/OnDiskLibraryCache$Companion;
+	public fun <init> ()V
+	public fun <init> (Ljava/nio/file/Path;Lkotlinx/serialization/json/Json;)V
+	public synthetic fun <init> (Ljava/nio/file/Path;Lkotlinx/serialization/json/Json;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun clear (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun get (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun list (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun putIndex (Lapp/oreshkov/kotlinlibmcp/model/LibraryIndex;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun putSources (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun size (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class app/oreshkov/kotlinlibmcp/cache/OnDiskLibraryCache$Companion {
+	public final fun defaultCacheRoot ()Ljava/nio/file/Path;
+}
+
+public final class app/oreshkov/kotlinlibmcp/core/FetchResult {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/core/FetchResult$Companion;
+	public fun <init> (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/util/List;)V
+	public synthetic fun <init> (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Ljava/util/List;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/util/List;
+	public final fun copy (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/util/List;)Lapp/oreshkov/kotlinlibmcp/core/FetchResult;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/core/FetchResult;Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;Ljava/util/List;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/core/FetchResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCoordinate ()Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;
+	public final fun getDownloadedJars ()Ljava/util/List;
+	public final fun getExtractedDir ()Ljava/lang/String;
+	public final fun getFiles ()Ljava/util/List;
+	public final fun getResolvedTargets ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class app/oreshkov/kotlinlibmcp/core/FetchResult$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/core/FetchResult$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lapp/oreshkov/kotlinlibmcp/core/FetchResult;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lapp/oreshkov/kotlinlibmcp/core/FetchResult;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/core/FetchResult$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public abstract interface class app/oreshkov/kotlinlibmcp/core/LibraryCache {
+	public abstract fun clear (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun get (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun list (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun putIndex (Lapp/oreshkov/kotlinlibmcp/model/LibraryIndex;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun putSources (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/lang/String;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun size (Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract interface class app/oreshkov/kotlinlibmcp/core/MavenSourceFetcher {
+	public abstract fun fetch (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun fetchVersionCatalog (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun listVersions (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public abstract fun resolveDependencies (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class app/oreshkov/kotlinlibmcp/core/MavenSourceFetcher$DefaultImpls {
+	public static fun listVersions (Lapp/oreshkov/kotlinlibmcp/core/MavenSourceFetcher;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public abstract interface class app/oreshkov/kotlinlibmcp/core/SourceAnalyzer {
+	public abstract fun analyze (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;Ljava/util/List;)Lapp/oreshkov/kotlinlibmcp/model/LibraryIndex;
+}
+
+public final class app/oreshkov/kotlinlibmcp/core/VersionCatalog {
+	public fun <init> (Ljava/util/List;Ljava/lang/String;Ljava/lang/String;)V
+	public synthetic fun <init> (Ljava/util/List;Ljava/lang/String;Ljava/lang/String;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/util/List;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/util/List;Ljava/lang/String;Ljava/lang/String;)Lapp/oreshkov/kotlinlibmcp/core/VersionCatalog;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/core/VersionCatalog;Ljava/util/List;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/core/VersionCatalog;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLatest ()Ljava/lang/String;
+	public final fun getRelease ()Ljava/lang/String;
+	public final fun getVersions ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/DeclarationList {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/dto/DeclarationList$Companion;
+	public fun <init> (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/lang/String;Ljava/util/List;)V
+	public synthetic fun <init> (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/util/List;
+	public final fun copy (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/lang/String;Ljava/util/List;)Lapp/oreshkov/kotlinlibmcp/dto/DeclarationList;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/dto/DeclarationList;Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/dto/DeclarationList;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCoordinate ()Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;
+	public final fun getDeclarations ()Ljava/util/List;
+	public final fun getPackageName ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class app/oreshkov/kotlinlibmcp/dto/DeclarationList$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/dto/DeclarationList$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lapp/oreshkov/kotlinlibmcp/dto/DeclarationList;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lapp/oreshkov/kotlinlibmcp/dto/DeclarationList;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/DeclarationList$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/DependencyResult {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/dto/DependencyResult$Companion;
+	public fun <init> (Lapp/oreshkov/kotlinlibmcp/model/DependencyNode;)V
+	public final fun component1 ()Lapp/oreshkov/kotlinlibmcp/model/DependencyNode;
+	public final fun copy (Lapp/oreshkov/kotlinlibmcp/model/DependencyNode;)Lapp/oreshkov/kotlinlibmcp/dto/DependencyResult;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/dto/DependencyResult;Lapp/oreshkov/kotlinlibmcp/model/DependencyNode;ILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/dto/DependencyResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getRoot ()Lapp/oreshkov/kotlinlibmcp/model/DependencyNode;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class app/oreshkov/kotlinlibmcp/dto/DependencyResult$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/dto/DependencyResult$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lapp/oreshkov/kotlinlibmcp/dto/DependencyResult;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lapp/oreshkov/kotlinlibmcp/dto/DependencyResult;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/DependencyResult$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/FetchSummary {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/dto/FetchSummary$Companion;
+	public fun <init> (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;IIZ)V
+	public synthetic fun <init> (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;IIZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()Z
+	public final fun copy (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;IIZ)Lapp/oreshkov/kotlinlibmcp/dto/FetchSummary;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/dto/FetchSummary;Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;IIZILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/dto/FetchSummary;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCoordinate ()Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;
+	public final fun getFromCache ()Z
+	public final fun getPackageCount ()I
+	public final fun getResolvedTargets ()Ljava/util/List;
+	public final fun getSourceFileCount ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class app/oreshkov/kotlinlibmcp/dto/FetchSummary$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/dto/FetchSummary$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lapp/oreshkov/kotlinlibmcp/dto/FetchSummary;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lapp/oreshkov/kotlinlibmcp/dto/FetchSummary;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/FetchSummary$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/KDocResult {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/dto/KDocResult$Companion;
+	public fun <init> (Ljava/lang/String;Lapp/oreshkov/kotlinlibmcp/model/KDoc;)V
+	public synthetic fun <init> (Ljava/lang/String;Lapp/oreshkov/kotlinlibmcp/model/KDoc;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lapp/oreshkov/kotlinlibmcp/model/KDoc;
+	public final fun copy (Ljava/lang/String;Lapp/oreshkov/kotlinlibmcp/model/KDoc;)Lapp/oreshkov/kotlinlibmcp/dto/KDocResult;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/dto/KDocResult;Ljava/lang/String;Lapp/oreshkov/kotlinlibmcp/model/KDoc;ILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/dto/KDocResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getFqName ()Ljava/lang/String;
+	public final fun getKdoc ()Lapp/oreshkov/kotlinlibmcp/model/KDoc;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class app/oreshkov/kotlinlibmcp/dto/KDocResult$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/dto/KDocResult$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lapp/oreshkov/kotlinlibmcp/dto/KDocResult;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lapp/oreshkov/kotlinlibmcp/dto/KDocResult;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/KDocResult$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/LatestVersion {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/dto/LatestVersion$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZI)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZIILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Z
+	public final fun component6 ()I
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZI)Lapp/oreshkov/kotlinlibmcp/dto/LatestVersion;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/dto/LatestVersion;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ZIILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/dto/LatestVersion;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArtifact ()Ljava/lang/String;
+	public final fun getGroup ()Ljava/lang/String;
+	public final fun getIncludedPreReleases ()Z
+	public final fun getLatest ()Ljava/lang/String;
+	public final fun getLatestStable ()Ljava/lang/String;
+	public final fun getTotalVersions ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class app/oreshkov/kotlinlibmcp/dto/LatestVersion$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/dto/LatestVersion$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lapp/oreshkov/kotlinlibmcp/dto/LatestVersion;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lapp/oreshkov/kotlinlibmcp/dto/LatestVersion;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/LatestVersion$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/PackageList {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/dto/PackageList$Companion;
+	public fun <init> (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;)V
+	public synthetic fun <init> (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;
+	public final fun component2 ()Ljava/util/List;
+	public final fun copy (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;)Lapp/oreshkov/kotlinlibmcp/dto/PackageList;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/dto/PackageList;Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;ILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/dto/PackageList;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCoordinate ()Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;
+	public final fun getPackages ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class app/oreshkov/kotlinlibmcp/dto/PackageList$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/dto/PackageList$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lapp/oreshkov/kotlinlibmcp/dto/PackageList;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lapp/oreshkov/kotlinlibmcp/dto/PackageList;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/PackageList$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/SearchHit {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/dto/SearchHit$Companion;
+	public fun <init> (Ljava/lang/String;ILjava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()I
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;ILjava/lang/String;)Lapp/oreshkov/kotlinlibmcp/dto/SearchHit;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/dto/SearchHit;Ljava/lang/String;ILjava/lang/String;ILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/dto/SearchHit;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getLine ()I
+	public final fun getPath ()Ljava/lang/String;
+	public final fun getSnippet ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class app/oreshkov/kotlinlibmcp/dto/SearchHit$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/dto/SearchHit$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lapp/oreshkov/kotlinlibmcp/dto/SearchHit;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lapp/oreshkov/kotlinlibmcp/dto/SearchHit;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/SearchHit$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/SearchResults {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/dto/SearchResults$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/util/List;Z)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/util/List;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Z
+	public final fun copy (Ljava/lang/String;Ljava/util/List;Z)Lapp/oreshkov/kotlinlibmcp/dto/SearchResults;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/dto/SearchResults;Ljava/lang/String;Ljava/util/List;ZILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/dto/SearchResults;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getHits ()Ljava/util/List;
+	public final fun getQuery ()Ljava/lang/String;
+	public final fun getTruncated ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class app/oreshkov/kotlinlibmcp/dto/SearchResults$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/dto/SearchResults$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lapp/oreshkov/kotlinlibmcp/dto/SearchResults;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lapp/oreshkov/kotlinlibmcp/dto/SearchResults;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/SearchResults$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/SignatureResult {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/dto/SignatureResult$Companion;
+	public fun <init> (Lapp/oreshkov/kotlinlibmcp/model/ApiSymbol;)V
+	public final fun component1 ()Lapp/oreshkov/kotlinlibmcp/model/ApiSymbol;
+	public final fun copy (Lapp/oreshkov/kotlinlibmcp/model/ApiSymbol;)Lapp/oreshkov/kotlinlibmcp/dto/SignatureResult;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/dto/SignatureResult;Lapp/oreshkov/kotlinlibmcp/model/ApiSymbol;ILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/dto/SignatureResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getSymbol ()Lapp/oreshkov/kotlinlibmcp/model/ApiSymbol;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class app/oreshkov/kotlinlibmcp/dto/SignatureResult$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/dto/SignatureResult$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lapp/oreshkov/kotlinlibmcp/dto/SignatureResult;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lapp/oreshkov/kotlinlibmcp/dto/SignatureResult;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/SignatureResult$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/SourceResult {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/dto/SourceResult$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;I)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;IILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()I
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;I)Lapp/oreshkov/kotlinlibmcp/dto/SourceResult;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/dto/SourceResult;Ljava/lang/String;Ljava/lang/String;IILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/dto/SourceResult;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getContent ()Ljava/lang/String;
+	public final fun getPath ()Ljava/lang/String;
+	public final fun getStartLine ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class app/oreshkov/kotlinlibmcp/dto/SourceResult$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/dto/SourceResult$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lapp/oreshkov/kotlinlibmcp/dto/SourceResult;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lapp/oreshkov/kotlinlibmcp/dto/SourceResult;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/SourceResult$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/VersionList {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/dto/VersionList$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)Lapp/oreshkov/kotlinlibmcp/dto/VersionList;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/dto/VersionList;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/dto/VersionList;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArtifact ()Ljava/lang/String;
+	public final fun getGroup ()Ljava/lang/String;
+	public final fun getVersions ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class app/oreshkov/kotlinlibmcp/dto/VersionList$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/dto/VersionList$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lapp/oreshkov/kotlinlibmcp/dto/VersionList;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lapp/oreshkov/kotlinlibmcp/dto/VersionList;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/VersionList$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/fetch/ChecksumMismatchException : app/oreshkov/kotlinlibmcp/fetch/FetchException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public class app/oreshkov/kotlinlibmcp/fetch/FetchException : java/lang/RuntimeException {
+	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+}
+
+public final class app/oreshkov/kotlinlibmcp/fetch/MavenSourceFetcherImpl : app/oreshkov/kotlinlibmcp/core/MavenSourceFetcher, java/lang/AutoCloseable {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/fetch/MavenSourceFetcherImpl$Companion;
+	public static final field MAVEN_CENTRAL Ljava/lang/String;
+	public static final field UNRESOLVED_VERSION Ljava/lang/String;
+	public fun <init> (Ljava/nio/file/Path;Lio/ktor/client/engine/HttpClientEngine;Lkotlinx/serialization/json/Json;Lapp/oreshkov/kotlinlibmcp/io/ZipExtractor;)V
+	public synthetic fun <init> (Ljava/nio/file/Path;Lio/ktor/client/engine/HttpClientEngine;Lkotlinx/serialization/json/Json;Lapp/oreshkov/kotlinlibmcp/io/ZipExtractor;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun close ()V
+	public fun fetch (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun fetchVersionCatalog (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun listVersions (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public fun resolveDependencies (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;ILkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class app/oreshkov/kotlinlibmcp/fetch/MavenSourceFetcherImpl$Companion {
+}
+
+public final class app/oreshkov/kotlinlibmcp/fetch/SourcesNotFoundException : app/oreshkov/kotlinlibmcp/fetch/FetchException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class app/oreshkov/kotlinlibmcp/io/ZipExtractionException : java/lang/RuntimeException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class app/oreshkov/kotlinlibmcp/io/ZipExtractor {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/io/ZipExtractor$Companion;
+	public static final field DEFAULT_MAX_ENTRIES I
+	public static final field DEFAULT_MAX_TOTAL_BYTES J
+	public fun <init> ()V
+	public fun <init> (IJ)V
+	public synthetic fun <init> (IJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun extract (Ljava/nio/file/Path;Ljava/nio/file/Path;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+}
+
+public final class app/oreshkov/kotlinlibmcp/io/ZipExtractor$Companion {
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/ApiSymbol {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/model/ApiSymbol$Companion;
+	public fun <init> (Ljava/lang/String;Lapp/oreshkov/kotlinlibmcp/model/SymbolKind;Lapp/oreshkov/kotlinlibmcp/model/Visibility;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/List;Lapp/oreshkov/kotlinlibmcp/model/KDoc;Lapp/oreshkov/kotlinlibmcp/model/SourceLocation;Z)V
+	public synthetic fun <init> (Ljava/lang/String;Lapp/oreshkov/kotlinlibmcp/model/SymbolKind;Lapp/oreshkov/kotlinlibmcp/model/Visibility;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/List;Lapp/oreshkov/kotlinlibmcp/model/KDoc;Lapp/oreshkov/kotlinlibmcp/model/SourceLocation;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component10 ()Z
+	public final fun component2 ()Lapp/oreshkov/kotlinlibmcp/model/SymbolKind;
+	public final fun component3 ()Lapp/oreshkov/kotlinlibmcp/model/Visibility;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()Ljava/util/List;
+	public final fun component6 ()Ljava/util/List;
+	public final fun component7 ()Ljava/util/List;
+	public final fun component8 ()Lapp/oreshkov/kotlinlibmcp/model/KDoc;
+	public final fun component9 ()Lapp/oreshkov/kotlinlibmcp/model/SourceLocation;
+	public final fun copy (Ljava/lang/String;Lapp/oreshkov/kotlinlibmcp/model/SymbolKind;Lapp/oreshkov/kotlinlibmcp/model/Visibility;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/List;Lapp/oreshkov/kotlinlibmcp/model/KDoc;Lapp/oreshkov/kotlinlibmcp/model/SourceLocation;Z)Lapp/oreshkov/kotlinlibmcp/model/ApiSymbol;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/model/ApiSymbol;Ljava/lang/String;Lapp/oreshkov/kotlinlibmcp/model/SymbolKind;Lapp/oreshkov/kotlinlibmcp/model/Visibility;Ljava/lang/String;Ljava/util/List;Ljava/util/List;Ljava/util/List;Lapp/oreshkov/kotlinlibmcp/model/KDoc;Lapp/oreshkov/kotlinlibmcp/model/SourceLocation;ZILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/model/ApiSymbol;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getBestEffort ()Z
+	public final fun getFqName ()Ljava/lang/String;
+	public final fun getKdoc ()Lapp/oreshkov/kotlinlibmcp/model/KDoc;
+	public final fun getKind ()Lapp/oreshkov/kotlinlibmcp/model/SymbolKind;
+	public final fun getModifiers ()Ljava/util/List;
+	public final fun getSignature ()Ljava/lang/String;
+	public final fun getSourceRef ()Lapp/oreshkov/kotlinlibmcp/model/SourceLocation;
+	public final fun getSupertypes ()Ljava/util/List;
+	public final fun getTypeParameters ()Ljava/util/List;
+	public final fun getVisibility ()Lapp/oreshkov/kotlinlibmcp/model/Visibility;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class app/oreshkov/kotlinlibmcp/model/ApiSymbol$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/model/ApiSymbol$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lapp/oreshkov/kotlinlibmcp/model/ApiSymbol;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lapp/oreshkov/kotlinlibmcp/model/ApiSymbol;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/ApiSymbol$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/DependencyNode {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/model/DependencyNode$Companion;
+	public fun <init> (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/lang/String;Lapp/oreshkov/kotlinlibmcp/model/KmpTarget;Ljava/util/List;)V
+	public synthetic fun <init> (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/lang/String;Lapp/oreshkov/kotlinlibmcp/model/KmpTarget;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lapp/oreshkov/kotlinlibmcp/model/KmpTarget;
+	public final fun component4 ()Ljava/util/List;
+	public final fun copy (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/lang/String;Lapp/oreshkov/kotlinlibmcp/model/KmpTarget;Ljava/util/List;)Lapp/oreshkov/kotlinlibmcp/model/DependencyNode;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/model/DependencyNode;Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/lang/String;Lapp/oreshkov/kotlinlibmcp/model/KmpTarget;Ljava/util/List;ILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/model/DependencyNode;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getChildren ()Ljava/util/List;
+	public final fun getCoordinate ()Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;
+	public final fun getScope ()Ljava/lang/String;
+	public final fun getTarget ()Lapp/oreshkov/kotlinlibmcp/model/KmpTarget;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class app/oreshkov/kotlinlibmcp/model/DependencyNode$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/model/DependencyNode$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lapp/oreshkov/kotlinlibmcp/model/DependencyNode;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lapp/oreshkov/kotlinlibmcp/model/DependencyNode;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/DependencyNode$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/KDoc {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/model/KDoc$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)Lapp/oreshkov/kotlinlibmcp/model/KDoc;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/model/KDoc;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/model/KDoc;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDescription ()Ljava/lang/String;
+	public final fun getSummary ()Ljava/lang/String;
+	public final fun getTags ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class app/oreshkov/kotlinlibmcp/model/KDoc$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/model/KDoc$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lapp/oreshkov/kotlinlibmcp/model/KDoc;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lapp/oreshkov/kotlinlibmcp/model/KDoc;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/KDoc$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/KDocTag {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/model/KDocTag$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;)Lapp/oreshkov/kotlinlibmcp/model/KDocTag;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/model/KDocTag;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/model/KDocTag;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getName ()Ljava/lang/String;
+	public final fun getValue ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class app/oreshkov/kotlinlibmcp/model/KDocTag$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/model/KDocTag$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lapp/oreshkov/kotlinlibmcp/model/KDocTag;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lapp/oreshkov/kotlinlibmcp/model/KDocTag;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/KDocTag$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/KmpTarget : java/lang/Enum {
+	public static final field COMMON Lapp/oreshkov/kotlinlibmcp/model/KmpTarget;
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/model/KmpTarget$Companion;
+	public static final field JS Lapp/oreshkov/kotlinlibmcp/model/KmpTarget;
+	public static final field JVM Lapp/oreshkov/kotlinlibmcp/model/KmpTarget;
+	public static final field NATIVE Lapp/oreshkov/kotlinlibmcp/model/KmpTarget;
+	public static final field UNKNOWN Lapp/oreshkov/kotlinlibmcp/model/KmpTarget;
+	public static final field WASM Lapp/oreshkov/kotlinlibmcp/model/KmpTarget;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lapp/oreshkov/kotlinlibmcp/model/KmpTarget;
+	public static fun values ()[Lapp/oreshkov/kotlinlibmcp/model/KmpTarget;
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/KmpTarget$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/LibraryCoordinate {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArtifact ()Ljava/lang/String;
+	public final fun getGroup ()Ljava/lang/String;
+	public final fun getVersion ()Ljava/lang/String;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class app/oreshkov/kotlinlibmcp/model/LibraryCoordinate$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/LibraryCoordinate$Companion {
+	public final fun parse (Ljava/lang/String;)Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;
+	public final fun parseOrNull (Ljava/lang/String;)Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/LibraryIndex {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/model/LibraryIndex$Companion;
+	public fun <init> (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;Ljava/util/List;Ljava/util/Map;Ljava/util/List;Lkotlin/time/Instant;)V
+	public synthetic fun <init> (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;Ljava/util/List;Ljava/util/Map;Ljava/util/List;Lkotlin/time/Instant;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;
+	public final fun component2 ()Ljava/util/List;
+	public final fun component3 ()Ljava/util/List;
+	public final fun component4 ()Ljava/util/Map;
+	public final fun component5 ()Ljava/util/List;
+	public final fun component6 ()Lkotlin/time/Instant;
+	public final fun copy (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;Ljava/util/List;Ljava/util/Map;Ljava/util/List;Lkotlin/time/Instant;)Lapp/oreshkov/kotlinlibmcp/model/LibraryIndex;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/model/LibraryIndex;Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;Ljava/util/List;Ljava/util/Map;Ljava/util/List;Lkotlin/time/Instant;ILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/model/LibraryIndex;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getCoordinate ()Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;
+	public final fun getFetchedAt ()Lkotlin/time/Instant;
+	public final fun getFiles ()Ljava/util/List;
+	public final fun getPackages ()Ljava/util/List;
+	public final fun getSymbolsByFqName ()Ljava/util/Map;
+	public final fun getTargets ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class app/oreshkov/kotlinlibmcp/model/LibraryIndex$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/model/LibraryIndex$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lapp/oreshkov/kotlinlibmcp/model/LibraryIndex;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lapp/oreshkov/kotlinlibmcp/model/LibraryIndex;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/LibraryIndex$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/PackageInfo {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/model/PackageInfo$Companion;
+	public fun <init> (Ljava/lang/String;ILjava/util/List;)V
+	public synthetic fun <init> (Ljava/lang/String;ILjava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()I
+	public final fun component3 ()Ljava/util/List;
+	public final fun copy (Ljava/lang/String;ILjava/util/List;)Lapp/oreshkov/kotlinlibmcp/model/PackageInfo;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/model/PackageInfo;Ljava/lang/String;ILjava/util/List;ILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/model/PackageInfo;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getDeclarationCount ()I
+	public final fun getName ()Ljava/lang/String;
+	public final fun getTargets ()Ljava/util/List;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class app/oreshkov/kotlinlibmcp/model/PackageInfo$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/model/PackageInfo$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lapp/oreshkov/kotlinlibmcp/model/PackageInfo;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lapp/oreshkov/kotlinlibmcp/model/PackageInfo;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/PackageInfo$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/SourceFileRef {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/model/SourceFileRef$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Lapp/oreshkov/kotlinlibmcp/model/KmpTarget;)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Lapp/oreshkov/kotlinlibmcp/model/KmpTarget;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Lapp/oreshkov/kotlinlibmcp/model/KmpTarget;
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Lapp/oreshkov/kotlinlibmcp/model/KmpTarget;)Lapp/oreshkov/kotlinlibmcp/model/SourceFileRef;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/model/SourceFileRef;Ljava/lang/String;Ljava/lang/String;Lapp/oreshkov/kotlinlibmcp/model/KmpTarget;ILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/model/SourceFileRef;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getPackageName ()Ljava/lang/String;
+	public final fun getPath ()Ljava/lang/String;
+	public final fun getTarget ()Lapp/oreshkov/kotlinlibmcp/model/KmpTarget;
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class app/oreshkov/kotlinlibmcp/model/SourceFileRef$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/model/SourceFileRef$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lapp/oreshkov/kotlinlibmcp/model/SourceFileRef;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lapp/oreshkov/kotlinlibmcp/model/SourceFileRef;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/SourceFileRef$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/SourceLocation {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/model/SourceLocation$Companion;
+	public fun <init> (Lapp/oreshkov/kotlinlibmcp/model/SourceFileRef;IILjava/lang/Integer;)V
+	public synthetic fun <init> (Lapp/oreshkov/kotlinlibmcp/model/SourceFileRef;IILjava/lang/Integer;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Lapp/oreshkov/kotlinlibmcp/model/SourceFileRef;
+	public final fun component2 ()I
+	public final fun component3 ()I
+	public final fun component4 ()Ljava/lang/Integer;
+	public final fun copy (Lapp/oreshkov/kotlinlibmcp/model/SourceFileRef;IILjava/lang/Integer;)Lapp/oreshkov/kotlinlibmcp/model/SourceLocation;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/model/SourceLocation;Lapp/oreshkov/kotlinlibmcp/model/SourceFileRef;IILjava/lang/Integer;ILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/model/SourceLocation;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getEndOffset ()Ljava/lang/Integer;
+	public final fun getFile ()Lapp/oreshkov/kotlinlibmcp/model/SourceFileRef;
+	public final fun getLine ()I
+	public final fun getOffset ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class app/oreshkov/kotlinlibmcp/model/SourceLocation$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/model/SourceLocation$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lapp/oreshkov/kotlinlibmcp/model/SourceLocation;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lapp/oreshkov/kotlinlibmcp/model/SourceLocation;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/SourceLocation$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/SymbolKind : java/lang/Enum {
+	public static final field ANNOTATION Lapp/oreshkov/kotlinlibmcp/model/SymbolKind;
+	public static final field CLASS Lapp/oreshkov/kotlinlibmcp/model/SymbolKind;
+	public static final field CONSTRUCTOR Lapp/oreshkov/kotlinlibmcp/model/SymbolKind;
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/model/SymbolKind$Companion;
+	public static final field ENUM Lapp/oreshkov/kotlinlibmcp/model/SymbolKind;
+	public static final field FUNCTION Lapp/oreshkov/kotlinlibmcp/model/SymbolKind;
+	public static final field INTERFACE Lapp/oreshkov/kotlinlibmcp/model/SymbolKind;
+	public static final field OBJECT Lapp/oreshkov/kotlinlibmcp/model/SymbolKind;
+	public static final field PROPERTY Lapp/oreshkov/kotlinlibmcp/model/SymbolKind;
+	public static final field TYPEALIAS Lapp/oreshkov/kotlinlibmcp/model/SymbolKind;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lapp/oreshkov/kotlinlibmcp/model/SymbolKind;
+	public static fun values ()[Lapp/oreshkov/kotlinlibmcp/model/SymbolKind;
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/SymbolKind$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/Visibility : java/lang/Enum {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/model/Visibility$Companion;
+	public static final field INTERNAL Lapp/oreshkov/kotlinlibmcp/model/Visibility;
+	public static final field PRIVATE Lapp/oreshkov/kotlinlibmcp/model/Visibility;
+	public static final field PROTECTED Lapp/oreshkov/kotlinlibmcp/model/Visibility;
+	public static final field PUBLIC Lapp/oreshkov/kotlinlibmcp/model/Visibility;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lapp/oreshkov/kotlinlibmcp/model/Visibility;
+	public static fun values ()[Lapp/oreshkov/kotlinlibmcp/model/Visibility;
+}
+
+public final class app/oreshkov/kotlinlibmcp/model/Visibility$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/util/Coordinates {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/util/Coordinates;
+	public final fun artifactPath (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/lang/String;)Ljava/lang/String;
+	public final fun metadataPath (Ljava/lang/String;Ljava/lang/String;)Ljava/lang/String;
+	public final fun repositoryPath (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;)Ljava/lang/String;
+}
+
+public final class app/oreshkov/kotlinlibmcp/util/MavenVersions {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/util/MavenVersions;
+	public final fun getVERSION_COMPARATOR ()Ljava/util/Comparator;
+	public final fun isStable (Ljava/lang/String;)Z
+	public final fun selectLatest (Ljava/util/List;Z)Ljava/lang/String;
+	public static synthetic fun selectLatest$default (Lapp/oreshkov/kotlinlibmcp/util/MavenVersions;Ljava/util/List;ZILjava/lang/Object;)Ljava/lang/String;
+}
+

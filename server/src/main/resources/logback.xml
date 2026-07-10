@@ -1,0 +1,14 @@
+<!-- stdio transport rule: stdout carries ONLY MCP protocol frames, so every log line goes to
+     stderr. Both transports share this config to keep behaviour consistent. -->
+<configuration>
+    <appender name="STDERR" class="ch.qos.logback.core.ConsoleAppender">
+        <target>System.err</target>
+        <encoder>
+            <pattern>%d{HH:mm:ss.SSS} %-5level %logger{24} - %msg%n</pattern>
+        </encoder>
+    </appender>
+
+    <root level="INFO">
+        <appender-ref ref="STDERR"/>
+    </root>
+</configuration>

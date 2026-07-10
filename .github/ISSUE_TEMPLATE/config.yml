@@ -1,0 +1,8 @@
+blank_issues_enabled: true
+contact_links:
+  - name: Questions & ideas
+    url: https://github.com/aoreshkov/kotlin-lib-mcp/discussions
+    about: Ask questions or discuss ideas that aren't concrete bugs/features yet.
+  - name: Security vulnerability
+    url: https://github.com/aoreshkov/kotlin-lib-mcp/security/advisories/new
+    about: Report privately — please don't open a public issue.
