@@ -38,7 +38,9 @@ jobs:
           build-mode: manual
 
       - name: Build
-        run: ./gradlew assemble
+        # --no-build-cache: with a warm remote cache every compile task resolves FROM-CACHE,
+        # no compiler runs, and CodeQL's tracer sees no code ("no source code seen").
+        run: ./gradlew assemble --no-build-cache
 
       - name: Perform CodeQL analysis
         uses: github/codeql-action/analyze@v4
