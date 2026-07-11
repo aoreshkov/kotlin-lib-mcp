@@ -32,6 +32,9 @@ class LibraryNotFetchedException(coordinate: LibraryCoordinate) : Exception(
     "Library $coordinate is not fetched yet. Call fetch_library with coordinate \"$coordinate\" first."
 )
 
+/** A coarse [LibraryService.fetchLibrary] phase: [step] of [totalSteps], human-readable [message]. */
+data class FetchProgress(val step: Int, val totalSteps: Int, val message: String)
+
 /**
  * Orchestrates fetch → analyze → cache and exposes the read operations the MCP tools call, so the
  * tool files stay declarative adapters. Every read goes through the cached [LibraryIndex]; raw
@@ -45,15 +48,24 @@ class LibraryService(
 ) {
     private val log = Logger.withTag("LibraryService")
 
-    /** Warms the cache for [coordinate]: download sources, analyze, persist the index. Idempotent. */
-    suspend fun fetchLibrary(coordinate: LibraryCoordinate): FetchSummary {
+    /**
+     * Warms the cache for [coordinate]: download sources, analyze, persist the index. Idempotent.
+     * [onProgress] is invoked at each phase boundary (never on a warm cache hit).
+     */
+    suspend fun fetchLibrary(
+        coordinate: LibraryCoordinate,
+        onProgress: suspend (FetchProgress) -> Unit = {},
+    ): FetchSummary {
         cache.get(coordinate)?.let { return it.summary(fromCache = true) }
         log.i { "Fetching and analyzing $coordinate" }
+        onProgress(FetchProgress(1, FETCH_STEPS, "Downloading and extracting sources of $coordinate"))
         val fetched = fetcher.fetch(coordinate, repos)
+        onProgress(FetchProgress(2, FETCH_STEPS, "Analyzing sources of $coordinate"))
         // The Analysis API session is CPU-bound; keep it off the caller's dispatcher.
         val index = withContext(Dispatchers.Default) {
             analyzer.analyze(coordinate, listOf(fetched.extractedDir), classpathRoots = emptyList())
         }
+        onProgress(FetchProgress(3, FETCH_STEPS, "Caching the parsed index of $coordinate"))
         cache.putIndex(index)
         return index.summary(fromCache = false)
     }
@@ -239,5 +251,6 @@ class LibraryService(
         const val MAX_SEARCH_RESULTS = 200
         const val MAX_DEPENDENCY_DEPTH = 5
         const val LATEST = "latest"
+        const val FETCH_STEPS = 3
     }
 }

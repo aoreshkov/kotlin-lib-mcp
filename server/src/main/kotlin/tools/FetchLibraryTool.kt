@@ -2,8 +2,13 @@ package app.oreshkov.kotlinlibmcp.server.tools
 
 import app.oreshkov.kotlinlibmcp.dto.FetchSummary
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
+import app.oreshkov.kotlinlibmcp.server.FetchProgress
 import app.oreshkov.kotlinlibmcp.server.LibraryService
+import io.modelcontextprotocol.kotlin.sdk.server.ClientConnection
 import io.modelcontextprotocol.kotlin.sdk.server.Server
+import io.modelcontextprotocol.kotlin.sdk.types.ProgressNotification
+import io.modelcontextprotocol.kotlin.sdk.types.ProgressNotificationParams
+import io.modelcontextprotocol.kotlin.sdk.types.ProgressToken
 import io.modelcontextprotocol.kotlin.sdk.types.ToolAnnotations
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
 import kotlinx.serialization.json.buildJsonObject
@@ -45,9 +50,29 @@ fun Server.registerFetchLibraryTool(
         guarded {
             val spec = request.args().requireStringArg("coordinate").parseCoordinateSpec()
             val coordinate = service.resolveCoordinate(spec.group, spec.artifact, spec.versionSpec)
-            val summary = service.fetchLibrary(coordinate)
+            // Clients opt into notifications/progress by sending a progressToken in _meta.
+            val progressToken = request.params.meta?.progressToken
+            val summary = service.fetchLibrary(coordinate) { progress ->
+                progressToken?.let { sendFetchProgress(it, progress) }
+            }
             onFetched(coordinate)
             toolResult(summary)
         }
+    }
+}
+
+/** Best-effort: a dropped progress frame must never fail the fetch itself. */
+private suspend fun ClientConnection.sendFetchProgress(token: ProgressToken, progress: FetchProgress) {
+    runCatching {
+        notification(
+            ProgressNotification(
+                ProgressNotificationParams(
+                    progressToken = token,
+                    progress = progress.step.toDouble(),
+                    total = progress.totalSteps.toDouble(),
+                    message = progress.message,
+                )
+            )
+        )
     }
 }
