@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Supply-chain hardening: all GitHub Actions pinned to full commit SHAs, `mcp-publisher`
+  pinned to v1.7.9 with SHA-256 verification, Docker base image digest-pinned (with a
+  Dependabot `docker` ecosystem to keep it fresh), Gradle wrapper distribution checksum
+  added, and JetBrains repositories content-filtered to `org.jetbrains.*`.
+
+### Removed
+- Unused `ksp` plugin entry from the version catalog.
+
 ## [0.1.0] - 2026-07-10
 
 Initial public release.

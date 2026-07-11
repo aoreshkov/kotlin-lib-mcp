@@ -20,3 +20,9 @@ updates:
     directory: /
     schedule:
       interval: weekly
+
+  # Keeps the digest-pinned eclipse-temurin base image fresh (JRE CVE patches).
+  - package-ecosystem: docker
+    directory: /
+    schedule:
+      interval: weekly
