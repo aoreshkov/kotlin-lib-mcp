@@ -16,6 +16,7 @@ pluginManagement {
 }
 
 dependencyResolutionManagement {
+    repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {
         google {
             mavenContent {
@@ -26,8 +27,13 @@ dependencyResolutionManagement {
         }
         mavenCentral()
         // IntelliJ repositories — only needed for the Kotlin Analysis API standalone artifacts.
-        maven("https://www.jetbrains.com/intellij-repository/releases")
-        maven("https://cache-redirector.jetbrains.com/intellij-dependencies")
+        // Content-filtered so they can never shadow Maven Central artifacts.
+        maven("https://www.jetbrains.com/intellij-repository/releases") {
+            mavenContent { includeGroupAndSubgroups("org.jetbrains") }
+        }
+        maven("https://cache-redirector.jetbrains.com/intellij-dependencies") {
+            mavenContent { includeGroupAndSubgroups("org.jetbrains") }
+        }
     }
 }
 

@@ -1,7 +1,6 @@
 [versions]
 # Build tools
 kotlin = "2.4.0"
-ksp = "2.3.10"
 kover = "0.9.8"
 
 # Third-party
@@ -84,7 +83,6 @@ junit = { module = "junit:junit", version.ref = "junit" }
 kotlin-multiplatform = { id = "org.jetbrains.kotlin.multiplatform", version.ref = "kotlin" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
-ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }
 kotlinx-binary-compatibility-validator = { id = "org.jetbrains.kotlinx.binary-compatibility-validator", version.ref = "kotlinx-binary-compatibility-validator" }
 compose = { id = "org.jetbrains.compose", version.ref = "compose" }
