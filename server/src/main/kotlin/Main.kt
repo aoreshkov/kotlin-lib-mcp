@@ -16,6 +16,9 @@ private val USAGE = """
     Options:
       --transport stdio|http   Transport to run (default: stdio)
       --port <int>             Port for the http transport (default: $DEFAULT_PORT)
+      --allowed-host <host>    Extra Host header the http transport accepts; repeatable
+                               (default: localhost only, via DNS-rebinding protection)
+      --allowed-origin <url>   Extra Origin the http transport accepts; repeatable
       --cache-dir <path>       Cache directory (default: OS cache dir + /kotlin-lib-mcp)
       --repo <url>             Extra Maven repository; repeatable (default: Maven Central)
       --help                   Show this help and exit
@@ -23,6 +26,7 @@ private val USAGE = """
     Examples:
       server --transport stdio
       server --transport http --port 3000     # endpoint: http://127.0.0.1:3000/mcp
+      server --transport http --allowed-host mcp.example.com:3000 --allowed-origin https://mcp.example.com
       server --transport stdio --cache-dir /tmp/klm --repo https://maven.google.com
 """.trimIndent()
 
@@ -31,10 +35,12 @@ private enum class TransportKind { STDIO, HTTP }
 private data class CliOptions(
     val transport: TransportKind = TransportKind.STDIO,
     val port: Int = DEFAULT_PORT,
+    val allowedHosts: List<String> = emptyList(),
+    val allowedOrigins: List<String> = emptyList(),
     val config: ServerConfig = ServerConfig(),
 )
 
-/** Tiny hand-rolled parser — five flags don't warrant a dependency. [fail]s on anything unknown. */
+/** Tiny hand-rolled parser — seven flags don't warrant a dependency. [fail]s on anything unknown. */
 private fun parseArgs(args: Array<String>): CliOptions {
     var options = CliOptions()
     var i = 0
@@ -60,6 +66,10 @@ private fun parseArgs(args: Array<String>): CliOptions {
                     ?: fail("Invalid --port (expected 1-65535)")
                 options = options.copy(port = port)
             }
+            "--allowed-host" -> options =
+                options.copy(allowedHosts = options.allowedHosts + value(arg))
+            "--allowed-origin" -> options =
+                options.copy(allowedOrigins = options.allowedOrigins + value(arg))
             "--cache-dir" -> options =
                 options.copy(config = options.config.copy(cacheDir = Path.of(value(arg))))
             "--repo" -> options =
@@ -82,7 +92,12 @@ fun main(args: Array<String>) {
         McpServerFactory.create(options.config).use { handle ->
             when (options.transport) {
                 TransportKind.STDIO -> runStdioServer(handle.server)
-                TransportKind.HTTP -> runHttpServer(handle.server, options.port)
+                TransportKind.HTTP -> runHttpServer(
+                    server = handle.server,
+                    port = options.port,
+                    allowedHosts = options.allowedHosts,
+                    allowedOrigins = options.allowedOrigins,
+                )
             }
         }
     }

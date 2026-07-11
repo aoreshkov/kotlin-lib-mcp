@@ -76,10 +76,12 @@ Or in `.mcp.json` / Claude Desktop config:
 ```
 
 For remote use, run the http transport (`--transport http --port 3000`) and point the client
-at `http://127.0.0.1:3000/mcp` — DNS-rebinding protection admits localhost hosts by default.
+at `http://127.0.0.1:3000/mcp` — DNS-rebinding protection admits localhost hosts by default;
+`--allowed-host`/`--allowed-origin` extend the allowlist for non-localhost deployments.
 
-CLI flags: `--transport stdio|http`, `--port <int>` (default 3000), `--cache-dir <path>`,
-`--repo <url>` (repeatable; Maven Central is the default), `--help`.
+CLI flags: `--transport stdio|http`, `--port <int>` (default 3000), `--allowed-host <host>` /
+`--allowed-origin <url>` (repeatable; extend the http transport's localhost-only defaults),
+`--cache-dir <path>`, `--repo <url>` (repeatable; Maven Central is the default), `--help`.
 
 ## Tools
 
@@ -109,10 +111,16 @@ derived from the response DTO's serializer. Results carry both pretty-printed JS
 matching `structuredContent` object, so structured-output clients and plain-text clients see the
 same payload.
 
+`fetch_library` also reports **progress notifications** (download → analyze → cache) when the
+client sends a `progressToken`, and the server advertises the **logging capability** — its logs
+mirror to clients as `notifications/message` (respecting `logging/setLevel`), which matters on
+stdio where stderr is often dropped.
+
 **Resources:** each cached library is readable at
 `kotlinlib://{group}/{artifact}/{version}/index` (the parsed index as JSON); the list updates as
-libraries are fetched. **Prompt:** `explain_public_api(coordinate, package?)` renders an
-explanation request grounded in the cached signatures and KDoc.
+libraries are fetched, and the same URI shape is published as a **resource template**, so any
+cached coordinate is directly addressable. **Prompt:** `explain_public_api(coordinate, package?)`
+renders an explanation request grounded in the cached signatures and KDoc.
 
 ## Building from source
 

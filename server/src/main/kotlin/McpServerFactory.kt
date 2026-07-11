@@ -6,6 +6,8 @@ import app.oreshkov.kotlinlibmcp.core.LibraryCache
 import app.oreshkov.kotlinlibmcp.fetch.MavenSourceFetcherImpl
 import app.oreshkov.kotlinlibmcp.server.prompts.registerExplainPublicApiPrompt
 import app.oreshkov.kotlinlibmcp.server.resources.addLibraryIndexResource
+import app.oreshkov.kotlinlibmcp.server.resources.registerLibraryIndexTemplate
+import app.oreshkov.kotlinlibmcp.server.resources.segmentTemplateMatcherFactory
 import app.oreshkov.kotlinlibmcp.server.tools.registerFetchLibraryTool
 import app.oreshkov.kotlinlibmcp.server.tools.registerGetApiSignatureTool
 import app.oreshkov.kotlinlibmcp.server.tools.registerGetDependenciesTool
@@ -18,10 +20,15 @@ import app.oreshkov.kotlinlibmcp.server.tools.registerListVersionsTool
 import app.oreshkov.kotlinlibmcp.server.tools.registerSearchSourceTool
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
+import io.modelcontextprotocol.kotlin.sdk.types.EmptyJsonObject
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
 import java.io.Closeable
 import java.nio.file.Path
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 
 const val SERVER_NAME: String = "kotlin-lib-mcp"
@@ -43,8 +50,13 @@ class McpServerHandle(
     val service: LibraryService,
     val cache: LibraryCache,
     private val fetcher: MavenSourceFetcherImpl,
+    private val logForwarderScope: CoroutineScope,
 ) : Closeable {
-    override fun close(): Unit = fetcher.close()
+    override fun close() {
+        logForwarderScope.cancel()
+        routeKermitToSlf4j() // drop the forwarder writer for the closed server
+        fetcher.close()
+    }
 }
 
 /**
@@ -72,7 +84,12 @@ object McpServerFactory {
                     tools = ServerCapabilities.Tools(listChanged = false),
                     resources = ServerCapabilities.Resources(listChanged = true, subscribe = false),
                     prompts = ServerCapabilities.Prompts(listChanged = false),
+                    // Presence (any non-null value) advertises notifications/message support;
+                    // the SDK then handles logging/setLevel per session.
+                    logging = EmptyJsonObject,
                 ),
+                // Not the SDK default matcher — see SegmentTemplateMatcher.kt for why.
+                resourceTemplateMatcherFactory = segmentTemplateMatcherFactory,
             ),
             instructions = "Inspect the sources of Maven-published Kotlin/Java libraries. " +
                 "Call fetch_library with a 'group:artifact:version' coordinate first (the version " +
@@ -95,10 +112,22 @@ object McpServerFactory {
             registerListVersionsTool(service)
             registerGetLatestVersionTool(service)
             registerExplainPublicApiPrompt(service)
+            // Direct addressing of any cached index; the per-library resources below stay for
+            // discoverability via resources/list.
+            registerLibraryIndexTemplate(service)
         }
         // One index resource per already-cached library (startup snapshot).
         runBlocking { cache.list() }.forEach { server.addLibraryIndexResource(service, it) }
 
-        return McpServerHandle(server = server, service = service, cache = cache, fetcher = fetcher)
+        val logForwarderScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
+        attachMcpLogForwarder(server, logForwarderScope)
+
+        return McpServerHandle(
+            server = server,
+            service = service,
+            cache = cache,
+            fetcher = fetcher,
+            logForwarderScope = logForwarderScope,
+        )
     }
 }

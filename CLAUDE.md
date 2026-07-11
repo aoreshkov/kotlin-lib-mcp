@@ -66,5 +66,14 @@ Every tool declares a `title`, behavior annotations (`readOnlyHint`/`openWorldHi
 `structuredContent`. When adding a tool, pass all three to `addTool` — use the shared
 `LOCAL_READ_ONLY`/`REPOSITORY_READ_ONLY` annotation constants in `ToolSupport.kt`.
 
-Cached library indexes are also exposed as MCP **resources**, plus an "explain the public API"
-**prompt** — exercising all three MCP primitives (tools, resources, prompts).
+Cached library indexes are also exposed as MCP **resources** (one static resource per cached
+library plus a `kotlinlib://{group}/{artifact}/{version}/index` **resource template**), and an
+"explain the public API" **prompt** — exercising all three MCP primitives. The server declares
+the **logging capability** (Kermit logs mirror to clients via `attachMcpLogForwarder`;
+`Logging.kt`) and `fetch_library` emits **progress notifications** when the request carries a
+`progressToken`.
+
+**Resource templates gotcha:** the SDK's default `PathSegmentTemplateMatcher` throws
+`NoSuchMethodError` at runtime — `kotlin-compiler` (via `core`) bundles an old unrelocated
+`kotlinx.collections.immutable` that shadows the SDK's. `ServerOptions` must keep the custom
+`segmentTemplateMatcherFactory` (`server/.../resources/SegmentTemplateMatcher.kt`).
