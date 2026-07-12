@@ -162,6 +162,13 @@ Contributions welcome — see [CONTRIBUTING.md](CONTRIBUTING.md). Release histor
 [CHANGELOG.md](CHANGELOG.md); security reports go through
 [private vulnerability reporting](SECURITY.md).
 
+## Support
+
+If `kotlin-lib-mcp` saves you time, consider
+[sponsoring its maintenance](https://github.com/sponsors/aoreshkov). Sponsorship funds
+keeping the Analysis API version-lock current with new Kotlin releases and the
+supply-chain-hardened release pipeline. Every tier is appreciated.
+
 ## License
 
 [Apache-2.0](LICENSE)
