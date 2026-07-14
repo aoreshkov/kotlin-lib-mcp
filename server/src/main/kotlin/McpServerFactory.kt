@@ -32,7 +32,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 
 const val SERVER_NAME: String = "kotlin-lib-mcp"
-const val SERVER_VERSION: String = "0.2.0"
+const val SERVER_VERSION: String = "0.3.0"
 
 /** Runtime configuration shared by both transports, populated from the CLI flags in `Main`. */
 data class ServerConfig(

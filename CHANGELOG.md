@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-07-14
+
+### Added
+- **`list_declarations` paging**: `maxResults` (default 100, capped at 500) and `offset`
+  inputs, with `totalCount` and `truncated` in the response, so listing a large library
+  returns a bounded page instead of flooding the client's context. (#23)
+- **`--host <addr>` flag** for the HTTP transport, to opt into a non-loopback bind address
+  (intended for use behind an authenticating reverse proxy). (#23)
+
+### Changed
+- The Streamable HTTP transport now binds **`127.0.0.1` by default** instead of `0.0.0.0`,
+  so the endpoint is not reachable from other hosts unless `--host` widens it. The SDK's
+  Host/Origin allowlist only filters request headers, not the listening interface. (#23)
+
+### Security
+- **Coordinate validation**: Maven coordinate segments are now restricted to
+  `[A-Za-z0-9._+-]` and reject `.`, `..`, and path separators, closing a path-traversal
+  where a crafted `group:artifact:version` could resolve outside the on-disk cache root. (#23)
+- **Zip-bomb guard**: the extractor enforces its uncompressed-size budget *during* each
+  entry copy rather than after, so a single highly-compressed entry can no longer be written
+  to disk in full before the limit trips. (#23)
+- **Download size cap**: artifact downloads are limited to 200 MiB — an over-large declared
+  `Content-Length` is rejected up front and the stream is aborted if it exceeds the cap —
+  preventing out-of-memory from a hostile or oversized artifact. (#23)
+
 ## [0.2.0] - 2026-07-11
 
 ### Added
@@ -61,6 +86,7 @@ Initial public release.
 - On-disk cache keyed by `group/artifact/version` under the OS cache directory.
 - Optional **Compose Desktop dashboard** embedding the server (control, logs, cache browser).
 
-[Unreleased]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/aoreshkov/kotlin-lib-mcp/releases/tag/v0.1.0
