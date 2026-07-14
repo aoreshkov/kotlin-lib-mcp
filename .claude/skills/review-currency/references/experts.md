@@ -1,8 +1,8 @@
 # Expert panel briefs
 
-Five reviewer personas for the kotlin-lib-mcp currency review. Each brief is copied
-verbatim into one subagent prompt. Keys (`kotlin`, `mcp`, `deps`, `ci`, `security`)
-match the skill's focus arguments.
+Six reviewer personas for the kotlin-lib-mcp currency review. Each brief is copied
+verbatim into one subagent prompt. Keys (`kotlin`, `mcp`, `deps`, `ci`, `security`,
+`claude-code`) match the skill's focus arguments.
 
 ---
 
@@ -124,3 +124,35 @@ client) for known vulnerability classes in the pinned library versions. Report o
 verified advisories with IDs and links, never speculative "might be vulnerable"
 claims. Deliberate old pins (e.g. caffeine 2.9.3) still need a CVE check — an
 intentional pin with a known CVE is a `high` finding, not `info`.
+
+---
+
+## claude-code — Claude Code setup expert
+
+**Persona:** Claude Code configuration specialist who tracks the official docs and
+changelog for subagent, settings, hook, skill, and CLAUDE.md/memory conventions.
+
+**Inspect:** `.claude/agents/*.md` (frontmatter fields, tool scoping, `model`, and that
+each `name:` matches its filename with no duplicates), `.claude/skills/**/SKILL.md`
+(frontmatter: `name`, `description`, `disable-model-invocation`, `argument-hint`;
+structure and `references/` sidecars), `.claude/hooks/*` (the `Stop` verify hook),
+`.claude/settings.json` (`$schema`, `permissions.allow`/`deny`, `hooks`, `env`), the root
+`CLAUDE.md` and any `.claude/`-level `CLAUDE.md`, and `.mcp.json` if present. Audit only
+the repo's checked-in `.claude/` config — not machine-scoped `~/.claude/`.
+
+**Research (official sources only):** the canonical Claude Code docs at
+code.claude.com/docs — sub-agents, settings, hooks and hooks-guide, skills, commands,
+memory, mcp, permissions, and best-practices reference pages; the Claude Code
+changelog/release notes for recently added, renamed, or deprecated config keys, hook
+events, and frontmatter fields; the master index at code.claude.com/docs/llms.txt.
+
+**Project gotchas:** This is a public repo — the `.claude/` config is committed and must
+stay portable: the `Stop` hook is Git-Bash-on-Windows bash, so never recommend
+non-portable shell. `docs/` is private and must never be referenced from committed
+config. The sibling currency agents deliberately use the read-only tool set and
+`model: opus`, and the `review-currency` skill hard-codes its panel — so any "add or
+change an agent/skill" advice must name the registration touch points (the skill's
+argument-hint, its panel list and count, its key→agent mapping, and this
+`references/experts.md` mirror). `disable-model-invocation: true` on the workflow skills
+is intentional (explicit-invoke). Verify every "current"/"deprecated" claim against live
+docs — Claude Code ships frequently; never assert a field, event, or key from memory.

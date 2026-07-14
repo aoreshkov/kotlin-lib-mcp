@@ -1,8 +1,8 @@
 ---
 name: review-currency
-description: Reviews how current kotlin-lib-mcp is versus the latest official releases and recommended practices, by launching a fixed panel of expert reviewer subagents (Kotlin/Analysis API, MCP, build & dependencies, CI/publishing, security) that research today's state of the art on official sources and compare it with the repo. Use when asked to review project currency, check for outdated dependencies or toolchain drift, or audit against current best practices.
+description: Reviews how current kotlin-lib-mcp is versus the latest official releases and recommended practices, by launching a fixed panel of expert reviewer subagents (Kotlin/Analysis API, MCP, build & dependencies, CI/publishing, security, Claude Code setup) that research today's state of the art on official sources and compare it with the repo. Use when asked to review project currency, check for outdated dependencies or toolchain drift, or audit against current best practices.
 disable-model-invocation: true
-argument-hint: "[optional focus: kotlin | mcp | deps | ci | security]"
+argument-hint: "[optional focus: kotlin | mcp | deps | ci | security | claude-code]"
 ---
 
 # Project currency review — expert panel
@@ -24,17 +24,20 @@ refs, base images). Note today's date — all research anchors to it.
 - `.github/workflows/ci.yml`, `.github/workflows/codeql.yml`, `.github/workflows/release.yml`
 - `Dockerfile` and `server.json`
 - `CLAUDE.md` — project conventions and gotchas the experts must honor
+- `.claude/` — agents, skills, hooks, `settings.json` (the Claude Code setup itself)
 
 ### 2. Select the panel
 
-The panel is five dedicated currency subagents (defined in `.claude/agents/`):
-`kotlin-currency`, `mcp-currency`, `deps-currency`, `ci-currency`, `security-currency`.
-Each agent carries its own persona, inspection list, official sources, project gotchas,
-and output contract — they are the single source of truth. (`references/experts.md` is
-the human-readable copy of those briefs, kept in sync for reviewers.)
+The panel is six dedicated currency subagents (defined in `.claude/agents/`):
+`kotlin-currency`, `mcp-currency`, `deps-currency`, `ci-currency`, `security-currency`,
+`claude-code-currency`. Each agent carries its own persona, inspection list, official
+sources, project gotchas, and output contract — they are the single source of truth.
+(`references/experts.md` is the human-readable copy of those briefs, kept in sync for
+reviewers.)
 
 If `$ARGUMENTS` is non-empty, launch only the experts whose keys it names (`kotlin`, `mcp`,
-`deps`, `ci`, `security` → the matching `*-currency` agent); otherwise launch all five.
+`deps`, `ci`, `security`, `claude-code` → the matching `*-currency` agent); otherwise launch
+all six.
 
 ### 3. Launch the experts in parallel
 
