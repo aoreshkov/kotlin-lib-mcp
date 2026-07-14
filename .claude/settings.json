@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-settings.json",
+  "permissions": {
+    "allow": [
+      "Bash(./gradlew :*)",
+      "Bash(./gradlew build*)",
+      "Bash(./gradlew test*)",
+      "Bash(./gradlew check*)",
+      "Bash(./gradlew tasks*)",
+      "Bash(./gradlew help*)",
+      "Bash(./gradlew projects*)",
+      "Bash(git status:*)",
+      "Bash(git diff:*)",
+      "Bash(git log:*)",
+      "Bash(git show:*)",
+      "Bash(git branch:*)",
+      "Bash(git check-ignore:*)",
+      "Bash(gh pr view:*)",
+      "Bash(gh pr diff:*)",
+      "Bash(gh pr list:*)",
+      "Bash(gh issue view:*)",
+      "Bash(gh issue list:*)",
+      "Bash(gh run view:*)",
+      "Bash(gh run list:*)",
+      "mcp__kotlin-lib__list_packages",
+      "mcp__kotlin-lib__list_declarations",
+      "mcp__kotlin-lib__get_api_signature",
+      "mcp__kotlin-lib__get_kdoc",
+      "mcp__kotlin-lib__get_source",
+      "mcp__kotlin-lib__search_source",
+      "mcp__kotlin-lib__get_dependencies",
+      "mcp__kotlin-lib__list_versions",
+      "mcp__kotlin-lib__get_latest_version",
+      "WebFetch(domain:kotlinlang.org)",
+      "WebFetch(domain:modelcontextprotocol.io)",
+      "WebFetch(domain:docs.github.com)",
+      "WebFetch(domain:code.claude.com)",
+      "WebFetch(domain:github.com)"
+    ],
+    "deny": []
+  },
+  "hooks": {
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "bash .claude/hooks/stop-verify.sh"
+          }
+        ]
+      }
+    ]
+  }
+}

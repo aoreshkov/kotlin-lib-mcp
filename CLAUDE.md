@@ -28,6 +28,10 @@ Desktop dashboard runs the same server in-process for control, logs, and cache b
 ./gradlew :dashboard:run                          # Compose Desktop UI
 ```
 
+**Verify a change:** compile fast with `./gradlew :server:compileKotlin` (pulls in `core`);
+run the affected module's tests, e.g. `./gradlew :core:build`. A `Stop` hook runs the fast
+compile automatically when Kotlin sources changed (`.claude/hooks/stop-verify.sh`).
+
 ## Tech stack (versions live ONLY in `gradle/libs.versions.toml`)
 
 - Kotlin **2.4.x** · MCP `io.modelcontextprotocol:kotlin-sdk-server:0.14.0` · Ktor **3.5.x**
@@ -39,7 +43,8 @@ Desktop dashboard runs the same server in-process for control, logs, and cache b
 ## Conventions & gotchas
 
 - **Versions are centralized** in `gradle/libs.versions.toml`. Kotlin and the Analysis API
-  artifacts must share the **exact same version** — always bump them together.
+  artifacts must share the **exact same version** — always bump them together (use the
+  `/analysis-api-bump` skill; cut releases with `/release`).
 - **stdio transport: NEVER write to stdout** except MCP protocol frames. All logging goes to
   stderr or a file, or it corrupts the protocol stream.
 - **Isolate the Analysis API** behind the `SourceAnalyzer` interface — it is version-fragile;
