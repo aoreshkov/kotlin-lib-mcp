@@ -13,6 +13,15 @@ out/
 # Local machine config — never commit
 local.properties
 
+# Private analysis/plan docs — never commit (see CLAUDE.md)
+docs/
+
+# Claude Code — keep shareable config (skills/, agents/, settings.json) tracked;
+# ignore only personal/local files
+.claude/settings.local.json
+.claude/plans/
+CLAUDE.local.md
+
 # Logs & OS noise
 *.log
 .DS_Store
