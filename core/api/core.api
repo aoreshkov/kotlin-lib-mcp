@@ -98,17 +98,21 @@ public final class app/oreshkov/kotlinlibmcp/core/VersionCatalog {
 
 public final class app/oreshkov/kotlinlibmcp/dto/DeclarationList {
 	public static final field Companion Lapp/oreshkov/kotlinlibmcp/dto/DeclarationList$Companion;
-	public fun <init> (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/lang/String;Ljava/util/List;)V
-	public synthetic fun <init> (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/lang/String;Ljava/util/List;IZ)V
+	public synthetic fun <init> (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/lang/String;Ljava/util/List;IZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()Ljava/util/List;
-	public final fun copy (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/lang/String;Ljava/util/List;)Lapp/oreshkov/kotlinlibmcp/dto/DeclarationList;
-	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/dto/DeclarationList;Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/dto/DeclarationList;
+	public final fun component4 ()I
+	public final fun component5 ()Z
+	public final fun copy (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/lang/String;Ljava/util/List;IZ)Lapp/oreshkov/kotlinlibmcp/dto/DeclarationList;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/dto/DeclarationList;Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/lang/String;Ljava/util/List;IZILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/dto/DeclarationList;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getCoordinate ()Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;
 	public final fun getDeclarations ()Ljava/util/List;
 	public final fun getPackageName ()Ljava/lang/String;
+	public final fun getTotalCount ()I
+	public final fun getTruncated ()Z
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -447,6 +451,10 @@ public final class app/oreshkov/kotlinlibmcp/fetch/ChecksumMismatchException : a
 	public fun <init> (Ljava/lang/String;)V
 }
 
+public final class app/oreshkov/kotlinlibmcp/fetch/DownloadTooLargeException : app/oreshkov/kotlinlibmcp/fetch/FetchException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
 public class app/oreshkov/kotlinlibmcp/fetch/FetchException : java/lang/RuntimeException {
 	public fun <init> (Ljava/lang/String;Ljava/lang/Throwable;)V
 	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/Throwable;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
@@ -454,10 +462,11 @@ public class app/oreshkov/kotlinlibmcp/fetch/FetchException : java/lang/RuntimeE
 
 public final class app/oreshkov/kotlinlibmcp/fetch/MavenSourceFetcherImpl : app/oreshkov/kotlinlibmcp/core/MavenSourceFetcher, java/lang/AutoCloseable {
 	public static final field Companion Lapp/oreshkov/kotlinlibmcp/fetch/MavenSourceFetcherImpl$Companion;
+	public static final field DEFAULT_MAX_DOWNLOAD_BYTES J
 	public static final field MAVEN_CENTRAL Ljava/lang/String;
 	public static final field UNRESOLVED_VERSION Ljava/lang/String;
-	public fun <init> (Ljava/nio/file/Path;Lio/ktor/client/engine/HttpClientEngine;Lkotlinx/serialization/json/Json;Lapp/oreshkov/kotlinlibmcp/io/ZipExtractor;)V
-	public synthetic fun <init> (Ljava/nio/file/Path;Lio/ktor/client/engine/HttpClientEngine;Lkotlinx/serialization/json/Json;Lapp/oreshkov/kotlinlibmcp/io/ZipExtractor;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/nio/file/Path;Lio/ktor/client/engine/HttpClientEngine;Lkotlinx/serialization/json/Json;Lapp/oreshkov/kotlinlibmcp/io/ZipExtractor;J)V
+	public synthetic fun <init> (Ljava/nio/file/Path;Lio/ktor/client/engine/HttpClientEngine;Lkotlinx/serialization/json/Json;Lapp/oreshkov/kotlinlibmcp/io/ZipExtractor;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun close ()V
 	public fun fetch (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun fetchVersionCatalog (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
@@ -677,6 +686,7 @@ public final synthetic class app/oreshkov/kotlinlibmcp/model/LibraryCoordinate$$
 public final class app/oreshkov/kotlinlibmcp/model/LibraryCoordinate$Companion {
 	public final fun parse (Ljava/lang/String;)Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;
 	public final fun parseOrNull (Ljava/lang/String;)Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;
+	public final fun requireValidSegment (Ljava/lang/String;Ljava/lang/String;)V
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 

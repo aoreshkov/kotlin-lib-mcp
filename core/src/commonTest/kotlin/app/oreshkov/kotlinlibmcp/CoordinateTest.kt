@@ -48,6 +48,27 @@ class CoordinateTest {
     }
 
     @Test
+    fun rejectsPathTraversalSegments() {
+        // A `..` (or path-separator) segment would escape the cache root / traverse the repo URL.
+        assertFailsWith<IllegalArgumentException> { LibraryCoordinate("..", "artifact", "1.0") }
+        assertFailsWith<IllegalArgumentException> { LibraryCoordinate("g", "..", "1.0") }
+        assertFailsWith<IllegalArgumentException> { LibraryCoordinate("g", "a", "..") }
+        assertFailsWith<IllegalArgumentException> { LibraryCoordinate("g", "a", ".") }
+        assertFailsWith<IllegalArgumentException> { LibraryCoordinate.parse("../../etc:passwd:1") }
+        assertFailsWith<IllegalArgumentException> { LibraryCoordinate("a/b", "artifact", "1.0") }
+        assertFailsWith<IllegalArgumentException> { LibraryCoordinate("a\\b", "artifact", "1.0") }
+        assertFailsWith<IllegalArgumentException> { LibraryCoordinate("g", "a", "1.0/../../x") }
+    }
+
+    @Test
+    fun acceptsRealMavenSegments() {
+        // Dotted groups, hyphen/underscore artifacts, and semver build-metadata (`+`) versions.
+        LibraryCoordinate("io.ktor", "ktor-client-core", "3.5.1")
+        LibraryCoordinate("com.example_ext", "demo_lib", "1.0.0-beta.2")
+        LibraryCoordinate("g", "a", "1.0.0+build.7")
+    }
+
+    @Test
     fun repositoryPathDerivation() {
         val coordinate = LibraryCoordinate.parse("io.ktor:ktor-client-core:3.5.1")
         assertEquals("io/ktor/ktor-client-core/3.5.1", Coordinates.repositoryPath(coordinate))

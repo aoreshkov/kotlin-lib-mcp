@@ -18,12 +18,17 @@ import io.ktor.client.plugins.HttpRequestRetry
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.UserAgent
 import io.ktor.client.request.get
+import io.ktor.client.statement.HttpResponse
+import io.ktor.client.statement.bodyAsChannel
 import io.ktor.client.statement.bodyAsText
-import io.ktor.client.statement.readRawBytes
 import io.ktor.http.HttpStatusCode
+import io.ktor.http.contentLength
 import io.ktor.http.isSuccess
+import io.ktor.utils.io.readRemaining
+import java.io.ByteArrayOutputStream
 import java.nio.file.Path
 import java.security.MessageDigest
+import kotlinx.io.readByteArray
 import kotlin.io.path.createDirectories
 import kotlin.io.path.exists
 import kotlin.io.path.readText
@@ -43,6 +48,9 @@ public class SourcesNotFoundException(message: String) : FetchException(message)
 /** A downloaded jar did not match the sha256 published in its Gradle module metadata. */
 public class ChecksumMismatchException(message: String) : FetchException(message)
 
+/** A response body exceeded [MavenSourceFetcherImpl.maxDownloadBytes] (declared or streamed). */
+public class DownloadTooLargeException(message: String) : FetchException(message)
+
 /**
  * [MavenSourceFetcher] backed by a Ktor client.
  *
@@ -59,6 +67,7 @@ public class MavenSourceFetcherImpl(
     engine: HttpClientEngine = CIO.create(),
     private val json: Json = Json { ignoreUnknownKeys = true },
     private val extractor: ZipExtractor = ZipExtractor(),
+    private val maxDownloadBytes: Long = DEFAULT_MAX_DOWNLOAD_BYTES,
 ) : MavenSourceFetcher, AutoCloseable {
 
     private val log = Logger.withTag("MavenSourceFetcher")
@@ -357,12 +366,47 @@ public class MavenSourceFetcherImpl(
     private suspend fun getBytesOrNull(url: String): ByteArray? {
         val response = client.get(url)
         return when {
-            response.status.isSuccess() -> response.readRawBytes()
+            response.status.isSuccess() -> readCapped(response, url)
             response.status == HttpStatusCode.NotFound -> null
             else -> {
                 log.w { "GET $url -> ${response.status}; treating as unavailable" }
                 null
             }
+        }
+    }
+
+    /**
+     * Reads the body into memory with a [maxDownloadBytes] budget: rejects early on a too-large
+     * declared `Content-Length`, then streams and aborts the moment the running total exceeds the
+     * cap, so a huge (or `Content-Length`-lying) artifact can't OOM the JVM before extraction limits
+     * apply.
+     */
+    private suspend fun readCapped(response: HttpResponse, url: String): ByteArray {
+        response.contentLength()?.let { declared ->
+            if (declared > maxDownloadBytes) {
+                throw DownloadTooLargeException(
+                    "$url declares $declared bytes, over the ${maxDownloadBytes}-byte download cap",
+                )
+            }
+        }
+        val channel = response.bodyAsChannel()
+        return withContext(Dispatchers.IO) {
+            val out = ByteArrayOutputStream()
+            var total = 0L
+            while (!channel.isClosedForRead) {
+                val packet = channel.readRemaining(READ_CHUNK_BYTES)
+                while (!packet.exhausted()) {
+                    val chunk = packet.readByteArray()
+                    total += chunk.size
+                    if (total > maxDownloadBytes) {
+                        throw DownloadTooLargeException(
+                            "$url exceeds the ${maxDownloadBytes}-byte download cap",
+                        )
+                    }
+                    out.write(chunk)
+                }
+            }
+            out.toByteArray()
         }
     }
 
@@ -383,5 +427,10 @@ public class MavenSourceFetcherImpl(
 
         /** Placeholder version for BOM-managed/uninterpolatable dependency versions. */
         public const val UNRESOLVED_VERSION: String = "unresolved"
+
+        /** Default per-artifact download ceiling; roomy for real sources jars, guards against OOM. */
+        public const val DEFAULT_MAX_DOWNLOAD_BYTES: Long = 200L * 1024 * 1024
+
+        private const val READ_CHUNK_BYTES: Long = 64L * 1024
     }
 }

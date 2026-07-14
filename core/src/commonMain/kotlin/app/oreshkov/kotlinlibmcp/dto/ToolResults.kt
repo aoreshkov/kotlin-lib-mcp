@@ -34,13 +34,19 @@ public data class PackageList(
     val packages: List<PackageInfo> = emptyList(),
 )
 
-/** `list_declarations`. */
+/**
+ * `list_declarations`. [declarations] is a bounded page; [totalCount] is how many matched the
+ * filter before paging, and [truncated] is `true` when more matched than the returned page (advance
+ * `offset` to fetch the rest).
+ */
 @Serializable
 @SerialName("DeclarationList")
 public data class DeclarationList(
     val coordinate: LibraryCoordinate,
     val packageName: String? = null,
     val declarations: List<ApiSymbol> = emptyList(),
+    val totalCount: Int = 0,
+    val truncated: Boolean = false,
 )
 
 /** `get_api_signature`. */

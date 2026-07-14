@@ -1,5 +1,6 @@
 package app.oreshkov.kotlinlibmcp.server
 
+import app.oreshkov.kotlinlibmcp.server.transport.LOOPBACK_HOST
 import app.oreshkov.kotlinlibmcp.server.transport.runHttpServer
 import app.oreshkov.kotlinlibmcp.server.transport.runStdioServer
 import java.nio.file.Path
@@ -16,6 +17,8 @@ private val USAGE = """
     Options:
       --transport stdio|http   Transport to run (default: stdio)
       --port <int>             Port for the http transport (default: $DEFAULT_PORT)
+      --host <addr>            Interface the http transport binds (default: $LOOPBACK_HOST, loopback
+                               only). Widen (e.g. 0.0.0.0) only behind an authenticating proxy.
       --allowed-host <host>    Extra Host header the http transport accepts; repeatable
                                (default: localhost only, via DNS-rebinding protection)
       --allowed-origin <url>   Extra Origin the http transport accepts; repeatable
@@ -35,6 +38,7 @@ private enum class TransportKind { STDIO, HTTP }
 private data class CliOptions(
     val transport: TransportKind = TransportKind.STDIO,
     val port: Int = DEFAULT_PORT,
+    val host: String = LOOPBACK_HOST,
     val allowedHosts: List<String> = emptyList(),
     val allowedOrigins: List<String> = emptyList(),
     val config: ServerConfig = ServerConfig(),
@@ -66,6 +70,7 @@ private fun parseArgs(args: Array<String>): CliOptions {
                     ?: fail("Invalid --port (expected 1-65535)")
                 options = options.copy(port = port)
             }
+            "--host" -> options = options.copy(host = value(arg))
             "--allowed-host" -> options =
                 options.copy(allowedHosts = options.allowedHosts + value(arg))
             "--allowed-origin" -> options =
@@ -95,6 +100,7 @@ fun main(args: Array<String>) {
                 TransportKind.HTTP -> runHttpServer(
                     server = handle.server,
                     port = options.port,
+                    host = options.host,
                     allowedHosts = options.allowedHosts,
                     allowedOrigins = options.allowedOrigins,
                 )
