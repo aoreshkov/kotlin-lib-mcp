@@ -121,9 +121,15 @@ internal fun String.parseCoordinateSpec(): CoordinateSpec {
     require(parts.size in 2..3 && parts.take(2).none { it.isBlank() }) {
         "Invalid coordinate '$this': expected 'group:artifact' or 'group:artifact:version'"
     }
+    val group = parts[0].trim()
+    val artifact = parts[1].trim()
+    // group/artifact reach Maven-metadata URL paths (fetchVersionCatalog) before a full
+    // LibraryCoordinate — which validates all three segments — is ever built, so guard them here.
+    LibraryCoordinate.requireValidSegment("group", group)
+    LibraryCoordinate.requireValidSegment("artifact", artifact)
     return CoordinateSpec(
-        group = parts[0].trim(),
-        artifact = parts[1].trim(),
+        group = group,
+        artifact = artifact,
         versionSpec = parts.getOrNull(2)?.trim()?.takeIf { it.isNotEmpty() },
     )
 }

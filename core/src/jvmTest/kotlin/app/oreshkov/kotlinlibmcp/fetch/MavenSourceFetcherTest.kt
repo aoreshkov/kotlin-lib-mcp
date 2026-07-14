@@ -8,6 +8,11 @@ import app.oreshkov.kotlinlibmcp.model.KmpTarget
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.zipBytes
 import io.ktor.client.engine.mock.MockEngine
+import io.ktor.client.engine.mock.respond
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import io.ktor.http.headersOf
+import io.ktor.utils.io.ByteReadChannel
 import java.nio.file.Path
 import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.createTempDirectory
@@ -157,6 +162,39 @@ class MavenSourceFetcherTest {
     fun missingEverywhereThrowsSourcesNotFound() = runTest {
         fetcher(mockRepoEngine(emptyMap())).use { fetcher ->
             assertFailsWith<SourcesNotFoundException> { fetcher.fetch(coordinate, listOf(repo)) }
+        }
+    }
+
+    @Test
+    fun rejectsDownloadWhenContentLengthExceedsCap() = runTest {
+        val plain = LibraryCoordinate("com.example", "plain-lib", "2.0.0")
+        val url = "${repo}com/example/plain-lib/2.0.0/plain-lib-2.0.0-sources.jar"
+        val engine = MockEngine { request ->
+            if (request.url.toString() == url) {
+                respond(
+                    content = ByteArray(1_000_000),
+                    status = HttpStatusCode.OK,
+                    headers = headersOf(HttpHeaders.ContentLength, "1000000"),
+                )
+            } else {
+                respond(ByteReadChannel(ByteArray(0)), HttpStatusCode.NotFound)
+            }
+        }
+        MavenSourceFetcherImpl(cacheDir = newCacheDir(), engine = engine, maxDownloadBytes = 4096).use { fetcher ->
+            assertFailsWith<DownloadTooLargeException> { fetcher.fetch(plain, listOf(repo)) }
+        }
+    }
+
+    @Test
+    fun rejectsStreamedDownloadExceedingCapWithoutContentLength() = runTest {
+        val plain = LibraryCoordinate("com.example", "plain-lib", "2.0.0")
+        // mockRepoEngine serves a raw channel with no Content-Length, so the cap must be enforced
+        // by counting streamed bytes (guards against a lying/absent Content-Length).
+        val engine = mockRepoEngine(
+            mapOf("${repo}com/example/plain-lib/2.0.0/plain-lib-2.0.0-sources.jar" to ByteArray(1_000_000)),
+        )
+        MavenSourceFetcherImpl(cacheDir = newCacheDir(), engine = engine, maxDownloadBytes = 4096).use { fetcher ->
+            assertFailsWith<DownloadTooLargeException> { fetcher.fetch(plain, listOf(repo)) }
         }
     }
 

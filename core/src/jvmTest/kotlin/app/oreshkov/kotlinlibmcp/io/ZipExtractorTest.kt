@@ -8,6 +8,7 @@ import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.deleteRecursively
 import kotlin.io.path.exists
+import kotlin.io.path.fileSize
 import kotlin.io.path.readText
 import kotlin.io.path.writeBytes
 import kotlin.test.AfterTest
@@ -82,6 +83,24 @@ class ZipExtractorTest {
 
         assertFailsWith<ZipExtractionException> {
             ZipExtractor(maxTotalBytes = 1024).extract(zip, tempDir())
+        }
+    }
+
+    @Test
+    fun abortsSingleOversizedEntryMidCopy() = runTest {
+        // A single entry far larger than the cap must be aborted *during* the copy, not streamed to
+        // disk in full and then rejected (zip-bomb: one entry can be highly compressed).
+        val cap = 4096L
+        val zip = writeZip(mapOf("big.kt" to "x".repeat(1_000_000)))
+        val target = tempDir()
+
+        assertFailsWith<ZipExtractionException> {
+            ZipExtractor(maxTotalBytes = cap).extract(zip, target)
+        }
+        // Proof it did not write the whole megabyte: any partial output stays within budget + one buffer.
+        val partial = target.resolve("big.kt")
+        if (partial.exists()) {
+            assertTrue(partial.fileSize() <= cap + 64 * 1024, "must abort mid-copy, not after writing the full entry")
         }
     }
 

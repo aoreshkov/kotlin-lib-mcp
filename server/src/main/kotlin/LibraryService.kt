@@ -77,6 +77,8 @@ class LibraryService(
         coordinate: LibraryCoordinate,
         packageName: String?,
         visibility: String?,
+        maxResults: Int = DEFAULT_DECLARATION_RESULTS,
+        offset: Int = 0,
     ): DeclarationList {
         val wanted: Set<Visibility> = when (visibility?.lowercase() ?: "public") {
             "public" -> setOf(Visibility.PUBLIC)
@@ -84,11 +86,21 @@ class LibraryService(
             "all" -> Visibility.entries.toSet()
             else -> throw IllegalArgumentException("visibility must be one of: public, internal, all")
         }
-        val declarations = index(coordinate).symbolsByFqName.values.filter { symbol ->
+        val matching = index(coordinate).symbolsByFqName.values.filter { symbol ->
             symbol.visibility in wanted &&
                 (packageName == null || symbol.sourceRef?.file?.packageName == packageName)
         }
-        return DeclarationList(coordinate, packageName, declarations)
+        // Bounded page: a large library must not flood the model's context in one response.
+        val cap = maxResults.coerceIn(1, MAX_DECLARATION_RESULTS)
+        val start = offset.coerceAtLeast(0)
+        val page = matching.drop(start).take(cap)
+        return DeclarationList(
+            coordinate = coordinate,
+            packageName = packageName,
+            declarations = page,
+            totalCount = matching.size,
+            truncated = start + page.size < matching.size,
+        )
     }
 
     suspend fun getSignature(coordinate: LibraryCoordinate, fqName: String): SignatureResult =
@@ -249,6 +261,8 @@ class LibraryService(
 
     private companion object {
         const val MAX_SEARCH_RESULTS = 200
+        const val MAX_DECLARATION_RESULTS = 500
+        const val DEFAULT_DECLARATION_RESULTS = 100
         const val MAX_DEPENDENCY_DEPTH = 5
         const val LATEST = "latest"
         const val FETCH_STEPS = 3

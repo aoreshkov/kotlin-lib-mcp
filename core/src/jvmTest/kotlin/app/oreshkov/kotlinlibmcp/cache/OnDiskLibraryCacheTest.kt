@@ -16,6 +16,7 @@ import kotlin.io.path.writeText
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Instant
@@ -47,6 +48,14 @@ class OnDiskLibraryCacheTest {
         cache.putIndex(index)
 
         assertEquals(index, cache.get(coordinate))
+    }
+
+    @Test
+    fun traversalCoordinateCannotEscapeCacheRoot() = runTest {
+        // The cache dir is derived from coordinate segments (CacheLayout.versionDir); a `..`
+        // segment must be impossible to construct, so no write can land outside `root`.
+        assertFailsWith<IllegalArgumentException> { LibraryCoordinate("..", "..", "..") }
+        assertEquals(emptyList(), cache.list())
     }
 
     @Test
