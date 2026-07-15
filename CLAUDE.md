@@ -47,11 +47,8 @@ compile automatically when Kotlin sources changed (`.claude/hooks/stop-verify.sh
   `/analysis-api-bump` skill; cut releases with `/release`).
 - **stdio transport: NEVER write to stdout** except MCP protocol frames. All logging goes to
   stderr or a file, or it corrupts the protocol stream.
-- **Isolate the Analysis API** behind the `SourceAnalyzer` interface — it is version-fragile;
-  degrade gracefully (fall back to PSI-only signature text) when type resolution fails.
-- **KMP source jars are per-target.** Libraries publish `<artifact>-jvm-<v>-sources.jar`
-  (and a common `<artifact>-<v>-sources.jar`), not a single usable root sources jar. Resolve
-  variants via the `.module` Gradle metadata; fall back to filename heuristics.
+- **Core parsing/fetch gotchas** (Analysis API isolation, per-target KMP source jars) live in
+  `.claude/rules/analysis-api.md` — loaded automatically when you edit `core/` sources.
 - **Cache first.** Downloads + parsed index are cached on disk keyed by
   `group/artifact/version`; tools read the cache. Call `fetch_library` to warm it.
 
@@ -64,13 +61,6 @@ compile automatically when Kotlin sources changed (`.claude/hooks/stop-verify.sh
 resolves the latest stable release (canonical `<release>`/`<latest>` from `maven-metadata.xml`,
 with a semantic-version fallback in `core/util/MavenVersions.kt`).
 
-Every tool declares a `title`, behavior annotations (`readOnlyHint`/`openWorldHint`;
-`fetch_library` additionally `destructiveHint: false`, `idempotentHint: true`), and an
-`outputSchema` derived from its response DTO's serial descriptor
-(`server/.../tools/OutputSchemas.kt`); `toolResult` returns JSON text **and** matching
-`structuredContent`. When adding a tool, pass all three to `addTool` — use the shared
-`LOCAL_READ_ONLY`/`REPOSITORY_READ_ONLY` annotation constants in `ToolSupport.kt`.
-
 Cached library indexes are also exposed as MCP **resources** (one static resource per cached
 library plus a `kotlinlib://{group}/{artifact}/{version}/index` **resource template**), and an
 "explain the public API" **prompt** — exercising all three MCP primitives. The server declares
@@ -78,7 +68,5 @@ the **logging capability** (Kermit logs mirror to clients via `attachMcpLogForwa
 `Logging.kt`) and `fetch_library` emits **progress notifications** when the request carries a
 `progressToken`.
 
-**Resource templates gotcha:** the SDK's default `PathSegmentTemplateMatcher` throws
-`NoSuchMethodError` at runtime — `kotlin-compiler` (via `core`) bundles an old unrelocated
-`kotlinx.collections.immutable` that shadows the SDK's. `ServerOptions` must keep the custom
-`segmentTemplateMatcherFactory` (`server/.../resources/SegmentTemplateMatcher.kt`).
+**Tool-authoring convention and the resource-template `NoSuchMethodError` gotcha** live in
+`.claude/rules/mcp-server.md` (loaded automatically when you edit `server/` sources).

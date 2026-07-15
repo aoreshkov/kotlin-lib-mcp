@@ -59,7 +59,8 @@ When all experts have returned, merge their findings:
   higher severity and both perspectives.
 - Rank by severity: blocker, high, medium, low, info.
 - Write the full report to `docs/reviews/currency-<YYYY-MM-DD>.md` (create the
-  directory if needed) with these sections:
+  directory if needed) — `docs/` is the repo's private, gitignored analysis dir (see
+  CLAUDE.md), so reports never land in the public history — with these sections:
   1. **TL;DR** — overall currency verdict and a merged top-findings table
   2. One section per expert with their full findings table and commentary
   3. **Prioritized action list** — concrete next steps, highest severity first
