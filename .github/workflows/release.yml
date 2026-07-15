@@ -25,8 +25,9 @@ jobs:
             echo "Tag ${GITHUB_REF_NAME} does not match version in gradle.properties"; exit 1; }
           jq -e --arg v "$VERSION" '.version == $v' server.json > /dev/null || {
             echo "Tag ${GITHUB_REF_NAME} does not match version in server.json"; exit 1; }
-          grep -q "SERVER_VERSION: String = \"${VERSION}\"" server/src/main/kotlin/McpServerFactory.kt || {
-            echo "Tag ${GITHUB_REF_NAME} does not match SERVER_VERSION in McpServerFactory.kt"; exit 1; }
+          # The advertised MCP `Implementation` version is build-derived from gradle.properties
+          # (server/build.gradle.kts -> ServerVersion) and asserted by ServerVersionTest, so it
+          # cannot drift and needs no separate guard here.
 
       - name: Set up JDK 21
         uses: actions/setup-java@0f481fcb613427c0f801b606911222b5b6f3083a # v5.5.0

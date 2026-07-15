@@ -1,6 +1,6 @@
 ---
 name: release
-description: Cut a new kotlin-lib-mcp release — bump the version in all three tag-guarded files consistently, update the changelog, run the pre-flight checks, and (on request) tag. Use when preparing a release or when a release tag failed the version-match guard.
+description: Cut a new kotlin-lib-mcp release — bump the version in both tag-guarded files consistently, update the changelog, run the pre-flight checks, and (on request) tag. Use when preparing a release or when a release tag failed the version-match guard.
 disable-model-invocation: true
 argument-hint: "[new version, e.g. 0.3.0]"
 ---
@@ -8,9 +8,14 @@ argument-hint: "[new version, e.g. 0.3.0]"
 # Cut a release
 
 The release workflow (`.github/workflows/release.yml`) is triggered by a `v*` tag and its
-**first step is a hard version-match guard**: if the tag doesn't match the version in all
-three source-of-truth files, the whole release (GitHub release + GHCR image + MCP registry
-publish) fails. This skill makes the three files agree *before* the tag is pushed.
+**first step is a hard version-match guard**: if the tag doesn't match the version in both
+source-of-truth files, the whole release (GitHub release + GHCR image + MCP registry
+publish) fails. This skill makes the two files agree *before* the tag is pushed.
+
+> The advertised MCP `Implementation` version is **not** a third file to bump: it is
+> build-derived from `gradle.properties` (`server/build.gradle.kts` bakes `project.version`
+> into a resource read by `ServerVersion`) and asserted by `ServerVersionTest`, so it can
+> never drift and needs no separate guard.
 
 ## 1. Determine the new version
 
@@ -18,23 +23,22 @@ Use `$ARGUMENTS` if given. Otherwise read the current version from `gradle.prope
 (`version=`), decide the bump with the user (semver), and confirm. Call the new value
 `<VERSION>` (no `v` prefix inside files; the git tag is `v<VERSION>`).
 
-## 2. Bump the version in ALL THREE guarded files
+## 2. Bump the version in BOTH guarded files
 
 The tag guard checks these exact patterns (keep the formatting identical):
 
 1. `gradle.properties` — the line `version=<VERSION>` (guard: `^version=<VERSION>$`).
+   This is the single source of truth; the runtime MCP version is derived from it (see the
+   note above), so there is no third file to bump.
 2. `server.json` — the top-level `"version": "<VERSION>"` (guard: `jq .version == <VERSION>`).
    Note: the workflow later also rewrites `server.json` `.version` and `.packages[0].identifier`
    from the tag, but the guard still requires the committed value to match, so set it here.
-3. `server/src/main/kotlin/McpServerFactory.kt` — the constant
-   `SERVER_VERSION: String = "<VERSION>"` (guard: exact string match).
 
-Miss any one and the release job aborts at the guard step. Grep to confirm all three:
+Miss either and the release job aborts at the guard step. Grep to confirm both:
 
 ```
 grep -n "version=" gradle.properties
 grep -n '"version"' server.json
-grep -n "SERVER_VERSION" server/src/main/kotlin/McpServerFactory.kt
 ```
 
 ## 3. Update the changelog
@@ -62,7 +66,6 @@ Before tagging, run the guard's own logic so you don't discover a mismatch in CI
 VERSION="<VERSION>"
 grep -q "^version=${VERSION}$" gradle.properties && \
 jq -e --arg v "$VERSION" '.version == $v' server.json >/dev/null && \
-grep -q "SERVER_VERSION: String = \"${VERSION}\"" server/src/main/kotlin/McpServerFactory.kt && \
 echo "guard OK" || echo "guard WOULD FAIL"
 ```
 
@@ -72,8 +75,12 @@ Commit the version bump + changelog. **Only if the user explicitly asks**, creat
 `v<VERSION>` tag — pushing the tag triggers the live release, GHCR push, and MCP registry
 publish. Otherwise stop after the commit and report that the tag is ready to push.
 
+Use an **annotated** tag so the release carries a message and a tagger date
+(`git tag -a v<VERSION> -m "Release v<VERSION>"`), not a lightweight tag. Never re-point or
+force-move a tag that has already been published.
+
 ## 7. Report
 
-Summarize: old → new version, the three files updated, changelog entry, pre-flight results
+Summarize: old → new version, the two files updated, changelog entry, pre-flight results
 (description length, gradlew mode, build status, local guard simulation), and whether a tag
 was pushed or is pending.

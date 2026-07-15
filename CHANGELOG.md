@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- The advertised MCP server version is now **build-derived from `gradle.properties`**
+  (baked into a classpath resource read by `ServerVersion`) instead of a hand-maintained
+  `SERVER_VERSION` constant, so it can never drift from the release version. The release
+  tag guard drops its third-file check accordingly.
+
 ## [0.3.0] - 2026-07-14
 
 ### Added

@@ -32,7 +32,6 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 
 const val SERVER_NAME: String = "kotlin-lib-mcp"
-const val SERVER_VERSION: String = "0.3.0"
 
 /** Runtime configuration shared by both transports, populated from the CLI flags in `Main`. */
 data class ServerConfig(
@@ -78,7 +77,7 @@ object McpServerFactory {
         )
 
         val server = Server(
-            serverInfo = Implementation(name = SERVER_NAME, version = SERVER_VERSION),
+            serverInfo = Implementation(name = SERVER_NAME, version = ServerVersion.value),
             options = ServerOptions(
                 capabilities = ServerCapabilities(
                     tools = ServerCapabilities.Tools(listChanged = false),
