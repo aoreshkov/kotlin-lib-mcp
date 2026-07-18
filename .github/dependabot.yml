@@ -20,6 +20,12 @@ updates:
     directory: /
     schedule:
       interval: weekly
+    groups:
+      # codeql-action init/analyze pins must move in the same PR (mixed versions fail
+      # with "Loaded a configuration file for version X, but running version Y");
+      # grouping all action bumps also keeps the weekly churn to one PR.
+      github-actions:
+        patterns: ["*"]
 
   # Keeps the digest-pinned eclipse-temurin base image fresh (JRE CVE patches).
   - package-ecosystem: docker
