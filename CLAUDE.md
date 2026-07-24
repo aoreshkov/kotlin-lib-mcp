@@ -63,10 +63,11 @@ with a semantic-version fallback in `core/util/MavenVersions.kt`).
 
 Cached library indexes are also exposed as MCP **resources** (one static resource per cached
 library plus a `kotlinlib://{group}/{artifact}/{version}/index` **resource template**), and an
-"explain the public API" **prompt** — exercising all three MCP primitives. The server declares
-the **logging capability** (Kermit logs mirror to clients via `attachMcpLogForwarder`;
-`Logging.kt`) and `fetch_library` emits **progress notifications** when the request carries a
-`progressToken`.
+"explain the public API" **prompt** — exercising all three MCP primitives. Logs go to **stderr**
+by default (the 2025-11-25-blessed channel; `logback.xml`); the deprecated MCP **logging
+capability** (Kermit logs mirror to clients via `attachMcpLogForwarder`; `Logging.kt`) is **opt-in**
+behind `--forward-logs-to-client`. `fetch_library` emits **progress notifications** when the request
+carries a `progressToken`.
 
 **Tool-authoring convention and the resource-template `NoSuchMethodError` gotcha** live in
 `.claude/rules/mcp-server.md` (loaded automatically when you edit `server/` sources).

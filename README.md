@@ -81,7 +81,8 @@ at `http://127.0.0.1:3000/mcp` — DNS-rebinding protection admits localhost hos
 
 CLI flags: `--transport stdio|http`, `--port <int>` (default 3000), `--allowed-host <host>` /
 `--allowed-origin <url>` (repeatable; extend the http transport's localhost-only defaults),
-`--cache-dir <path>`, `--repo <url>` (repeatable; Maven Central is the default), `--help`.
+`--cache-dir <path>`, `--repo <url>` (repeatable; Maven Central is the default),
+`--forward-logs-to-client` (opt into mirroring logs to the client; off by default, stderr-only), `--help`.
 
 ## Tools
 
@@ -112,9 +113,10 @@ matching `structuredContent` object, so structured-output clients and plain-text
 same payload.
 
 `fetch_library` also reports **progress notifications** (download → analyze → cache) when the
-client sends a `progressToken`, and the server advertises the **logging capability** — its logs
-mirror to clients as `notifications/message` (respecting `logging/setLevel`), which matters on
-stdio where stderr is often dropped.
+client sends a `progressToken`. Logs go to **stderr** by default (which the spec blesses for all
+stdio logging); the deprecated MCP **logging capability** — mirroring logs to clients as
+`notifications/message` (respecting `logging/setLevel`) — is **opt-in** via `--forward-logs-to-client`,
+for stdio clients that surface MCP log messages but drop stderr.
 
 **Resources:** each cached library is readable at
 `kotlinlib://{group}/{artifact}/{version}/index` (the parsed index as JSON); the list updates as

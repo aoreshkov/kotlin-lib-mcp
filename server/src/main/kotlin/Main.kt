@@ -24,6 +24,9 @@ private val USAGE = """
       --allowed-origin <url>   Extra Origin the http transport accepts; repeatable
       --cache-dir <path>       Cache directory (default: OS cache dir + /kotlin-lib-mcp)
       --repo <url>             Extra Maven repository; repeatable (default: Maven Central)
+      --forward-logs-to-client Mirror logs to MCP clients via the (deprecated) `logging` capability.
+                               Off by default: logs go to stderr only, which the spec blesses for all
+                               stdio logging.
       --help                   Show this help and exit
 
     Examples:
@@ -79,6 +82,8 @@ private fun parseArgs(args: Array<String>): CliOptions {
                 options.copy(config = options.config.copy(cacheDir = Path.of(value(arg))))
             "--repo" -> options =
                 options.copy(config = options.config.copy(repos = options.config.repos + value(arg)))
+            "--forward-logs-to-client" -> options =
+                options.copy(config = options.config.copy(forwardLogsToClient = true))
             else -> fail("Unknown option '$arg'")
         }
         i++
