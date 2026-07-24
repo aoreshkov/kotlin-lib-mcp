@@ -14,6 +14,7 @@ fun Server.registerListVersionsTool(service: LibraryService) {
             "maven-metadata.xml. Accepts 'group:artifact' or a full 'group:artifact:version' " +
             "coordinate (the version part is ignored). Works without fetch_library.",
         inputSchema = ToolSchema(
+            schema = JSON_SCHEMA_DIALECT,
             properties = buildJsonObject {
                 put("coordinate", stringProp("Maven coordinate 'group:artifact' or 'group:artifact:version'"))
             },

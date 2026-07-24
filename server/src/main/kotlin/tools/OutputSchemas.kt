@@ -31,6 +31,7 @@ internal fun toolSchemaFor(descriptor: SerialDescriptor): ToolSchema {
     val properties = generator.propertiesOf(descriptor)
     val required = generator.requiredOf(descriptor)
     return ToolSchema(
+        schema = JSON_SCHEMA_DIALECT,
         properties = properties,
         required = required.takeIf { it.isNotEmpty() },
         defs = JsonObject(generator.defs).takeIf { generator.defs.isNotEmpty() },

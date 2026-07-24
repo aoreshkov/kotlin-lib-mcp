@@ -1,5 +1,6 @@
 package app.oreshkov.kotlinlibmcp.server
 
+import app.oreshkov.kotlinlibmcp.server.tools.JSON_SCHEMA_DIALECT
 import app.oreshkov.kotlinlibmcp.server.tools.registerFetchLibraryTool
 import app.oreshkov.kotlinlibmcp.server.tools.registerGetApiSignatureTool
 import app.oreshkov.kotlinlibmcp.server.tools.registerGetDependenciesTool
@@ -64,6 +65,16 @@ class ToolRegistrationTest {
             assertNotNull(tool.annotations?.readOnlyHint, "$name: missing readOnlyHint")
             assertNotNull(tool.annotations?.openWorldHint, "$name: missing openWorldHint")
             assertNotNull(tool.outputSchema?.properties, "$name: missing outputSchema")
+        }
+    }
+
+    @Test
+    fun everyToolDeclaresJsonSchema2020_12Dialect() {
+        // SEP-1613: 2020-12 is the default, but we declare it explicitly on every input and
+        // output schema so no construction site silently drops it.
+        tools().forEach { (name, tool) ->
+            assertEquals(JSON_SCHEMA_DIALECT, tool.inputSchema.schema, "$name: inputSchema dialect")
+            assertEquals(JSON_SCHEMA_DIALECT, tool.outputSchema?.schema, "$name: outputSchema dialect")
         }
     }
 

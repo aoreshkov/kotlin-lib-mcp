@@ -38,6 +38,18 @@ class OutputSchemasTest {
     }
 
     @Test
+    fun rootDeclaresJsonSchema2020_12DialectButNestedDefsDoNot() {
+        // SEP-1613: the dialect is declared only at the root of the embedded schema document;
+        // nested $defs sub-schemas inherit it and must not repeat it.
+        val schema = outputSchemaOf<DependencyResult>()
+
+        assertEquals(JSON_SCHEMA_DIALECT, schema.schema)
+        assertNotNull(schema.defs).values.forEach { def ->
+            assertTrue("\$schema" !in def.jsonObject.keys, "nested def must not carry \$schema: $def")
+        }
+    }
+
+    @Test
     fun nullableFieldAllowsNull() {
         val properties = assertNotNull(outputSchemaOf<LatestVersion>().properties)
 

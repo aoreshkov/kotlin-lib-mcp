@@ -77,11 +77,18 @@ internal fun boolProp(description: String): JsonObject = buildJsonObject {
 internal const val COORDINATE_DESCRIPTION: String =
     "Maven coordinate 'group:artifact:version', e.g. 'io.ktor:ktor-client-core:3.5.1'"
 
+/**
+ * MCP's default JSON Schema dialect (SEP-1613, 2025-11-25). Absent `$schema` already implies it,
+ * but declaring it explicitly on every tool schema disambiguates for strict/legacy clients.
+ */
+internal const val JSON_SCHEMA_DIALECT = "https://json-schema.org/draft/2020-12/schema"
+
 /** Schema with the shared `coordinate` property plus [extraProps]; [extraRequired] adds to `required`. */
 internal fun coordinateSchema(
     extraProps: Map<String, JsonObject> = emptyMap(),
     extraRequired: List<String> = emptyList(),
 ): ToolSchema = ToolSchema(
+    schema = JSON_SCHEMA_DIALECT,
     properties = buildJsonObject {
         put("coordinate", stringProp(COORDINATE_DESCRIPTION))
         extraProps.forEach { (name, prop) -> put(name, prop) }
