@@ -4,6 +4,7 @@ import app.oreshkov.kotlinlibmcp.analyze.AnalysisApiSourceAnalyzer
 import app.oreshkov.kotlinlibmcp.cache.OnDiskLibraryCache
 import app.oreshkov.kotlinlibmcp.core.LibraryCache
 import app.oreshkov.kotlinlibmcp.fetch.MavenSourceFetcherImpl
+import app.oreshkov.kotlinlibmcp.server.completions.registerLibraryCompletions
 import app.oreshkov.kotlinlibmcp.server.prompts.registerExplainPublicApiPrompt
 import app.oreshkov.kotlinlibmcp.server.resources.addLibraryIndexResource
 import app.oreshkov.kotlinlibmcp.server.resources.registerLibraryIndexTemplate
@@ -83,6 +84,9 @@ object McpServerFactory {
                     tools = ServerCapabilities.Tools(listChanged = false),
                     resources = ServerCapabilities.Resources(listChanged = true, subscribe = false),
                     prompts = ServerCapabilities.Prompts(listChanged = false),
+                    // Presence (any non-null value) advertises the capability; here, that the
+                    // server answers completion/complete for prompt args and template variables.
+                    completions = EmptyJsonObject,
                     // Presence (any non-null value) advertises notifications/message support;
                     // the SDK then handles logging/setLevel per session.
                     logging = EmptyJsonObject,
@@ -114,6 +118,9 @@ object McpServerFactory {
             // Direct addressing of any cached index; the per-library resources below stay for
             // discoverability via resources/list.
             registerLibraryIndexTemplate(service)
+            // Autocomplete prompt args and template variables (group/artifact/version, coordinate,
+            // package) from the cache — reads only, no network.
+            registerLibraryCompletions(cache)
         }
         // One index resource per already-cached library (startup snapshot).
         runBlocking { cache.list() }.forEach { server.addLibraryIndexResource(service, it) }
