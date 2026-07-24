@@ -19,6 +19,7 @@ import io.modelcontextprotocol.kotlin.sdk.types.Tool
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 
 /**
  * Every registered tool must carry the metadata the MCP spec encourages: a display title,
@@ -91,6 +92,21 @@ class ToolRegistrationTest {
             assertEquals(true, annotations.readOnlyHint, name)
             assertEquals(true, annotations.openWorldHint, name)
         }
+    }
+
+    @Test
+    fun loggingCapabilityIsOffByDefaultAndOptInViaFlag() {
+        // C5: the deprecated `logging` capability is not advertised unless --forward-logs-to-client
+        // is set; stderr is the primary channel either way. The other capabilities stay on.
+        val default = serverCapabilities(forwardLogsToClient = false)
+        assertNull(default.logging, "logging must not be advertised by default")
+        assertNotNull(default.tools)
+        assertNotNull(default.resources)
+        assertNotNull(default.prompts)
+        assertNotNull(default.completions)
+
+        val optedIn = serverCapabilities(forwardLogsToClient = true)
+        assertNotNull(optedIn.logging, "logging must be advertised with --forward-logs-to-client")
     }
 
     @Test

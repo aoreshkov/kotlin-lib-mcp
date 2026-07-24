@@ -42,10 +42,13 @@ private object Slf4jLogWriter : LogWriter() {
 
 /**
  * Mirrors the app's Kermit logs to every connected MCP client as `notifications/message`
- * (the `logging` capability) — on stdio, clients often discard stderr, so this is the only
- * log channel a client reliably sees. `Info`+ is forwarded; the SDK then applies the
- * per-session `logging/setLevel` filter. Only the app logs through Kermit (the SDK logs via
- * kotlin-logging straight to SLF4J), so the forwarder cannot feed back into itself.
+ * (the `logging` capability). **Opt-in only** — enabled by `--forward-logs-to-client`
+ * ([ServerConfig.forwardLogsToClient]). The default channel is stderr (via `logback.xml`), which
+ * 2025-11-25 blesses for *all* stdio logging and which the 2026 direction deprecates the `logging`
+ * capability in favor of; this forwarder stays as an escape hatch for stdio clients that surface
+ * MCP log messages but discard stderr. `Info`+ is forwarded; the SDK then applies the per-session
+ * `logging/setLevel` filter. Only the app logs through Kermit (the SDK logs via kotlin-logging
+ * straight to SLF4J), so the forwarder cannot feed back into itself.
  *
  * [log] must never block a caller: records go through a bounded drop-oldest channel and a
  * single drainer coroutine on [scope]; sends to mid-handshake or closing sessions are ignored.

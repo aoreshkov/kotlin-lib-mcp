@@ -34,10 +34,35 @@ import kotlinx.coroutines.runBlocking
 
 const val SERVER_NAME: String = "kotlin-lib-mcp"
 
+/**
+ * The capabilities the server advertises. `tools`/`resources`/`prompts`/`completions` are always
+ * on; the `logging` capability is advertised only when [forwardLogsToClient] is set.
+ *
+ * `logging` is deprecated in the 2026 direction, and 2025-11-25 blesses stderr for *all* stdio
+ * logging — so stderr (via `logback.xml`) is the primary observability channel and we advertise
+ * `notifications/message` only when the operator opts in with `--forward-logs-to-client`. Presence
+ * of any non-null value advertises a capability; the SDK then handles `logging/setLevel` per session.
+ */
+internal fun serverCapabilities(forwardLogsToClient: Boolean): ServerCapabilities = ServerCapabilities(
+    tools = ServerCapabilities.Tools(listChanged = false),
+    resources = ServerCapabilities.Resources(listChanged = true, subscribe = false),
+    prompts = ServerCapabilities.Prompts(listChanged = false),
+    // Advertises that the server answers completion/complete for prompt args and template variables.
+    completions = EmptyJsonObject,
+    logging = EmptyJsonObject.takeIf { forwardLogsToClient },
+)
+
 /** Runtime configuration shared by both transports, populated from the CLI flags in `Main`. */
 data class ServerConfig(
     val cacheDir: Path = OnDiskLibraryCache.defaultCacheRoot(),
     val repos: List<String> = emptyList(),
+    /**
+     * Opt into mirroring the app's logs to MCP clients as `notifications/message` (the deprecated
+     * `logging` capability). Off by default: 2025-11-25 blesses stderr for *all* stdio logging, so
+     * stderr (via `logback.xml`) is the primary observability channel and the capability is not
+     * advertised unless this is set. See [attachMcpLogForwarder].
+     */
+    val forwardLogsToClient: Boolean = false,
 )
 
 /**
@@ -50,11 +75,11 @@ class McpServerHandle(
     val service: LibraryService,
     val cache: LibraryCache,
     private val fetcher: MavenSourceFetcherImpl,
-    private val logForwarderScope: CoroutineScope,
+    private val logForwarderScope: CoroutineScope?,
 ) : Closeable {
     override fun close() {
-        logForwarderScope.cancel()
-        routeKermitToSlf4j() // drop the forwarder writer for the closed server
+        logForwarderScope?.cancel()
+        routeKermitToSlf4j() // drop the forwarder writer (if any) for the closed server
         fetcher.close()
     }
 }
@@ -80,17 +105,7 @@ object McpServerFactory {
         val server = Server(
             serverInfo = Implementation(name = SERVER_NAME, version = ServerVersion.value),
             options = ServerOptions(
-                capabilities = ServerCapabilities(
-                    tools = ServerCapabilities.Tools(listChanged = false),
-                    resources = ServerCapabilities.Resources(listChanged = true, subscribe = false),
-                    prompts = ServerCapabilities.Prompts(listChanged = false),
-                    // Presence (any non-null value) advertises the capability; here, that the
-                    // server answers completion/complete for prompt args and template variables.
-                    completions = EmptyJsonObject,
-                    // Presence (any non-null value) advertises notifications/message support;
-                    // the SDK then handles logging/setLevel per session.
-                    logging = EmptyJsonObject,
-                ),
+                capabilities = serverCapabilities(forwardLogsToClient = config.forwardLogsToClient),
                 // Not the SDK default matcher — see SegmentTemplateMatcher.kt for why.
                 resourceTemplateMatcherFactory = segmentTemplateMatcherFactory,
             ),
@@ -125,8 +140,12 @@ object McpServerFactory {
         // One index resource per already-cached library (startup snapshot).
         runBlocking { cache.list() }.forEach { server.addLibraryIndexResource(service, it) }
 
-        val logForwarderScope = CoroutineScope(SupervisorJob() + Dispatchers.Default)
-        attachMcpLogForwarder(server, logForwarderScope)
+        // Only mirror logs to clients when opted in; otherwise stderr is the sole channel.
+        val logForwarderScope = if (config.forwardLogsToClient) {
+            CoroutineScope(SupervisorJob() + Dispatchers.Default).also { attachMcpLogForwarder(server, it) }
+        } else {
+            null
+        }
 
         return McpServerHandle(
             server = server,

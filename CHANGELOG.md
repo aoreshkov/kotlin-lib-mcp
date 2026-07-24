@@ -8,6 +8,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Logging capability retired to opt-in** (MCP 2025-11-25 blesses stderr for all stdio
+  logging): the server no longer advertises the deprecated `logging` capability by default,
+  and log-forwarding to clients (`notifications/message`) is now gated behind the new
+  `--forward-logs-to-client` flag. Stderr (via `logback.xml`) is the primary channel; the
+  forwarder remains available for stdio clients that surface MCP log messages but drop stderr.
 - The advertised MCP server version is now **build-derived from `gradle.properties`**
   (baked into a classpath resource read by `ServerVersion`) instead of a hand-maintained
   `SERVER_VERSION` constant, so it can never drift from the release version. The release
