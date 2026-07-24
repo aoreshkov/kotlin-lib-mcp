@@ -26,6 +26,7 @@ fun Server.registerFetchLibraryTool(
             "'io.ktor:ktor-client-core' or 'io.ktor:ktor-client-core:latest') to fetch the latest " +
             "stable release. Returns a summary (resolved coordinate, KMP targets, file and package counts).",
         inputSchema = ToolSchema(
+            schema = JSON_SCHEMA_DIALECT,
             properties = buildJsonObject {
                 put(
                     "coordinate",

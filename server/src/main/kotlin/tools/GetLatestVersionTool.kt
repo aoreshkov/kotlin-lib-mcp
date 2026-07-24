@@ -16,6 +16,7 @@ fun Server.registerGetLatestVersionTool(service: LibraryService) {
             "newest version overall (including pre-releases) and the total version count. Works " +
             "without fetch_library.",
         inputSchema = ToolSchema(
+            schema = JSON_SCHEMA_DIALECT,
             properties = buildJsonObject {
                 put("coordinate", stringProp("Maven coordinate 'group:artifact' or 'group:artifact:version'"))
                 put("includePreReleases", boolProp("Treat the newest pre-release as 'the latest' (default false)"))
