@@ -23,7 +23,7 @@ fun Server.registerListDeclarationsTool(service: LibraryService) {
         outputSchema = outputSchemaOf<DeclarationList>(),
         toolAnnotations = LOCAL_READ_ONLY,
     ) { request ->
-        guarded {
+        guarded(request) {
             val args = request.args()
             toolResult(
                 service.listDeclarations(

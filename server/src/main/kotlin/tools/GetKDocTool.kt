@@ -20,7 +20,7 @@ fun Server.registerGetKDocTool(service: LibraryService) {
         outputSchema = outputSchemaOf<KDocResult>(),
         toolAnnotations = LOCAL_READ_ONLY,
     ) { request ->
-        guarded {
+        guarded(request) {
             val args = request.args()
             toolResult(service.getKDoc(args.coordinateArg(), args.requireStringArg("fqName")))
         }

@@ -9,6 +9,8 @@ import app.oreshkov.kotlinlibmcp.server.prompts.registerExplainPublicApiPrompt
 import app.oreshkov.kotlinlibmcp.server.resources.addLibraryIndexResource
 import app.oreshkov.kotlinlibmcp.server.resources.registerLibraryIndexTemplate
 import app.oreshkov.kotlinlibmcp.server.resources.segmentTemplateMatcherFactory
+import app.oreshkov.kotlinlibmcp.server.telemetry.startTelemetry
+import app.oreshkov.kotlinlibmcp.server.telemetry.stopTelemetry
 import app.oreshkov.kotlinlibmcp.server.tools.registerFetchLibraryTool
 import app.oreshkov.kotlinlibmcp.server.tools.registerGetApiSignatureTool
 import app.oreshkov.kotlinlibmcp.server.tools.registerGetDependenciesTool
@@ -24,6 +26,7 @@ import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
 import io.modelcontextprotocol.kotlin.sdk.types.EmptyJsonObject
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
+import io.opentelemetry.sdk.OpenTelemetrySdk
 import java.io.Closeable
 import java.nio.file.Path
 import kotlinx.coroutines.CoroutineScope
@@ -63,6 +66,17 @@ data class ServerConfig(
      * advertised unless this is set. See [attachMcpLogForwarder].
      */
     val forwardLogsToClient: Boolean = false,
+    /**
+     * Opt into exporting traces over OTLP/HTTP (`--otel`). Off by default, and off means inert:
+     * no SDK, no exporter threads, no network. Endpoint, headers and resource attributes come from
+     * the standard `OTEL_*` environment variables. See `telemetry/Telemetry.kt`.
+     */
+    val otel: Boolean = false,
+    /**
+     * The transport being run (`stdio` or `http`), used for the `network.transport` span attribute.
+     * Only meaningful when [otel] is set.
+     */
+    val transport: String = "stdio",
 )
 
 /**
@@ -76,10 +90,14 @@ class McpServerHandle(
     val cache: LibraryCache,
     private val fetcher: MavenSourceFetcherImpl,
     private val logForwarderScope: CoroutineScope?,
+    private val otelSdk: OpenTelemetrySdk? = null,
 ) : Closeable {
     override fun close() {
         logForwarderScope?.cancel()
         routeKermitToSlf4j() // drop the forwarder writer (if any) for the closed server
+        // Flush spans first, while the process is still healthy and the exporter can reach the
+        // collector; the shutdown is bounded so an unreachable one cannot hold up exit.
+        otelSdk?.let { stopTelemetry(it) }
         fetcher.close()
     }
 }
@@ -93,6 +111,8 @@ object McpServerFactory {
 
     fun create(config: ServerConfig = ServerConfig()): McpServerHandle {
         routeKermitToSlf4j()
+        // Before any handler can run, so the very first request is traced.
+        val otelSdk = if (config.otel) startTelemetry(config.transport) else null
         val cache = OnDiskLibraryCache(config.cacheDir)
         val fetcher = MavenSourceFetcherImpl(cacheDir = config.cacheDir)
         val service = LibraryService(
@@ -153,6 +173,7 @@ object McpServerFactory {
             cache = cache,
             fetcher = fetcher,
             logForwarderScope = logForwarderScope,
+            otelSdk = otelSdk,
         )
     }
 }

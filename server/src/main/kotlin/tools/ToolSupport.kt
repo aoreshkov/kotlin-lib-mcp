@@ -1,11 +1,14 @@
 package app.oreshkov.kotlinlibmcp.server.tools
 
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
+import app.oreshkov.kotlinlibmcp.server.telemetry.toolSpan
+import io.modelcontextprotocol.kotlin.sdk.server.ClientConnection
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequest
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import io.modelcontextprotocol.kotlin.sdk.types.ToolAnnotations
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
+import io.opentelemetry.api.trace.Span
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
@@ -47,15 +50,28 @@ internal val REPOSITORY_READ_ONLY = ToolAnnotations(readOnlyHint = true, openWor
 /**
  * Runs a tool body, turning expected failures (bad arguments, un-fetched coordinate, IO) into an
  * `isError` result the model can read and act on, per the MCP tool-error convention.
+ *
+ * Every tool funnels through here, so it is also where the `tools/call` span is opened (a no-op
+ * unless `--otel` is set). Declared on [ClientConnection] — the receiver of every `addTool`
+ * handler — so `mcp.session.id` comes for free without touching the call sites; [request] supplies
+ * both the tool name and the `_meta` carrying any inbound trace context.
+ *
+ * The exception is recorded on the span before it is flattened into an `isError` result, so the
+ * failure detail survives even though the span's `error.type` becomes the spec's `tool_error`.
  */
-internal suspend fun guarded(block: suspend () -> CallToolResult): CallToolResult =
+internal suspend fun ClientConnection.guarded(
+    request: CallToolRequest,
+    block: suspend () -> CallToolResult,
+): CallToolResult = toolSpan(request.name, sessionId, request.params.meta) {
     try {
         block()
     } catch (e: CancellationException) {
         throw e
     } catch (e: Exception) {
+        Span.current().recordException(e)
         CallToolResult(content = listOf(TextContent(e.message ?: e.toString())), isError = true)
     }
+}
 
 // --- input schema helpers ---
 

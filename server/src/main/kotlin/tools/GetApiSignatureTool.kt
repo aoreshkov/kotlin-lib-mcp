@@ -20,7 +20,7 @@ fun Server.registerGetApiSignatureTool(service: LibraryService) {
         outputSchema = outputSchemaOf<SignatureResult>(),
         toolAnnotations = LOCAL_READ_ONLY,
     ) { request ->
-        guarded {
+        guarded(request) {
             val args = request.args()
             toolResult(service.getSignature(args.coordinateArg(), args.requireStringArg("fqName")))
         }

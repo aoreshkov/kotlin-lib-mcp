@@ -22,7 +22,7 @@ fun Server.registerSearchSourceTool(service: LibraryService) {
         outputSchema = outputSchemaOf<SearchResults>(),
         toolAnnotations = LOCAL_READ_ONLY,
     ) { request ->
-        guarded {
+        guarded(request) {
             val args = request.args()
             toolResult(
                 service.searchSource(

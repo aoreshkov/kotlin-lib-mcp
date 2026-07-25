@@ -24,7 +24,7 @@ fun Server.registerListVersionsTool(service: LibraryService) {
         outputSchema = outputSchemaOf<VersionList>(),
         toolAnnotations = REPOSITORY_READ_ONLY,
     ) { request ->
-        guarded {
+        guarded(request) {
             val parts = request.args().requireStringArg("coordinate").split(':')
             require(parts.size in 2..3 && parts.take(2).none(String::isBlank)) {
                 "Invalid coordinate '${parts.joinToString(":")}': expected 'group:artifact[:version]'"

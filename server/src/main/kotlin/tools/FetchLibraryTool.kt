@@ -48,7 +48,7 @@ fun Server.registerFetchLibraryTool(
             openWorldHint = true,
         ),
     ) { request ->
-        guarded {
+        guarded(request) {
             val spec = request.args().requireStringArg("coordinate").parseCoordinateSpec()
             val coordinate = service.resolveCoordinate(spec.group, spec.artifact, spec.versionSpec)
             // Clients opt into notifications/progress by sending a progressToken in _meta.

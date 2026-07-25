@@ -69,5 +69,12 @@ capability** (Kermit logs mirror to clients via `attachMcpLogForwarder`; `Loggin
 behind `--forward-logs-to-client`. `fetch_library` emits **progress notifications** when the request
 carries a `progressToken`.
 
+**OTel traces** over OTLP/HTTP are **opt-in** behind `--otel` (`telemetry/Telemetry.kt`): one
+`SERVER` span per MCP request, opened in `guarded`/`resourceSpan`/`promptSpan`/`completionSpan`,
+configured purely from the standard `OTEL_*` env vars via `AutoConfiguredOpenTelemetrySdk`. Off
+means inert (no-op tracer, no threads, no network). Attribute names follow the MCP semantic
+conventions and are all **Development** status — they live as `AttributeKey` constants in one
+place so a rename is a single edit.
+
 **Tool-authoring convention and the resource-template `NoSuchMethodError` gotcha** live in
 `.claude/rules/mcp-server.md` (loaded automatically when you edit `server/` sources).
