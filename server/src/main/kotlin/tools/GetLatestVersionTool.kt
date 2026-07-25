@@ -27,7 +27,7 @@ fun Server.registerGetLatestVersionTool(service: LibraryService) {
         outputSchema = outputSchemaOf<LatestVersion>(),
         toolAnnotations = REPOSITORY_READ_ONLY,
     ) { request ->
-        guarded {
+        guarded(request) {
             val args = request.args()
             val spec = args.requireStringArg("coordinate").parseCoordinateSpec()
             val includePreReleases = args.booleanArg("includePreReleases") ?: false

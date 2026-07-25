@@ -2,6 +2,7 @@ package app.oreshkov.kotlinlibmcp.server.resources
 
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.server.LibraryService
+import app.oreshkov.kotlinlibmcp.server.telemetry.resourceSpan
 import app.oreshkov.kotlinlibmcp.server.tools.toolJson
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.ReadResourceResult
@@ -30,21 +31,23 @@ fun Server.registerLibraryIndexTemplate(service: LibraryService) {
             "have been fetched with fetch_library first.",
         mimeType = "application/json",
     ) { request, variables ->
-        // Template variables are attacker-controlled URI segments and end up in cache paths.
-        val coordinate = LibraryCoordinate(
-            group = variables.coordinateSegment("group"),
-            artifact = variables.coordinateSegment("artifact"),
-            version = variables.coordinateSegment("version"),
-        )
-        ReadResourceResult(
-            contents = listOf(
-                TextResourceContents(
-                    text = toolJson.encodeToString(service.index(coordinate)),
-                    uri = request.uri,
-                    mimeType = "application/json",
+        resourceSpan(request.uri, sessionId, request.params.meta) {
+            // Template variables are attacker-controlled URI segments and end up in cache paths.
+            val coordinate = LibraryCoordinate(
+                group = variables.coordinateSegment("group"),
+                artifact = variables.coordinateSegment("artifact"),
+                version = variables.coordinateSegment("version"),
+            )
+            ReadResourceResult(
+                contents = listOf(
+                    TextResourceContents(
+                        text = toolJson.encodeToString(service.index(coordinate)),
+                        uri = request.uri,
+                        mimeType = "application/json",
+                    )
                 )
             )
-        )
+        }
     }
 }
 
@@ -74,14 +77,16 @@ fun Server.addLibraryIndexResource(service: LibraryService, coordinate: LibraryC
             "signatures and KDoc, source file list, KMP targets.",
         mimeType = "application/json",
     ) { request ->
-        ReadResourceResult(
-            contents = listOf(
-                TextResourceContents(
-                    text = toolJson.encodeToString(service.index(coordinate)),
-                    uri = request.uri,
-                    mimeType = "application/json",
+        resourceSpan(request.uri, sessionId, request.params.meta) {
+            ReadResourceResult(
+                contents = listOf(
+                    TextResourceContents(
+                        text = toolJson.encodeToString(service.index(coordinate)),
+                        uri = request.uri,
+                        mimeType = "application/json",
+                    )
                 )
             )
-        )
+        }
     }
 }

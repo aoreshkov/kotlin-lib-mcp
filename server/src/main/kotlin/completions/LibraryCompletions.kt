@@ -3,6 +3,7 @@ package app.oreshkov.kotlinlibmcp.server.completions
 import app.oreshkov.kotlinlibmcp.core.LibraryCache
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.server.resources.LIBRARY_INDEX_URI_TEMPLATE
+import app.oreshkov.kotlinlibmcp.server.telemetry.completionSpan
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.CompleteRequest
 import io.modelcontextprotocol.kotlin.sdk.types.CompleteRequestParams
@@ -37,29 +38,31 @@ fun Server.registerLibraryCompletions(cache: LibraryCache) {
     onConnect {
         val session = sessions.values.lastOrNull() ?: return@onConnect
         session.setRequestHandler<CompleteRequest>(Method.Defined.CompletionComplete) { request, _ ->
-            val values = runCatching {
-                val ctx = request.context?.arguments.orEmpty()
-                when (val ref = request.ref) {
-                    is ResourceTemplateReference ->
-                        if (ref.uri == LIBRARY_INDEX_URI_TEMPLATE) {
-                            coordinateSegmentCompletions(request.argument, ctx, cache.list())
-                        } else {
-                            emptyList()
-                        }
-                    is PromptReference ->
-                        if (ref.name == EXPLAIN_PROMPT) promptArgCompletions(request.argument, ctx, cache) else emptyList()
-                    else -> emptyList()
-                }
-            }.getOrDefault(emptyList())
+            completionSpan(session.sessionId, request.params.meta) {
+                val values = runCatching {
+                    val ctx = request.context?.arguments.orEmpty()
+                    when (val ref = request.ref) {
+                        is ResourceTemplateReference ->
+                            if (ref.uri == LIBRARY_INDEX_URI_TEMPLATE) {
+                                coordinateSegmentCompletions(request.argument, ctx, cache.list())
+                            } else {
+                                emptyList()
+                            }
+                        is PromptReference ->
+                            if (ref.name == EXPLAIN_PROMPT) promptArgCompletions(request.argument, ctx, cache) else emptyList()
+                        else -> emptyList()
+                    }
+                }.getOrDefault(emptyList())
 
-            val capped = values.take(MAX_COMPLETIONS)
-            CompleteResult(
-                completion = CompleteResult.Completion(
-                    values = capped,
-                    total = values.size,
-                    hasMore = values.size > MAX_COMPLETIONS,
-                ),
-            )
+                val capped = values.take(MAX_COMPLETIONS)
+                CompleteResult(
+                    completion = CompleteResult.Completion(
+                        values = capped,
+                        total = values.size,
+                        hasMore = values.size > MAX_COMPLETIONS,
+                    ),
+                )
+            }
         }
     }
 }

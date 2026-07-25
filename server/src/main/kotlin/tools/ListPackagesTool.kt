@@ -14,6 +14,6 @@ fun Server.registerListPackagesTool(service: LibraryService) {
         outputSchema = outputSchemaOf<PackageList>(),
         toolAnnotations = LOCAL_READ_ONLY,
     ) { request ->
-        guarded { toolResult(service.listPackages(request.args().coordinateArg())) }
+        guarded(request) { toolResult(service.listPackages(request.args().coordinateArg())) }
     }
 }

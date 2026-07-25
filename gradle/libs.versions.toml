@@ -17,6 +17,7 @@ slf4j = "2.0.18"
 kotlin-logging = "8.0.4"       # matches the MCP SDK's transitive facade; needed to silence its stdout banner
 slf4j-android = "2.0.17-0"
 logback = "1.5.38"
+opentelemetry = "1.64.0"       # BOM governs every io.opentelemetry artifact below
 
 # Test
 junit = "4.13.2"
@@ -65,6 +66,19 @@ kotlin-logging = { module = "io.github.oshai:kotlin-logging", version.ref = "kot
 slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
 slf4j-android = { module = "uk.uuid.slf4j:slf4j-android", version.ref = "slf4j-android" }
 logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+
+# OpenTelemetry (opt-in OTLP/HTTP traces; see server/.../telemetry/Telemetry.kt).
+# Only the BOM carries a version — it aligns every artifact below.
+opentelemetry-bom = { module = "io.opentelemetry:opentelemetry-bom", version.ref = "opentelemetry" }
+opentelemetry-api = { module = "io.opentelemetry:opentelemetry-api" }
+opentelemetry-sdk = { module = "io.opentelemetry:opentelemetry-sdk" }
+opentelemetry-autoconfigure = { module = "io.opentelemetry:opentelemetry-sdk-extension-autoconfigure" }
+# Propagates the OTel Context across suspend/dispatcher boundaries (stable).
+opentelemetry-extension-kotlin = { module = "io.opentelemetry:opentelemetry-extension-kotlin" }
+opentelemetry-exporter-otlp = { module = "io.opentelemetry:opentelemetry-exporter-otlp" }
+# Zero-dependency http/protobuf sender (JDK HttpClient); replaces the default OkHttp sender.
+opentelemetry-sender-jdk = { module = "io.opentelemetry:opentelemetry-exporter-sender-jdk" }
+opentelemetry-sdk-testing = { module = "io.opentelemetry:opentelemetry-sdk-testing" }
 
 # Kotlinx
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinx-coroutines" }

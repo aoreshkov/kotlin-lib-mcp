@@ -27,13 +27,24 @@ private val USAGE = """
       --forward-logs-to-client Mirror logs to MCP clients via the (deprecated) `logging` capability.
                                Off by default: logs go to stderr only, which the spec blesses for all
                                stdio logging.
+      --otel                   Export traces for every MCP request over OTLP/HTTP. Off by default.
+                               Configured entirely by the standard OTEL_* environment variables;
+                               defaults to protocol http/protobuf and endpoint http://localhost:4318.
       --help                   Show this help and exit
+
+    Telemetry (--otel):
+      OTEL_EXPORTER_OTLP_ENDPOINT     Base endpoint; '/v1/traces' is appended automatically.
+      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT  Per-signal endpoint, used AS-IS — spell out '/v1/traces'.
+      OTEL_EXPORTER_OTLP_HEADERS      e.g. 'api-key=...' for a hosted collector.
+      OTEL_SERVICE_NAME               Defaults to '$SERVER_NAME'.
+      OTEL_RESOURCE_ATTRIBUTES        e.g. 'deployment.environment=staging'.
 
     Examples:
       server --transport stdio
       server --transport http --port 3000     # endpoint: http://127.0.0.1:3000/mcp
       server --transport http --allowed-host mcp.example.com:3000 --allowed-origin https://mcp.example.com
       server --transport stdio --cache-dir /tmp/klm --repo https://maven.google.com
+      OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 server --transport stdio --otel
 """.trimIndent()
 
 private enum class TransportKind { STDIO, HTTP }
@@ -84,11 +95,15 @@ private fun parseArgs(args: Array<String>): CliOptions {
                 options.copy(config = options.config.copy(repos = options.config.repos + value(arg)))
             "--forward-logs-to-client" -> options =
                 options.copy(config = options.config.copy(forwardLogsToClient = true))
+            "--otel" -> options = options.copy(config = options.config.copy(otel = true))
             else -> fail("Unknown option '$arg'")
         }
         i++
     }
-    return options
+    // Resolved last: --transport may appear after --otel, and the span attribute needs the final value.
+    return options.copy(
+        config = options.config.copy(transport = options.transport.name.lowercase())
+    )
 }
 
 private fun fail(message: String): Nothing {

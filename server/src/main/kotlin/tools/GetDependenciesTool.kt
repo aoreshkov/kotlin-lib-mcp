@@ -20,7 +20,7 @@ fun Server.registerGetDependenciesTool(service: LibraryService) {
         // Read-only but open-world: resolves .pom/.module metadata from remote repositories.
         toolAnnotations = REPOSITORY_READ_ONLY,
     ) { request ->
-        guarded {
+        guarded(request) {
             val args = request.args()
             toolResult(service.getDependencies(args.coordinateArg(), args.intArg("depth") ?: 1))
         }

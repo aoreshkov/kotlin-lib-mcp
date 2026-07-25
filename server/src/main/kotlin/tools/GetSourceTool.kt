@@ -20,7 +20,7 @@ fun Server.registerGetSourceTool(service: LibraryService) {
         outputSchema = outputSchemaOf<SourceResult>(),
         toolAnnotations = LOCAL_READ_ONLY,
     ) { request ->
-        guarded {
+        guarded(request) {
             val args = request.args()
             toolResult(
                 service.getSource(
