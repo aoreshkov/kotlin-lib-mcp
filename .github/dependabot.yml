@@ -10,6 +10,15 @@ updates:
       minor-and-patch:
         update-types: ["minor", "patch"]
     ignore:
+      # Kotlin and the version-locked Analysis API `-for-ide` jars must move together with
+      # their coupled pins — that's what the /analysis-api-bump skill is for, so a Dependabot
+      # PR here was never mergeable as-is. They are also why this job used to time out: 17
+      # deps resolve to the (huge) JetBrains/kotlin repo and each costs ~101s of changelog
+      # lookup while building the PR body — ~29 min against a 55 min cap. Two patterns are
+      # needed because Gradle plugin ids parse as bare ids with no `:` separator. Both must
+      # stay version-less: an ignore that only narrows `update-types` still pays that cost.
+      - dependency-name: "org.jetbrains.kotlin:*"     # libraries + the -for-ide jars
+      - dependency-name: "org.jetbrains.kotlin.*"     # Gradle plugin ids
       # Caffeine is pinned to the version the Analysis API `-for-ide` jars expect
       # (see gradle/libs.versions.toml) — don't propose major bumps.
       - dependency-name: "com.github.ben-manes.caffeine:caffeine"
