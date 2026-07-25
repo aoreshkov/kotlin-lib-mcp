@@ -81,6 +81,11 @@ private const val METHOD_RESOURCES_READ = "resources/read"
 private const val METHOD_PROMPTS_GET = "prompts/get"
 private const val METHOD_COMPLETION_COMPLETE = "completion/complete"
 
+internal const val METHOD_TASKS_GET = "tasks/get"
+internal const val METHOD_TASKS_RESULT = "tasks/result"
+internal const val METHOD_TASKS_LIST = "tasks/list"
+internal const val METHOD_TASKS_CANCEL = "tasks/cancel"
+
 /**
  * Process-wide tracer holder.
  *
@@ -295,6 +300,28 @@ internal suspend fun <T> promptSpan(
     sessionId = sessionId,
     meta = meta,
     extra = Attributes.of(GEN_AI_PROMPT_NAME, promptName),
+    block = block,
+)
+
+/**
+ * Span for a `tasks/…` request, e.g. `tasks/get`. [method] must be one of the `METHOD_TASKS_*`
+ * constants above.
+ *
+ * The task id is not recorded: it is per-invocation (high-cardinality), and the MCP semantic
+ * conventions define no attribute for it yet — inventing one here would defeat the single-point
+ * rename this file exists to preserve. The originating `tools/call` span already carries the tool
+ * name, and inbound trace context links the two when the client propagates it.
+ */
+internal suspend fun <T> taskSpan(
+    method: String,
+    sessionId: String?,
+    meta: RequestMeta?,
+    block: suspend () -> T,
+): T = mcpSpan(
+    method = method,
+    target = null,
+    sessionId = sessionId,
+    meta = meta,
     block = block,
 )
 

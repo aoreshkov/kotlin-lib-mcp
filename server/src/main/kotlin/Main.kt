@@ -30,6 +30,9 @@ private val USAGE = """
       --otel                   Export traces for every MCP request over OTLP/HTTP. Off by default.
                                Configured entirely by the standard OTEL_* environment variables;
                                defaults to protocol http/protobuf and endpoint http://localhost:4318.
+      --tasks                  Accept task-augmented tools/call (SEP-1686) for fetch_library, and
+                               answer tasks/get, tasks/result, tasks/list and tasks/cancel. Off by
+                               default. stdio only — ignored with --transport http.
       --help                   Show this help and exit
 
     Telemetry (--otel):
@@ -44,6 +47,7 @@ private val USAGE = """
       server --transport http --port 3000     # endpoint: http://127.0.0.1:3000/mcp
       server --transport http --allowed-host mcp.example.com:3000 --allowed-origin https://mcp.example.com
       server --transport stdio --cache-dir /tmp/klm --repo https://maven.google.com
+      server --transport stdio --tasks
       OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 server --transport stdio --otel
 """.trimIndent()
 
@@ -96,6 +100,7 @@ private fun parseArgs(args: Array<String>): CliOptions {
             "--forward-logs-to-client" -> options =
                 options.copy(config = options.config.copy(forwardLogsToClient = true))
             "--otel" -> options = options.copy(config = options.config.copy(otel = true))
+            "--tasks" -> options = options.copy(config = options.config.copy(tasks = true))
             else -> fail("Unknown option '$arg'")
         }
         i++
@@ -113,10 +118,16 @@ private fun fail(message: String): Nothing {
 
 fun main(args: Array<String>) {
     val options = parseArgs(args)
+    if (options.config.tasks && !options.config.tasksEnabled) {
+        System.err.println(
+            "Warning: --tasks is stdio-only and has no effect with --transport http; the tasks " +
+                "capability will not be advertised."
+        )
+    }
     runBlocking {
         McpServerFactory.create(options.config).use { handle ->
             when (options.transport) {
-                TransportKind.STDIO -> runStdioServer(handle.server)
+                TransportKind.STDIO -> runStdioServer(handle.server, handle.taskStore)
                 TransportKind.HTTP -> runHttpServer(
                     server = handle.server,
                     port = options.port,

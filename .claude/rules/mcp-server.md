@@ -27,6 +27,16 @@ hoists the genuine OTel jars to the front of the `test`, `run` and `startScripts
 might also bundle, check with
 `unzip -l <kotlin-compiler.jar> | grep <package-path>` before trusting the classpath.
 
+**Tasks gotcha:** `tasks/TaskHandlers.kt` **replaces** the SDK's `tools/call` handler (that is the
+only way to answer with a `CreateTaskResult` — `Server.handleCallTool` is hard-typed to
+`CallToolResult` and ignores `params.task`). The replacement therefore applies to *every* tool, so
+its non-task branch must reproduce the SDK's semantics exactly: unknown tool → `isError` result,
+`CancellationException` and `UrlElicitationRequiredException` re-thrown, anything else flattened to
+`isError`. `TaskDispatchTest` pins this — if you touch `dispatchToolCall`, keep those tests green.
+The `tasks` capability and the handlers are both driven by `ServerConfig.tasksEnabled` so they can
+never disagree; advertising the capability without handlers makes the SDK route methods that answer
+nothing.
+
 **Telemetry authoring:** every MCP entry point opens its span through the helpers in
 `server/.../telemetry/Telemetry.kt` (`guarded` for tools — it is a `ClientConnection` extension so
 `mcp.session.id` comes free — plus `resourceSpan`/`promptSpan`/`completionSpan`). Attribute names
