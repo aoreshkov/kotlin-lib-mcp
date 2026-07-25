@@ -65,11 +65,19 @@ internal object UnusedCache : LibraryCache {
  * A [ClientConnection] that supplies only a [sessionId] — enough to invoke a registered tool's
  * handler directly (`RegisteredTool.handler` is an extension on this type). Everything else fails
  * loudly, so a test that unexpectedly talks back to the client is obvious.
+ *
+ * Outbound notifications are the exception: they are *recorded* rather than rejected, because
+ * `notifications/progress` and `notifications/tasks/status` are a normal part of a tool call and
+ * are worth asserting on. Inspect [notifications].
  */
 internal class FakeConnection(override val sessionId: String = "test-session") : ClientConnection {
     private fun unused(): Nothing = throw UnsupportedOperationException("not used")
 
-    override suspend fun notification(notification: ServerNotification, relatedRequestId: RequestId?) = unused()
+    val notifications: MutableList<ServerNotification> = mutableListOf()
+
+    override suspend fun notification(notification: ServerNotification, relatedRequestId: RequestId?) {
+        notifications += notification
+    }
     override suspend fun ping(request: PingRequest, options: RequestOptions?): EmptyResult = unused()
     override suspend fun createMessage(
         request: CreateMessageRequest,

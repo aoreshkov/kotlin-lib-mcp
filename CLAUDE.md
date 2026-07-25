@@ -69,6 +69,14 @@ capability** (Kermit logs mirror to clients via `attachMcpLogForwarder`; `Loggin
 behind `--forward-logs-to-client`. `fetch_library` emits **progress notifications** when the request
 carries a `progressToken`.
 
+**Tasks (SEP-1686)** are **opt-in** behind `--tasks`, **stdio only** (`tasks/TaskStore.kt`,
+`tasks/TaskHandlers.kt`): `fetch_library` declares `execution.taskSupport: "optional"`, a
+task-augmented `tools/call` returns a handle immediately, and `tasks/get`/`result`/`list`/`cancel`
+plus `notifications/tasks/status` are served. The SDK ships the wire types but **no execution
+engine** — `Server.handleCallTool` ignores `params.task` — so we replace the `tools/call` handler
+via `Protocol.setRequestHandler`; the non-task path must stay identical to the SDK's, which
+`TaskDispatchTest` pins. Task records are in-memory (process-local).
+
 **OTel traces** over OTLP/HTTP are **opt-in** behind `--otel` (`telemetry/Telemetry.kt`): one
 `SERVER` span per MCP request, opened in `guarded`/`resourceSpan`/`promptSpan`/`completionSpan`,
 configured purely from the standard `OTEL_*` env vars via `AutoConfiguredOpenTelemetrySdk`. Off

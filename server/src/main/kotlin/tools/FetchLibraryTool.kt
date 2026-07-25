@@ -9,7 +9,9 @@ import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.ProgressNotification
 import io.modelcontextprotocol.kotlin.sdk.types.ProgressNotificationParams
 import io.modelcontextprotocol.kotlin.sdk.types.ProgressToken
+import io.modelcontextprotocol.kotlin.sdk.types.TaskSupport
 import io.modelcontextprotocol.kotlin.sdk.types.ToolAnnotations
+import io.modelcontextprotocol.kotlin.sdk.types.ToolExecution
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.put
@@ -47,6 +49,11 @@ fun Server.registerFetchLibraryTool(
             idempotentHint = true,
             openWorldHint = true,
         ),
+        // The one long-running tool here (download → analyze → cache runs seconds to tens of
+        // seconds), so the one worth polling as a task. `Optional`, never `Required`: clients with
+        // no task support must keep calling it synchronously exactly as before. Whether the server
+        // actually honors a task-augmented call depends on `--tasks`; see `tasks/TaskHandlers.kt`.
+        execution = ToolExecution(taskSupport = TaskSupport.Optional),
     ) { request ->
         guarded(request) {
             val spec = request.args().requireStringArg("coordinate").parseCoordinateSpec()

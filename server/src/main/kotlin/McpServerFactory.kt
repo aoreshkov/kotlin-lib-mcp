@@ -9,6 +9,7 @@ import app.oreshkov.kotlinlibmcp.server.prompts.registerExplainPublicApiPrompt
 import app.oreshkov.kotlinlibmcp.server.resources.addLibraryIndexResource
 import app.oreshkov.kotlinlibmcp.server.resources.registerLibraryIndexTemplate
 import app.oreshkov.kotlinlibmcp.server.resources.segmentTemplateMatcherFactory
+import app.oreshkov.kotlinlibmcp.server.tasks.TaskStore
 import app.oreshkov.kotlinlibmcp.server.telemetry.startTelemetry
 import app.oreshkov.kotlinlibmcp.server.telemetry.stopTelemetry
 import app.oreshkov.kotlinlibmcp.server.tools.registerFetchLibraryTool
@@ -39,20 +40,40 @@ const val SERVER_NAME: String = "kotlin-lib-mcp"
 
 /**
  * The capabilities the server advertises. `tools`/`resources`/`prompts`/`completions` are always
- * on; the `logging` capability is advertised only when [forwardLogsToClient] is set.
+ * on; `logging` is advertised only when [forwardLogsToClient] is set, and `tasks` only when [tasks]
+ * is.
  *
  * `logging` is deprecated in the 2026 direction, and 2025-11-25 blesses stderr for *all* stdio
  * logging — so stderr (via `logback.xml`) is the primary observability channel and we advertise
  * `notifications/message` only when the operator opts in with `--forward-logs-to-client`. Presence
  * of any non-null value advertises a capability; the SDK then handles `logging/setLevel` per session.
+ *
+ * `tasks` must stay off unless the `tasks/…` handlers were actually installed for the session
+ * (stdio only — see `registerTaskHandlers`): the SDK gates those methods on this capability, so
+ * advertising it without the handlers would promise a surface that answers nothing.
  */
-internal fun serverCapabilities(forwardLogsToClient: Boolean): ServerCapabilities = ServerCapabilities(
+internal fun serverCapabilities(
+    forwardLogsToClient: Boolean,
+    tasks: Boolean = false,
+): ServerCapabilities = ServerCapabilities(
     tools = ServerCapabilities.Tools(listChanged = false),
     resources = ServerCapabilities.Resources(listChanged = true, subscribe = false),
     prompts = ServerCapabilities.Prompts(listChanged = false),
     // Advertises that the server answers completion/complete for prompt args and template variables.
     completions = EmptyJsonObject,
     logging = EmptyJsonObject.takeIf { forwardLogsToClient },
+    tasks = if (tasks) {
+        ServerCapabilities.Tasks(
+            list = EmptyJsonObject,
+            cancel = EmptyJsonObject,
+            // The only task-augmentable server-side request category we implement.
+            requests = ServerCapabilities.Tasks.Requests(
+                tools = ServerCapabilities.Tasks.Requests.Tools(call = EmptyJsonObject),
+            ),
+        )
+    } else {
+        null
+    },
 )
 
 /** Runtime configuration shared by both transports, populated from the CLI flags in `Main`. */
@@ -73,11 +94,23 @@ data class ServerConfig(
      */
     val otel: Boolean = false,
     /**
+     * Opt into task-augmented `tools/call` (SEP-1686) for tools that declare `taskSupport` —
+     * `fetch_library` today (`--tasks`). Off by default while the extension is young: on, the
+     * server advertises the `tasks` capability and answers `tasks/get`/`result`/`list`/`cancel`.
+     *
+     * **stdio only.** See `tasks/TaskHandlers.kt` — the HTTP transport gives no per-session hook to
+     * register the handlers on, so [McpServerFactory] leaves this off for `http` regardless.
+     */
+    val tasks: Boolean = false,
+    /**
      * The transport being run (`stdio` or `http`), used for the `network.transport` span attribute.
      * Only meaningful when [otel] is set.
      */
     val transport: String = "stdio",
-)
+) {
+    /** Whether tasks are both requested and supported on the configured transport. */
+    val tasksEnabled: Boolean get() = tasks && !transport.equals("http", ignoreCase = true)
+}
 
 /**
  * A configured MCP [server] plus the core collaborators it was built from. The [service] and
@@ -91,10 +124,14 @@ class McpServerHandle(
     private val fetcher: MavenSourceFetcherImpl,
     private val logForwarderScope: CoroutineScope?,
     private val otelSdk: OpenTelemetrySdk? = null,
+    val taskStore: TaskStore? = null,
 ) : Closeable {
     override fun close() {
         logForwarderScope?.cancel()
         routeKermitToSlf4j() // drop the forwarder writer (if any) for the closed server
+        // Before the fetcher's client goes away, so in-flight downloads unwind rather than failing
+        // on a closed transport.
+        taskStore?.close()
         // Flush spans first, while the process is still healthy and the exporter can reach the
         // collector; the shutdown is bounded so an unreachable one cannot hold up exit.
         otelSdk?.let { stopTelemetry(it) }
@@ -125,7 +162,10 @@ object McpServerFactory {
         val server = Server(
             serverInfo = Implementation(name = SERVER_NAME, version = ServerVersion.value),
             options = ServerOptions(
-                capabilities = serverCapabilities(forwardLogsToClient = config.forwardLogsToClient),
+                capabilities = serverCapabilities(
+                    forwardLogsToClient = config.forwardLogsToClient,
+                    tasks = config.tasksEnabled,
+                ),
                 // Not the SDK default matcher — see SegmentTemplateMatcher.kt for why.
                 resourceTemplateMatcherFactory = segmentTemplateMatcherFactory,
             ),
@@ -174,6 +214,9 @@ object McpServerFactory {
             fetcher = fetcher,
             logForwarderScope = logForwarderScope,
             otelSdk = otelSdk,
+            // Only when the transport can actually install the handlers; the capability above
+            // follows the same condition so the two can never disagree.
+            taskStore = if (config.tasksEnabled) TaskStore() else null,
         )
     }
 }

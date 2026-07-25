@@ -15,6 +15,7 @@ import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
+import io.modelcontextprotocol.kotlin.sdk.types.TaskSupport
 import io.modelcontextprotocol.kotlin.sdk.types.Tool
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -107,6 +108,33 @@ class ToolRegistrationTest {
 
         val optedIn = serverCapabilities(forwardLogsToClient = true)
         assertNotNull(optedIn.logging, "logging must be advertised with --forward-logs-to-client")
+    }
+
+    @Test
+    fun tasksCapabilityIsOffByDefaultAndOptInViaFlag() {
+        // The SDK gates tasks/get|result|list|cancel on this capability, and the handlers are only
+        // installed by the stdio transport — so advertising it without --tasks would promise a
+        // surface that answers nothing.
+        assertNull(serverCapabilities(forwardLogsToClient = false).tasks)
+
+        val optedIn = assertNotNull(serverCapabilities(forwardLogsToClient = false, tasks = true).tasks)
+        assertNotNull(optedIn.list, "tasks/list must be advertised")
+        assertNotNull(optedIn.cancel, "tasks/cancel must be advertised")
+        // tools/call is the only server-side request category we can task-augment.
+        assertNotNull(optedIn.requests?.tools?.call)
+    }
+
+    @Test
+    fun onlyFetchLibraryOffersTaskAugmentedExecution() {
+        // It is the one long-running tool (download → analyze → cache). `Optional`, never
+        // `Required`: a client with no task support must keep calling it synchronously.
+        assertEquals(
+            TaskSupport.Optional,
+            tools().getValue("fetch_library").execution?.taskSupport,
+        )
+        tools().filterKeys { it != "fetch_library" }.forEach { (name, tool) ->
+            assertNull(tool.execution, "$name: only fetch_library should declare execution")
+        }
     }
 
     @Test
