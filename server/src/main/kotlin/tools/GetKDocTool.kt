@@ -2,6 +2,7 @@ package app.oreshkov.kotlinlibmcp.server.tools
 
 import app.oreshkov.kotlinlibmcp.dto.KDocResult
 import app.oreshkov.kotlinlibmcp.server.LibraryService
+import app.oreshkov.kotlinlibmcp.server.icons.Glyph
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 
 fun Server.registerGetKDocTool(service: LibraryService) {
@@ -19,6 +20,7 @@ fun Server.registerGetKDocTool(service: LibraryService) {
         title = "Get KDoc",
         outputSchema = outputSchemaOf<KDocResult>(),
         toolAnnotations = LOCAL_READ_ONLY,
+        icon = Glyph.KDoc,
     ) { request ->
         guarded(request) {
             val args = request.args()

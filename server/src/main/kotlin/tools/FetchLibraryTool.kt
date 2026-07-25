@@ -4,6 +4,7 @@ import app.oreshkov.kotlinlibmcp.dto.FetchSummary
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.server.FetchProgress
 import app.oreshkov.kotlinlibmcp.server.LibraryService
+import app.oreshkov.kotlinlibmcp.server.icons.Glyph
 import io.modelcontextprotocol.kotlin.sdk.server.ClientConnection
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.ProgressNotification
@@ -49,6 +50,7 @@ fun Server.registerFetchLibraryTool(
             idempotentHint = true,
             openWorldHint = true,
         ),
+        icon = Glyph.Fetch,
         // The one long-running tool here (download → analyze → cache runs seconds to tens of
         // seconds), so the one worth polling as a task. `Optional`, never `Required`: clients with
         // no task support must keep calling it synchronously exactly as before. Whether the server

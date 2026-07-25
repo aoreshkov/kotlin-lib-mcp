@@ -2,6 +2,7 @@ package app.oreshkov.kotlinlibmcp.server.tools
 
 import app.oreshkov.kotlinlibmcp.dto.SignatureResult
 import app.oreshkov.kotlinlibmcp.server.LibraryService
+import app.oreshkov.kotlinlibmcp.server.icons.Glyph
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 
 fun Server.registerGetApiSignatureTool(service: LibraryService) {
@@ -19,6 +20,7 @@ fun Server.registerGetApiSignatureTool(service: LibraryService) {
         title = "Get API signature",
         outputSchema = outputSchemaOf<SignatureResult>(),
         toolAnnotations = LOCAL_READ_ONLY,
+        icon = Glyph.Signature,
     ) { request ->
         guarded(request) {
             val args = request.args()

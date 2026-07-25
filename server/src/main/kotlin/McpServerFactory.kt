@@ -5,6 +5,7 @@ import app.oreshkov.kotlinlibmcp.cache.OnDiskLibraryCache
 import app.oreshkov.kotlinlibmcp.core.LibraryCache
 import app.oreshkov.kotlinlibmcp.fetch.MavenSourceFetcherImpl
 import app.oreshkov.kotlinlibmcp.server.completions.registerLibraryCompletions
+import app.oreshkov.kotlinlibmcp.server.icons.Glyph
 import app.oreshkov.kotlinlibmcp.server.prompts.registerExplainPublicApiPrompt
 import app.oreshkov.kotlinlibmcp.server.resources.addLibraryIndexResource
 import app.oreshkov.kotlinlibmcp.server.resources.registerLibraryIndexTemplate
@@ -37,6 +38,20 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.runBlocking
 
 const val SERVER_NAME: String = "kotlin-lib-mcp"
+
+/**
+ * How the server introduces itself in `initialize`: the programmatic [SERVER_NAME], the build's
+ * version, and the display branding clients show in a connector list — `title`, `websiteUrl` and
+ * the SEP-973 `icons`. Kept in step with `server.json`, which carries the same three for the MCP
+ * registry.
+ */
+internal fun serverInfo(): Implementation = Implementation(
+    name = SERVER_NAME,
+    version = ServerVersion.value,
+    title = "Kotlin Library Sources",
+    websiteUrl = "https://github.com/aoreshkov/kotlin-lib-mcp",
+    icons = Glyph.Server.icons,
+)
 
 /**
  * The capabilities the server advertises. `tools`/`resources`/`prompts`/`completions` are always
@@ -160,7 +175,7 @@ object McpServerFactory {
         )
 
         val server = Server(
-            serverInfo = Implementation(name = SERVER_NAME, version = ServerVersion.value),
+            serverInfo = serverInfo(),
             options = ServerOptions(
                 capabilities = serverCapabilities(
                     forwardLogsToClient = config.forwardLogsToClient,

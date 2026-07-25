@@ -2,6 +2,7 @@ package app.oreshkov.kotlinlibmcp.server.tools
 
 import app.oreshkov.kotlinlibmcp.dto.VersionList
 import app.oreshkov.kotlinlibmcp.server.LibraryService
+import app.oreshkov.kotlinlibmcp.server.icons.Glyph
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
 import kotlinx.serialization.json.buildJsonObject
@@ -23,6 +24,7 @@ fun Server.registerListVersionsTool(service: LibraryService) {
         title = "List versions",
         outputSchema = outputSchemaOf<VersionList>(),
         toolAnnotations = REPOSITORY_READ_ONLY,
+        icon = Glyph.Versions,
     ) { request ->
         guarded(request) {
             val parts = request.args().requireStringArg("coordinate").split(':')

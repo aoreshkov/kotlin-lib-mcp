@@ -71,6 +71,19 @@ class ToolRegistrationTest {
     }
 
     @Test
+    fun everyToolDeclaresADistinctIcon() {
+        // SEP-973. The guard that matters: `icons` lives only on the SDK's `addTool(Tool, handler)`
+        // form, so a registration that drops the `icon` argument silently resolves back to the
+        // iconless member overload and compiles. Distinct glyphs, so no two tools look alike.
+        val srcs = tools().map { (name, tool) ->
+            val icons = assertNotNull(tool.icons, "$name: missing icons")
+            assertEquals(1, icons.size, "$name: expected exactly one icon")
+            icons.single().src
+        }
+        assertEquals(srcs.size, srcs.toSet().size, "tools must not share a glyph")
+    }
+
+    @Test
     fun everyToolDeclaresJsonSchema2020_12Dialect() {
         // SEP-1613: 2020-12 is the default, but we declare it explicitly on every input and
         // output schema so no construction site silently drops it.

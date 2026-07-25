@@ -1,3 +1,6 @@
 # Shell scripts must use LF on every platform — a CRLF shebang breaks `bash`
 # (e.g. the Claude Code Stop hook in .claude/hooks/).
 *.sh text eol=lf
+
+# Image assets (the SEP-973 icon PNGs) are never text — no eol conversion, no diffing.
+*.png binary

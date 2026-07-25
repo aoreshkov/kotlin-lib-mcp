@@ -2,6 +2,7 @@ package app.oreshkov.kotlinlibmcp.server.tools
 
 import app.oreshkov.kotlinlibmcp.dto.DeclarationList
 import app.oreshkov.kotlinlibmcp.server.LibraryService
+import app.oreshkov.kotlinlibmcp.server.icons.Glyph
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 
 fun Server.registerListDeclarationsTool(service: LibraryService) {
@@ -22,6 +23,7 @@ fun Server.registerListDeclarationsTool(service: LibraryService) {
         title = "List declarations",
         outputSchema = outputSchemaOf<DeclarationList>(),
         toolAnnotations = LOCAL_READ_ONLY,
+        icon = Glyph.Declarations,
     ) { request ->
         guarded(request) {
             val args = request.args()
