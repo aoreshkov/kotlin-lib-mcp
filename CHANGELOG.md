@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Icons (SEP-973)** on every MCP object the server exposes: `serverInfo`, all ten tools, the
+  `explain_public_api` prompt, and the library-index resource and resource template. `serverInfo`
+  also gained the `title` and `websiteUrl` branding fields it already declares in `server.json`.
+  Icons are inlined as `data:` PNG URIs — PNG because it is the one format icon-rendering clients
+  MUST support, inline because a stdio server has no origin for the spec's same-origin guidance and
+  inlining needs no fetch, works offline, and ships in the container image. The glyphs are drawn by
+  `assets/icons/GenerateIcons.java` and kept to ~800 bytes encoded, since they ride in every
+  `tools/list`.
+
 ### Changed
 - **Logging capability retired to opt-in** (MCP 2025-11-25 blesses stderr for all stdio
   logging): the server no longer advertises the deprecated `logging` capability by default,

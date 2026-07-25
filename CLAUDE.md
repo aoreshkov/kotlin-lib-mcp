@@ -63,8 +63,15 @@ with a semantic-version fallback in `core/util/MavenVersions.kt`).
 
 Cached library indexes are also exposed as MCP **resources** (one static resource per cached
 library plus a `kotlinlib://{group}/{artifact}/{version}/index` **resource template**), and an
-"explain the public API" **prompt** — exercising all three MCP primitives. Logs go to **stderr**
-by default (the 2025-11-25-blessed channel; `logback.xml`); the deprecated MCP **logging
+"explain the public API" **prompt** — exercising all three MCP primitives.
+
+**Icons (SEP-973)** are on `serverInfo`, every tool, the prompt and the resource/template
+(`icons/Icons.kt`, PNGs in `server/src/main/resources/icons/`, drawn by
+`assets/icons/GenerateIcons.java`). Inline `data:` PNG URIs, deliberately — see the file header for
+why PNG and why not `https://`; the `icons` traps in the SDK's `add*` overloads are in
+`.claude/rules/mcp-server.md`.
+
+Logs go to **stderr** by default (the 2025-11-25-blessed channel; `logback.xml`); the deprecated MCP **logging
 capability** (Kermit logs mirror to clients via `attachMcpLogForwarder`; `Logging.kt`) is **opt-in**
 behind `--forward-logs-to-client`. `fetch_library` emits **progress notifications** when the request
 carries a `progressToken`.

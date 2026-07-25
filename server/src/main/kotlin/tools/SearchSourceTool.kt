@@ -2,6 +2,7 @@ package app.oreshkov.kotlinlibmcp.server.tools
 
 import app.oreshkov.kotlinlibmcp.dto.SearchResults
 import app.oreshkov.kotlinlibmcp.server.LibraryService
+import app.oreshkov.kotlinlibmcp.server.icons.Glyph
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 
 fun Server.registerSearchSourceTool(service: LibraryService) {
@@ -21,6 +22,7 @@ fun Server.registerSearchSourceTool(service: LibraryService) {
         title = "Search sources",
         outputSchema = outputSchemaOf<SearchResults>(),
         toolAnnotations = LOCAL_READ_ONLY,
+        icon = Glyph.Search,
     ) { request ->
         guarded(request) {
             val args = request.args()

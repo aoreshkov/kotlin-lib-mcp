@@ -2,10 +2,14 @@ package app.oreshkov.kotlinlibmcp.server.resources
 
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.server.LibraryService
+import app.oreshkov.kotlinlibmcp.server.icons.Glyph
 import app.oreshkov.kotlinlibmcp.server.telemetry.resourceSpan
 import app.oreshkov.kotlinlibmcp.server.tools.toolJson
+import io.modelcontextprotocol.kotlin.sdk.server.RegisteredResource
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.ReadResourceResult
+import io.modelcontextprotocol.kotlin.sdk.types.Resource
+import io.modelcontextprotocol.kotlin.sdk.types.ResourceTemplate
 import io.modelcontextprotocol.kotlin.sdk.types.TextResourceContents
 
 /** Stable, parseable URI for a cached library's index — the dashboard and clients rely on it. */
@@ -24,12 +28,15 @@ const val LIBRARY_INDEX_URI_TEMPLATE: String = "kotlinlib://{group}/{artifact}/{
  */
 fun Server.registerLibraryIndexTemplate(service: LibraryService) {
     addResourceTemplate(
-        uriTemplate = LIBRARY_INDEX_URI_TEMPLATE,
-        name = "Library API index",
-        description = "Parsed API index of a fetched library: packages, declarations with " +
-            "resolved signatures and KDoc, source file list, KMP targets. The coordinate must " +
-            "have been fetched with fetch_library first.",
-        mimeType = "application/json",
+        ResourceTemplate(
+            uriTemplate = LIBRARY_INDEX_URI_TEMPLATE,
+            name = "Library API index",
+            description = "Parsed API index of a fetched library: packages, declarations with " +
+                "resolved signatures and KDoc, source file list, KMP targets. The coordinate must " +
+                "have been fetched with fetch_library first.",
+            mimeType = "application/json",
+            icons = Glyph.Index.icons,
+        )
     ) { request, variables ->
         resourceSpan(request.uri, sessionId, request.params.meta) {
             // Template variables are attacker-controlled URI segments and end up in cache paths.
@@ -70,23 +77,37 @@ private fun Map<String, String>.coordinateSegment(name: String): String {
 fun Server.addLibraryIndexResource(service: LibraryService, coordinate: LibraryCoordinate) {
     val uri = libraryIndexUri(coordinate)
     if (uri in resources) return // warm re-fetch: already registered, don't re-notify
-    addResource(
-        uri = uri,
-        name = "$coordinate index",
-        description = "Parsed API index of $coordinate: packages, declarations with resolved " +
-            "signatures and KDoc, source file list, KMP targets.",
-        mimeType = "application/json",
-    ) { request ->
-        resourceSpan(request.uri, sessionId, request.params.meta) {
-            ReadResourceResult(
-                contents = listOf(
-                    TextResourceContents(
-                        text = toolJson.encodeToString(service.index(coordinate)),
-                        uri = request.uri,
-                        mimeType = "application/json",
+    // Registered as a RegisteredResource rather than via addResource(uri, …): that overload has no
+    // `icons` parameter (SEP-973) and the SDK offers no addResource(Resource, handler). `addAll`
+    // fires the same listChanged listeners as `add`, so resources/list stays live either way.
+    //
+    // Every cached library repeats the same glyph, so resources/list grows by ~830 B per entry.
+    // Kept deliberately: resources/list — not templates/list — is what a client renders in its
+    // resource picker, and it is an on-demand call, unlike the always-sent tools/list.
+    addResources(
+        listOf(
+            RegisteredResource(
+                Resource(
+                    uri = uri,
+                    name = "$coordinate index",
+                    description = "Parsed API index of $coordinate: packages, declarations with " +
+                        "resolved signatures and KDoc, source file list, KMP targets.",
+                    mimeType = "application/json",
+                    icons = Glyph.Index.icons,
+                ),
+            ) { request ->
+                resourceSpan(request.uri, sessionId, request.params.meta) {
+                    ReadResourceResult(
+                        contents = listOf(
+                            TextResourceContents(
+                                text = toolJson.encodeToString(service.index(coordinate)),
+                                uri = request.uri,
+                                mimeType = "application/json",
+                            )
+                        )
                     )
-                )
-            )
-        }
-    }
+                }
+            }
+        )
+    )
 }

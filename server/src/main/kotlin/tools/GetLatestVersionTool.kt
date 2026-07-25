@@ -2,6 +2,7 @@ package app.oreshkov.kotlinlibmcp.server.tools
 
 import app.oreshkov.kotlinlibmcp.dto.LatestVersion
 import app.oreshkov.kotlinlibmcp.server.LibraryService
+import app.oreshkov.kotlinlibmcp.server.icons.Glyph
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
 import kotlinx.serialization.json.buildJsonObject
@@ -26,6 +27,7 @@ fun Server.registerGetLatestVersionTool(service: LibraryService) {
         title = "Get latest version",
         outputSchema = outputSchemaOf<LatestVersion>(),
         toolAnnotations = REPOSITORY_READ_ONLY,
+        icon = Glyph.Latest,
     ) { request ->
         guarded(request) {
             val args = request.args()

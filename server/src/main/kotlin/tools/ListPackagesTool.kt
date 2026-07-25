@@ -2,6 +2,7 @@ package app.oreshkov.kotlinlibmcp.server.tools
 
 import app.oreshkov.kotlinlibmcp.dto.PackageList
 import app.oreshkov.kotlinlibmcp.server.LibraryService
+import app.oreshkov.kotlinlibmcp.server.icons.Glyph
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 
 fun Server.registerListPackagesTool(service: LibraryService) {
@@ -13,6 +14,7 @@ fun Server.registerListPackagesTool(service: LibraryService) {
         title = "List packages",
         outputSchema = outputSchemaOf<PackageList>(),
         toolAnnotations = LOCAL_READ_ONLY,
+        icon = Glyph.Packages,
     ) { request ->
         guarded(request) { toolResult(service.listPackages(request.args().coordinateArg())) }
     }

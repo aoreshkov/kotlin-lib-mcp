@@ -6,11 +6,20 @@ paths:
 # MCP tool authoring & resource-template gotcha
 
 Every tool declares a `title`, behavior annotations (`readOnlyHint`/`openWorldHint`;
-`fetch_library` additionally `destructiveHint: false`, `idempotentHint: true`), and an
+`fetch_library` additionally `destructiveHint: false`, `idempotentHint: true`), an
 `outputSchema` derived from its response DTO's serial descriptor
-(`server/.../tools/OutputSchemas.kt`); `toolResult` returns JSON text **and** matching
-`structuredContent`. When adding a tool, pass all three to `addTool` — use the shared
-`LOCAL_READ_ONLY`/`REPOSITORY_READ_ONLY` annotation constants in `ToolSupport.kt`.
+(`server/.../tools/OutputSchemas.kt`), and an SEP-973 `icon`; `toolResult` returns JSON text **and**
+matching `structuredContent`. When adding a tool, pass all four to `addTool` — use the shared
+`LOCAL_READ_ONLY`/`REPOSITORY_READ_ONLY` annotation constants in `ToolSupport.kt`, and add a new
+`Glyph` entry (plus its PNG, via `assets/icons/GenerateIcons.java`) in `server/.../icons/Icons.kt`.
+
+**Icons gotcha:** `icons` exists only on the `Tool`/`Prompt`/`Resource`/`ResourceTemplate` types,
+never on the SDK's `addTool(name, …)`/`addPrompt(name, …)`/`addResource(uri, …)` convenience
+overloads — and there is no `addResource(Resource, handler)` at all, so a resource with icons has
+to go through `addResources(listOf(RegisteredResource(…)))` (`addAll` fires the same `listChanged`
+listeners, so `resources/list` stays live). The trap is `ToolSupport.kt`'s `addTool` extension:
+drop its `icon` argument and the call silently resolves back to the SDK's iconless *member*
+overload and still compiles. `ToolRegistrationTest.everyToolDeclaresADistinctIcon` pins that.
 
 **Resource templates gotcha:** the SDK's default `PathSegmentTemplateMatcher` throws
 `NoSuchMethodError` at runtime — `kotlin-compiler` (via `core`) bundles an old unrelocated

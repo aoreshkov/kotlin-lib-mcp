@@ -108,10 +108,10 @@ index. `fetch_library`, `list_versions` and `get_latest_version` also accept `gr
 Every tool ships the metadata the MCP spec encourages clients to use: a display `title`,
 **behavior annotations** (`readOnlyHint: true` everywhere except `fetch_library`, which is
 additive-only — `destructiveHint: false`, `idempotentHint: true`; tools that reach Maven
-repositories set `openWorldHint: true`, cache-only tools `false`), and a typed **`outputSchema`**
-derived from the response DTO's serializer. Results carry both pretty-printed JSON text and the
-matching `structuredContent` object, so structured-output clients and plain-text clients see the
-same payload.
+repositories set `openWorldHint: true`, cache-only tools `false`), a typed **`outputSchema`**
+derived from the response DTO's serializer, and an **icon**. Results carry both pretty-printed JSON
+text and the matching `structuredContent` object, so structured-output clients and plain-text
+clients see the same payload.
 
 `fetch_library` also reports **progress notifications** (download → analyze → cache) when the
 client sends a `progressToken`. Logs go to **stderr** by default (which the spec blesses for all
@@ -161,6 +161,18 @@ renamed — one more reason the whole feature is opt-in.
 libraries are fetched, and the same URI shape is published as a **resource template**, so any
 cached coordinate is directly addressable. **Prompt:** `explain_public_api(coordinate, package?)`
 renders an explanation request grounded in the cached signatures and KDoc.
+
+**Icons:** the server, every tool, the prompt and the library-index resource/template each declare
+an [SEP-973][sep-973] icon, so a client can show the surface visually instead of as a wall of
+snake\_case. They are inlined as **`data:` URIs** rather than hosted URLs — a stdio server has no
+origin, and the spec asks consumers to prefer same-origin icons and fetch them without credentials,
+so inlining removes the third-party fetch entirely and keeps the icons working offline and inside
+the container image. The payload is **PNG**, the one format icon-rendering clients *must* support
+(`image/svg+xml` is only a SHOULD, and the spec warns it may carry executable content). The glyphs
+are drawn by [`assets/icons/GenerateIcons.java`](assets/icons/GenerateIcons.java) and kept small —
+about 800 bytes encoded each, since they ride in every `tools/list`.
+
+[sep-973]: https://modelcontextprotocol.io/specification/2025-11-25/basic#icons
 
 ## Building from source
 

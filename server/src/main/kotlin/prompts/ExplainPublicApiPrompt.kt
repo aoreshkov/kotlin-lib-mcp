@@ -2,9 +2,11 @@ package app.oreshkov.kotlinlibmcp.server.prompts
 
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.server.LibraryService
+import app.oreshkov.kotlinlibmcp.server.icons.Glyph
 import app.oreshkov.kotlinlibmcp.server.telemetry.promptSpan
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.GetPromptResult
+import io.modelcontextprotocol.kotlin.sdk.types.Prompt
 import io.modelcontextprotocol.kotlin.sdk.types.PromptArgument
 import io.modelcontextprotocol.kotlin.sdk.types.PromptMessage
 import io.modelcontextprotocol.kotlin.sdk.types.Role
@@ -18,22 +20,27 @@ private const val MAX_DECLARATIONS = 150
  * cached signatures and KDoc summaries embedded as concrete context (not a generic instruction).
  */
 fun Server.registerExplainPublicApiPrompt(service: LibraryService) {
+    // Built as a Prompt rather than via addPrompt(name, …): the convenience overload has no
+    // `icons` parameter (SEP-973). Same reason as the tools — see `tools/ToolSupport.kt`.
     addPrompt(
-        name = "explain_public_api",
-        description = "Explain the public API surface of a fetched library, optionally scoped to " +
-            "one package, grounded in its cached signatures and KDoc.",
-        arguments = listOf(
-            PromptArgument(
-                name = "coordinate",
-                description = "Maven coordinate 'group:artifact:version' (must be fetched already)",
-                required = true,
+        Prompt(
+            name = "explain_public_api",
+            description = "Explain the public API surface of a fetched library, optionally scoped " +
+                "to one package, grounded in its cached signatures and KDoc.",
+            arguments = listOf(
+                PromptArgument(
+                    name = "coordinate",
+                    description = "Maven coordinate 'group:artifact:version' (must be fetched already)",
+                    required = true,
+                ),
+                PromptArgument(
+                    name = "package",
+                    description = "Optional package to scope the explanation to",
+                    required = false,
+                ),
             ),
-            PromptArgument(
-                name = "package",
-                description = "Optional package to scope the explanation to",
-                required = false,
-            ),
-        ),
+            icons = Glyph.Prompt.icons,
+        )
     ) { request ->
         promptSpan(request.name, sessionId, request.params.meta) {
             val coordinate = LibraryCoordinate.parse(

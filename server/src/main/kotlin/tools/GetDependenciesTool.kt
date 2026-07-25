@@ -2,6 +2,7 @@ package app.oreshkov.kotlinlibmcp.server.tools
 
 import app.oreshkov.kotlinlibmcp.dto.DependencyResult
 import app.oreshkov.kotlinlibmcp.server.LibraryService
+import app.oreshkov.kotlinlibmcp.server.icons.Glyph
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 
 fun Server.registerGetDependenciesTool(service: LibraryService) {
@@ -19,6 +20,7 @@ fun Server.registerGetDependenciesTool(service: LibraryService) {
         outputSchema = outputSchemaOf<DependencyResult>(),
         // Read-only but open-world: resolves .pom/.module metadata from remote repositories.
         toolAnnotations = REPOSITORY_READ_ONLY,
+        icon = Glyph.Dependencies,
     ) { request ->
         guarded(request) {
             val args = request.args()

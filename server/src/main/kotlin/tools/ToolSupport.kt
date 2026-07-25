@@ -1,12 +1,16 @@
 package app.oreshkov.kotlinlibmcp.server.tools
 
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
+import app.oreshkov.kotlinlibmcp.server.icons.Glyph
 import app.oreshkov.kotlinlibmcp.server.telemetry.toolSpan
 import io.modelcontextprotocol.kotlin.sdk.server.ClientConnection
+import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequest
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
+import io.modelcontextprotocol.kotlin.sdk.types.Tool
 import io.modelcontextprotocol.kotlin.sdk.types.ToolAnnotations
+import io.modelcontextprotocol.kotlin.sdk.types.ToolExecution
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
 import io.opentelemetry.api.trace.Span
 import kotlinx.coroutines.CancellationException
@@ -25,6 +29,41 @@ import kotlinx.serialization.json.put
 
 /** One JSON encoder for every tool response; pretty output reads well in MCP clients. */
 internal val toolJson = Json { prettyPrint = true }
+
+/**
+ * Registers a tool with the full metadata set this server declares — including SEP-973 [icon].
+ *
+ * The SDK's convenience `addTool(name, description, …)` has no `icons` parameter, so an icon-bearing
+ * tool has to build the [Tool] itself; this keeps that in one place instead of ten. [icon] is
+ * required rather than defaulted precisely because omitting it would silently resolve back to the
+ * SDK's iconless member overload (members win over extensions) — `ToolRegistrationTest` pins that
+ * every tool ends up with icons.
+ */
+internal fun Server.addTool(
+    name: String,
+    description: String,
+    inputSchema: ToolSchema,
+    title: String,
+    outputSchema: ToolSchema,
+    toolAnnotations: ToolAnnotations,
+    icon: Glyph,
+    execution: ToolExecution? = null,
+    handler: suspend ClientConnection.(CallToolRequest) -> CallToolResult,
+) {
+    addTool(
+        Tool(
+            name = name,
+            description = description,
+            inputSchema = inputSchema,
+            title = title,
+            outputSchema = outputSchema,
+            annotations = toolAnnotations,
+            icons = icon.icons,
+            execution = execution,
+        ),
+        handler,
+    )
+}
 
 /**
  * Serializes a DTO once and returns it both ways the spec recommends: human-readable JSON text

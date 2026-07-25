@@ -2,6 +2,7 @@ package app.oreshkov.kotlinlibmcp.server.resources
 
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.server.fakeService
+import app.oreshkov.kotlinlibmcp.server.icons.Glyph
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
@@ -33,6 +34,22 @@ class LibraryResourcesTest {
         )
         assertNotNull(template.description)
         assertEquals("application/json", template.mimeType)
+        assertEquals(Glyph.Index.icons, template.icons, "SEP-973 icons")
+    }
+
+    @Test
+    fun indexResourceIsRegisteredWithMetadata() {
+        // Registered through `addResources(RegisteredResource(…))` because `addResource(uri, …)`
+        // cannot carry icons — so assert the whole metadata set survived that detour.
+        val coordinate = LibraryCoordinate("io.ktor", "ktor-client-core", "3.5.1")
+        val server = serverWithResources().apply { addLibraryIndexResource(fakeService(), coordinate) }
+        val resource = assertNotNull(
+            server.resources[libraryIndexUri(coordinate)]?.resource,
+            "library index resource not registered",
+        )
+        assertNotNull(resource.description)
+        assertEquals("application/json", resource.mimeType)
+        assertEquals(Glyph.Index.icons, resource.icons, "SEP-973 icons")
     }
 
     @Test
