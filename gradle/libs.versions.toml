@@ -1,7 +1,7 @@
 [versions]
 # Build tools
 kotlin = "2.4.0"
-kover = "0.9.8"
+kover = "0.9.9"
 
 # Third-party
 mcp-kotlin-sdk = "0.14.0"
@@ -16,7 +16,7 @@ coroutines-intellij = "1.10.2-intellij-1"  # JetBrains coroutines fork the bundl
 slf4j = "2.0.18"
 kotlin-logging = "8.0.4"       # matches the MCP SDK's transitive facade; needed to silence its stdout banner
 slf4j-android = "2.0.17-0"
-logback = "1.5.38"
+logback = "1.6.0"
 opentelemetry = "1.64.0"       # BOM governs every io.opentelemetry artifact below
 
 # Test
