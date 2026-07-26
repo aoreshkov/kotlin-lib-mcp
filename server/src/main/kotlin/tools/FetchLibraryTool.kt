@@ -4,6 +4,7 @@ import app.oreshkov.kotlinlibmcp.dto.FetchSummary
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.server.FetchProgress
 import app.oreshkov.kotlinlibmcp.server.LibraryService
+import app.oreshkov.kotlinlibmcp.server.elicitation.resolveCoordinate
 import app.oreshkov.kotlinlibmcp.server.icons.Glyph
 import io.modelcontextprotocol.kotlin.sdk.server.ClientConnection
 import io.modelcontextprotocol.kotlin.sdk.server.Server
@@ -21,13 +22,17 @@ fun Server.registerFetchLibraryTool(
     service: LibraryService,
     onFetched: suspend (LibraryCoordinate) -> Unit = {},
 ) {
+    // The handler runs against a ClientConnection, which cannot see the session's client
+    // capabilities; the elicitation gate needs the Server to look them up. See VersionElicitation.kt.
+    val server = this
     addTool(
         name = "fetch_library",
         description = "Download, extract and analyze the sources of a Maven-published Kotlin/Java " +
             "library, warming the local cache. Idempotent — call this once per coordinate before " +
             "using the other tools. The version may be omitted or set to 'latest' (e.g. " +
             "'io.ktor:ktor-client-core' or 'io.ktor:ktor-client-core:latest') to fetch the latest " +
-            "stable release. Returns a summary (resolved coordinate, KMP targets, file and package counts).",
+            "stable release — clients that support elicitation may ask the user to pick a version " +
+            "in that case. Returns a summary (resolved coordinate, KMP targets, file and package counts).",
         inputSchema = ToolSchema(
             schema = JSON_SCHEMA_DIALECT,
             properties = buildJsonObject {
@@ -59,7 +64,9 @@ fun Server.registerFetchLibraryTool(
     ) { request ->
         guarded(request) {
             val spec = request.args().requireStringArg("coordinate").parseCoordinateSpec()
-            val coordinate = service.resolveCoordinate(spec.group, spec.artifact, spec.versionSpec)
+            // Asks the user which version they meant when the coordinate left it open and the
+            // client supports elicitation; otherwise resolves latest stable silently, as before.
+            val coordinate = resolveCoordinate(server, service, spec.group, spec.artifact, spec.versionSpec)
             // Clients opt into notifications/progress by sending a progressToken in _meta.
             val progressToken = request.params.meta?.progressToken
             val summary = service.fetchLibrary(coordinate) { progress ->

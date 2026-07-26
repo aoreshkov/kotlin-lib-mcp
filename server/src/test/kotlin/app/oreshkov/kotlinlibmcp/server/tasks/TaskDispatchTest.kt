@@ -21,9 +21,11 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -173,6 +175,68 @@ class TaskDispatchTest {
         val meta = statuses.last().params?.meta
         assertContains(meta.toString(), "io.modelcontextprotocol/related-task")
         assertContains(meta.toString(), created.task.taskId)
+        store.close()
+    }
+
+    @Test
+    fun aToolThatNeedsClientInputParksTheTaskInInputRequired() = runTest {
+        val store = store(testScheduler)
+        val connection = FakeConnection()
+        val answered = CompletableDeferred<Unit>()
+        var seenTaskId: String? = null
+
+        // Stands in for the version picker: a tool body that has to ask the client something. It
+        // reaches the running task purely through the coroutine context — no task-shaped argument.
+        val asking = registered("asking", taskSupport = TaskSupport.Optional) {
+            val task = requireNotNull(currentCoroutineContext()[TaskContext]) { "no TaskContext in scope" }
+            seenTaskId = task.taskId
+            task.awaitingInput("Waiting for an answer") { answered.await() }
+            CallToolResult(content = listOf(TextContent("ran")))
+        }
+
+        val created = assertIs<CreateTaskResult>(
+            dispatchToolCall(mapOf("asking" to asking), connection, store, call("asking", TaskMetadata()))
+        )
+        advanceUntilIdle()
+
+        // The client polling tasks/get now sees input_required, its cue to open tasks/result and
+        // pick up the question the server is holding.
+        val parked = store.get(created.task.taskId)
+        assertEquals(TaskStatus.InputRequired, parked.status)
+        assertEquals("Waiting for an answer", parked.statusMessage)
+        assertEquals(created.task.taskId, seenTaskId)
+
+        answered.complete(Unit)
+        advanceUntilIdle()
+
+        // …and back to working before the terminal transition, per the spec's state machine.
+        assertEquals(
+            listOf(TaskStatus.Working, TaskStatus.InputRequired, TaskStatus.Working, TaskStatus.Completed),
+            connection.notifications.filterIsInstance<TaskStatusNotification>().map { it.params?.status },
+        )
+        assertEquals(TaskStatus.Completed, store.get(created.task.taskId).status)
+        store.close()
+    }
+
+    @Test
+    fun aTaskParkedOnInputCanStillBeCancelled() = runTest {
+        val store = store(testScheduler)
+        val never = CompletableDeferred<Unit>()
+        val asking = registered("asking", taskSupport = TaskSupport.Optional) {
+            currentCoroutineContext()[TaskContext]!!.awaitingInput("Waiting") { never.await() }
+            CallToolResult(content = listOf(TextContent("ran")))
+        }
+
+        val created = assertIs<CreateTaskResult>(
+            dispatchToolCall(mapOf("asking" to asking), FakeConnection(), store, call("asking", TaskMetadata()))
+        )
+        advanceUntilIdle()
+        assertEquals(TaskStatus.InputRequired, store.get(created.task.taskId).status)
+
+        // A user who abandons the prompt must not strand the task waiting forever.
+        assertEquals(TaskStatus.Cancelled, store.cancel(created.task.taskId).status)
+        advanceUntilIdle()
+        assertEquals(TaskStatus.Cancelled, store.get(created.task.taskId).status)
         store.close()
     }
 }

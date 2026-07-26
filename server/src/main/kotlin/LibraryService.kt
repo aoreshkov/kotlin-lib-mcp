@@ -36,6 +36,13 @@ class LibraryNotFetchedException(coordinate: LibraryCoordinate) : Exception(
 data class FetchProgress(val step: Int, val totalSteps: Int, val message: String)
 
 /**
+ * The versions worth offering a user for a version-less coordinate: [candidates] newest first, and
+ * the [default] that would have been chosen silently (see [LibraryService.resolveCoordinate]).
+ * [default] is always present in [candidates].
+ */
+data class VersionOptions(val candidates: List<String>, val default: String)
+
+/**
  * Orchestrates fetch → analyze → cache and exposes the read operations the MCP tools call, so the
  * tool files stay declarative adapters. Every read goes through the cached [LibraryIndex]; raw
  * source reads resolve paths via the (idempotent, cache-marker-backed) fetch result.
@@ -210,6 +217,29 @@ class LibraryService(
     }
 
     /**
+     * The choice [resolveCoordinate] would otherwise make silently, plus the alternatives worth
+     * offering: the newest [limit] versions, newest first, with the default guaranteed present.
+     *
+     * Deliberately one catalog fetch — the same single request [resolveCoordinate] makes — so
+     * asking the user costs no more network than not asking.
+     */
+    suspend fun versionOptions(group: String, artifact: String, limit: Int = DEFAULT_VERSION_OPTIONS): VersionOptions {
+        val catalog = fetcher.fetchVersionCatalog(group, artifact, repos)
+        val default = latestStableOf(catalog)
+            ?: latestOverallOf(catalog)
+            ?: throw IllegalArgumentException(
+                "No versions found for $group:$artifact to resolve 'latest'. Check the coordinate and repositories."
+            )
+        val newest = catalog.versions
+            .sortedWith(MavenVersions.VERSION_COMPARATOR.reversed())
+            .take(limit.coerceAtLeast(1))
+        // The default can fall outside the window when it came from the `<release>` tag rather than
+        // the version list; offering a picker that omits the default would be indefensible.
+        val candidates = if (default in newest) newest else listOf(default) + newest
+        return VersionOptions(candidates = candidates, default = default)
+    }
+
+    /**
      * Newest **stable** version. Prefers the semantic pick over the version list, but also honors the
      * repository `<release>` tag *only when it is itself stable* — some publishers (e.g. Kotlin) point
      * `<release>` at a Beta, so the tag can't be trusted blindly for "stable".
@@ -265,6 +295,12 @@ class LibraryService(
         const val DEFAULT_DECLARATION_RESULTS = 100
         const val MAX_DEPENDENCY_DEPTH = 5
         const val LATEST = "latest"
+
+        /**
+         * How many versions [versionOptions] offers. A picker is a dropdown a human reads: enough
+         * to cover the recent history of an actively-released artifact, few enough to scan.
+         */
+        const val DEFAULT_VERSION_OPTIONS = 12
         const val FETCH_STEPS = 3
     }
 }

@@ -46,6 +46,16 @@ The `tasks` capability and the handlers are both driven by `ServerConfig.tasksEn
 never disagree; advertising the capability without handlers makes the SDK route methods that answer
 nothing.
 
+**Serial-dispatch gotcha (why `ConcurrentDispatchTransport` exists):** in kotlin-sdk 0.14.0 the stdio
+pipeline is strictly one-frame-at-a-time — `StdioServerTransport.processorPump` awaits `onMessage`
+before reading the next frame, and `Protocol.onRequest` awaits the handler inline. So **any**
+server-to-client request made from inside a tool handler (an `elicitation/create`, sampling, roots)
+deadlocks forever: the client's answer is sitting in the pipe, unread, behind the handler waiting for
+it. `transport/ConcurrentDispatchTransport.kt` wraps the SDK transport and `launch`es non-`initialize`
+*requests*, leaving `initialize`, notifications and **responses** inline (responses must stay inline —
+`Protocol.onResponse` only completes the waiting deferred). Do not remove it, and do not add an
+`await` to the inline path. `ConcurrentDispatchTransportTest` pins both halves.
+
 **Telemetry authoring:** every MCP entry point opens its span through the helpers in
 `server/.../telemetry/Telemetry.kt` (`guarded` for tools — it is a `ClientConnection` extension so
 `mcp.session.id` comes free — plus `resourceSpan`/`promptSpan`/`completionSpan`). Attribute names

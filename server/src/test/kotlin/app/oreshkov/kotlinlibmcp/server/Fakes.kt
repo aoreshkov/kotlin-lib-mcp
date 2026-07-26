@@ -66,14 +66,21 @@ internal object UnusedCache : LibraryCache {
  * handler directly (`RegisteredTool.handler` is an extension on this type). Everything else fails
  * loudly, so a test that unexpectedly talks back to the client is obvious.
  *
- * Outbound notifications are the exception: they are *recorded* rather than rejected, because
- * `notifications/progress` and `notifications/tasks/status` are a normal part of a tool call and
- * are worth asserting on. Inspect [notifications].
+ * Two exceptions, both because they are a normal part of a tool call and worth asserting on:
+ * outbound notifications are *recorded* (inspect [notifications]), and elicitation is answered by
+ * [elicitationResponder] when a test installs one. Leaving the responder null keeps the default
+ * "fails loudly" behavior, which is what makes a *must-not-elicit* assertion self-enforcing.
  */
 internal class FakeConnection(override val sessionId: String = "test-session") : ClientConnection {
     private fun unused(): Nothing = throw UnsupportedOperationException("not used")
 
     val notifications: MutableList<ServerNotification> = mutableListOf()
+
+    /** Every `elicitation/create` this connection was asked to deliver, in order. */
+    val elicitations: MutableList<ElicitRequest> = mutableListOf()
+
+    /** How the "user" answers. Null (the default) means this test expects no elicitation at all. */
+    var elicitationResponder: (suspend (ElicitRequest) -> ElicitResult)? = null
 
     override suspend fun notification(notification: ServerNotification, relatedRequestId: RequestId?) {
         notifications += notification
@@ -98,7 +105,11 @@ internal class FakeConnection(override val sessionId: String = "test-session") :
         options: RequestOptions?,
     ): ElicitResult = unused()
 
-    override suspend fun createElicitation(request: ElicitRequest, options: RequestOptions?): ElicitResult = unused()
+    override suspend fun createElicitation(request: ElicitRequest, options: RequestOptions?): ElicitResult {
+        elicitations += request
+        return elicitationResponder?.invoke(request) ?: unused()
+    }
+
     override suspend fun sendLoggingMessage(notification: LoggingMessageNotification) = unused()
     override suspend fun sendResourceUpdated(notification: ResourceUpdatedNotification) = unused()
     override suspend fun sendResourceListChanged() = unused()
