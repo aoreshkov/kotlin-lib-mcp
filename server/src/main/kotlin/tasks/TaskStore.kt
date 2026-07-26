@@ -10,13 +10,17 @@ import java.time.Instant
 import java.time.format.DateTimeFormatter
 import java.util.UUID
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.coroutines.AbstractCoroutineContextElement
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
 /*
  * Task-augmented execution (SEP-1686) for tool calls.
@@ -66,6 +70,7 @@ private class TaskRecord(
     val label: String,
     val createdAt: Instant,
     val ttlMs: Long,
+    val onStatus: suspend (Task) -> Unit,
 ) {
     var status: TaskStatus = TaskStatus.Working
     var statusMessage: String? = null
@@ -97,6 +102,42 @@ internal class TaskNotReadyException(taskId: String, status: TaskStatus) :
     Exception("Task '$taskId' is still $status — poll tasks/get until it reports 'completed'")
 
 /**
+ * The running task, carried in the coroutine context so a tool body can report that it is waiting
+ * on the client without being written against tasks at all.
+ *
+ * A context element rather than a parameter for the same reason the OTel span is one
+ * (`telemetry/Telemetry.kt`): it has to cross `dispatchToolCall` → `guarded` → the tool → whatever
+ * the tool calls, including the `withContext(Dispatchers.Default)` hop inside `fetchLibrary`,
+ * without any of those signatures growing a task argument.
+ *
+ * Absent from the context means "not running as a task" — the plain synchronous `tools/call` path.
+ */
+class TaskContext internal constructor(
+    val taskId: String,
+    private val store: TaskStore,
+) : AbstractCoroutineContextElement(TaskContext) {
+
+    companion object Key : CoroutineContext.Key<TaskContext>
+
+    /**
+     * Runs [block] with the task parked in `input_required`, returning it to `working` afterwards —
+     * the spec's `working ⟷ input_required` leg, which tells a polling client to open
+     * `tasks/result` and pick up the server's question.
+     *
+     * The restore is in a `finally` so a declined, failed or cancelled elicitation cannot strand
+     * the task in `input_required` forever.
+     */
+    suspend fun <T> awaitingInput(message: String, block: suspend () -> T): T {
+        store.markInputRequired(taskId, message)
+        return try {
+            block()
+        } finally {
+            withContext(NonCancellable) { store.markWorking(taskId) }
+        }
+    }
+}
+
+/**
  * In-memory registry of running and recently-finished tasks.
  *
  * **Scope limit:** records live in this process only. A restart, or a second replica, cannot answer
@@ -125,6 +166,7 @@ class TaskStore(
             label = run.label,
             createdAt = now(),
             ttlMs = effectiveTtl(run.requested?.ttl),
+            onStatus = run.onStatus,
         )
         records[record.taskId] = record
         val initial = synchronized(record) { record.snapshot() }
@@ -135,7 +177,10 @@ class TaskStore(
             // first notification cannot race the CreateTaskResult it is about to receive.
             runCatching { run.onStatus(initial) }
             val outcome = try {
-                Outcome.Done(run.block())
+                // The body runs with a [TaskContext] in scope so that work which needs something
+                // from the client — an elicitation — can say so without any of the layers in
+                // between (`dispatchToolCall`, `guarded`, the tool itself) knowing about tasks.
+                Outcome.Done(withContext(TaskContext(record.taskId, this@TaskStore)) { run.block() })
             } catch (e: CancellationException) {
                 Outcome.Cancelled
             } catch (e: Exception) {
@@ -187,6 +232,23 @@ class TaskStore(
         }
     }
 
+    /**
+     * Reports that the task is blocked on something only the client can supply, per the spec's
+     * `input_required` status: the requestor is expected to notice it and call `tasks/result`, on
+     * whose stream the server-to-client request (an `elicitation/create`) is delivered.
+     *
+     * A no-op for a task that has already finished — a client cancelling at exactly the moment the
+     * body asks a question is a race the store must absorb, not a state-machine violation.
+     */
+    internal suspend fun markInputRequired(taskId: String, message: String) {
+        transition(taskId, TaskStatus.InputRequired, message)
+    }
+
+    /** Back to [TaskStatus.Working] once the client answered; the return leg of [markInputRequired]. */
+    internal suspend fun markWorking(taskId: String) {
+        transition(taskId, TaskStatus.Working, null)
+    }
+
     /** Cancels every in-flight task; called from `McpServerHandle.close()`. */
     override fun close() {
         scope.cancel()
@@ -224,6 +286,22 @@ class TaskStore(
         }
         // A client that has already disconnected must not turn into a failed task.
         runCatching { onStatus(snapshot) }
+    }
+
+    /**
+     * Moves a live task between the two non-terminal states and publishes the change. Terminal
+     * records are left alone: `completed`/`failed`/`cancelled` **MUST NOT** transition to anything.
+     */
+    private suspend fun transition(taskId: String, status: TaskStatus, message: String?) {
+        val record = records[taskId] ?: return
+        val snapshot = synchronized(record) {
+            if (record.terminal || record.status == status) return
+            record.status = status
+            record.statusMessage = message
+            record.lastUpdatedAt = now()
+            record.snapshot()
+        }
+        runCatching { record.onStatus(snapshot) }
     }
 
     private fun update(record: TaskRecord, mutate: () -> Unit): Task = synchronized(record) {

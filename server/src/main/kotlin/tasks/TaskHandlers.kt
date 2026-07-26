@@ -183,8 +183,12 @@ private suspend fun ClientConnection.sendTaskStatus(task: Task) {
     runCatching { notification(TaskStatusNotification(task.asNotificationParams())) }
 }
 
-/** `_meta` marking a message as belonging to [taskId] (the spec's one unprefixed-key carve-out). */
-private fun relatedTaskMeta(taskId: String): JsonObject = buildJsonObject {
+/**
+ * `_meta` marking a message as belonging to [taskId]. The spec requires it on **every** message
+ * related to a task — including the server-to-client requests a task's body makes, which is why
+ * this is shared with `elicitation/VersionElicitation.kt` rather than private here.
+ */
+internal fun relatedTaskMeta(taskId: String): JsonObject = buildJsonObject {
     put(RELATED_TASK_META_KEY, buildJsonObject { put("taskId", taskId) })
 }
 

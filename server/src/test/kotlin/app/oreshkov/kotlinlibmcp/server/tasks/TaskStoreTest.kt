@@ -17,6 +17,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
 import kotlinx.coroutines.test.runTest
@@ -205,6 +206,75 @@ class TaskStoreTest {
         // The first status is published from inside the job, so a client watching
         // notifications/tasks/status cannot miss the `working` edge.
         assertEquals(listOf(TaskStatus.Working, TaskStatus.Completed), seen)
+        store.close()
+    }
+
+    @Test
+    fun inputRequiredIsANonTerminalRoundTripAndIsNotSwept() = runTest {
+        var clock = Instant.parse("2026-07-25T10:00:00Z")
+        val store = TestScopeStore(
+            CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)),
+            now = { clock },
+        )
+        val gate = CompletableDeferred<Unit>()
+        val seen = mutableListOf<TaskStatus>()
+
+        val started = store.start(
+            taskRun(requested = TaskMetadata(ttl = 1_000), onStatus = { seen += it.status }) {
+                currentCoroutineContext()[TaskContext]!!.awaitingInput("Need a version") { gate.await() }
+                ok()
+            }
+        )
+        advanceUntilIdle()
+
+        assertEquals(TaskStatus.InputRequired, store.get(started.taskId).status)
+        assertEquals("Need a version", store.get(started.taskId).statusMessage)
+
+        // A task waiting on a human is emphatically not finished, so the TTL sweep must leave it be.
+        clock = clock.plusSeconds(60)
+        assertEquals(TaskStatus.InputRequired, store.get(started.taskId).status)
+
+        gate.complete(Unit)
+        advanceUntilIdle()
+
+        assertEquals(
+            listOf(TaskStatus.Working, TaskStatus.InputRequired, TaskStatus.Working, TaskStatus.Completed),
+            seen,
+        )
+        store.close()
+    }
+
+    @Test
+    fun aFailedElicitationStillReturnsTheTaskToWorking() = runTest {
+        val store = TestScopeStore(CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)))
+
+        val started = store.start(
+            taskRun {
+                val task = currentCoroutineContext()[TaskContext]!!
+                runCatching { task.awaitingInput("Need a version") { error("client exploded") } }
+                ok()
+            }
+        )
+        advanceUntilIdle()
+
+        // The restore is in a finally: a question that errors must not strand the task in
+        // input_required, where a client would poll forever waiting for a prompt that never comes.
+        assertEquals(TaskStatus.Completed, store.get(started.taskId).status)
+        store.close()
+    }
+
+    @Test
+    fun aTerminalTaskNeverGoesBackToInputRequired() = runTest {
+        val store = TestScopeStore(CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)))
+
+        val started = store.start(taskRun { ok() })
+        advanceUntilIdle()
+        assertEquals(TaskStatus.Completed, store.get(started.taskId).status)
+
+        // completed/failed/cancelled MUST NOT transition to any other status — including by a
+        // straggling coroutine from a body that raced the store.
+        store.markInputRequired(started.taskId, "too late")
+        assertEquals(TaskStatus.Completed, store.get(started.taskId).status)
         store.close()
     }
 

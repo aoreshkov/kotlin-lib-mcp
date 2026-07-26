@@ -76,13 +76,32 @@ capability** (Kermit logs mirror to clients via `attachMcpLogForwarder`; `Loggin
 behind `--forward-logs-to-client`. `fetch_library` emits **progress notifications** when the request
 carries a `progressToken`.
 
+**Elicitation** (`elicitation/VersionElicitation.kt`): a version-less `fetch_library` coordinate asks the
+user to pick a version via a **form-mode** `elicitation/create` — SEP-1330's titled `oneOf` single-select,
+default = latest stable. Gated purely on the client advertising `elicitation` (no flag); `accept` → that
+version, `decline` → latest stable, `cancel` → `isError`. **Everything elicitation-related lives in that one
+file on purpose**: the draft 2026-07-28 spec replaces this nested-request shape with MRTR
+(`InputRequiredResult` + a client retry), so the migration should be a single-file rewrite. Two traps:
+`ClientConnection` (the tool handler's receiver) exposes **only `sessionId`** — capabilities come from
+`server.sessions[sessionId]?.clientCapabilities`; and a client may advertise **url-mode only**, which must
+not be answered with a form (see `supportsForm`, the counterpart of the SDK's `supportsUrl`).
+
+Elicitation only works at all because of **`transport/ConcurrentDispatchTransport.kt`**: the SDK's stdio
+pipeline handles one frame at a time, so a server→client request issued *inside* a tool handler would
+otherwise deadlock on its own answer. The wrapper launches non-`initialize` requests and keeps
+notifications and responses inline. Details and the "don't undo this" warning are in
+`.claude/rules/mcp-server.md`.
+
 **Tasks (SEP-1686)** are **opt-in** behind `--tasks`, **stdio only** (`tasks/TaskStore.kt`,
 `tasks/TaskHandlers.kt`): `fetch_library` declares `execution.taskSupport: "optional"`, a
 task-augmented `tools/call` returns a handle immediately, and `tasks/get`/`result`/`list`/`cancel`
 plus `notifications/tasks/status` are served. The SDK ships the wire types but **no execution
 engine** — `Server.handleCallTool` ignores `params.task` — so we replace the `tools/call` handler
 via `Protocol.setRequestHandler`; the non-task path must stay identical to the SDK's, which
-`TaskDispatchTest` pins. Task records are in-memory (process-local).
+`TaskDispatchTest` pins. Task records are in-memory (process-local). A task whose body needs client
+input parks in `TaskStatus.InputRequired` and back: `TaskStore.start` puts a `TaskContext` in the
+**coroutine context** (same trick as the OTel span) so a tool body can call `awaitingInput { }` without
+any layer between it and the store knowing about tasks.
 
 **OTel traces** over OTLP/HTTP are **opt-in** behind `--otel` (`telemetry/Telemetry.kt`): one
 `SERVER` span per MCP request, opened in `guarded`/`resourceSpan`/`promptSpan`/`completionSpan`,

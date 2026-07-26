@@ -119,6 +119,38 @@ stdio logging); the deprecated MCP **logging capability** — mirroring logs to 
 `notifications/message` (respecting `logging/setLevel`) — is **opt-in** via `--forward-logs-to-client`,
 for stdio clients that surface MCP log messages but drop stderr.
 
+### Elicitation
+
+When `fetch_library` is called without a version (`io.ktor:ktor-client-core`, or `…:latest`) it has
+to guess. If the client advertised the **`elicitation`** capability, it asks instead: an
+`elicitation/create` **form-mode** request carrying a single-select version picker — the titled
+`oneOf` shape from SEP-1330, with the latest stable release pre-selected as the schema `default`.
+
+| The user | The server |
+|---|---|
+| **accepts** a version | fetches exactly that one |
+| **declines** | fetches the latest stable release, as it always did |
+| **cancels** (dismissed the dialog) | downloads nothing and returns a tool error saying to call `fetch_library` again with an explicit `group:artifact:version` |
+
+There is no flag: capability negotiation *is* the opt-in. A client that advertises nothing — or
+advertises **url-mode only**, which servers must not answer with a form — keeps the previous silent
+latest-stable behavior exactly. Only public Maven version numbers are ever requested, so form mode
+is appropriate; URL mode exists for credentials and third-party authorization, and is deliberately
+unused here. Accepted values are validated against the offered list before they reach a repository
+URL, and a client that errors mid-question falls back to the default rather than failing the fetch.
+
+Under `--tasks`, a task-augmented `fetch_library` parks in the **`input_required`** status while the
+question is outstanding and returns to `working` once answered; the `elicitation/create` carries the
+`io.modelcontextprotocol/related-task` `_meta` tying it to the task.
+
+> **Note on concurrency.** The Kotlin SDK's stdio transport processes one frame at a time and waits
+> for each request handler to finish before reading the next, so a server-initiated request made
+> from inside a tool call could never be answered — the reply would be stuck behind the very handler
+> waiting for it. The stdio transport is therefore wrapped so that requests other than `initialize`
+> are dispatched concurrently, while notifications and responses stay inline and ordered. Besides
+> making elicitation possible, this means `ping`, `tasks/get` and `notifications/cancelled` are
+> answered promptly during a long `fetch_library` instead of queueing behind it.
+
 ## Telemetry
 
 Pass **`--otel`** to export a trace span for every MCP request (`tools/call`, `resources/read`,
