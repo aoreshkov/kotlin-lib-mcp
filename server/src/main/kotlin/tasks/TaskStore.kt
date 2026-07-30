@@ -64,9 +64,13 @@ class TaskRun(
 /**
  * One tracked task. [status]/[statusMessage]/[lastUpdatedAt] change as the work progresses; the rest
  * is fixed at creation. Guarded by the record's own monitor so [snapshot] never observes a torn state.
+ *
+ * [owner] is the `sessionId` of the MCP session that created the task, and is what every
+ * client-facing lookup is filtered by — see [TaskStore].
  */
 private class TaskRecord(
     val taskId: String,
+    val owner: String,
     val label: String,
     val createdAt: Instant,
     val ttlMs: Long,
@@ -140,6 +144,17 @@ class TaskContext internal constructor(
 /**
  * In-memory registry of running and recently-finished tasks.
  *
+ * **Tasks belong to the session that created them.** Every client-facing operation takes the
+ * caller's `sessionId` as `owner` and will not see another session's records: a `taskId` belonging
+ * to someone else is reported as [UnknownTaskException], exactly as an id that never existed, so
+ * the error cannot be used to probe for other sessions' tasks. Task ids are unguessable UUIDs
+ * anyway; the scoping is what makes `tasks/list` safe, since it would otherwise enumerate every
+ * client's work — and `tasks/result` payloads are full tool results.
+ *
+ * With one stdio client this is invisible. It matters the moment more than one session exists,
+ * which is the normal case for the Streamable HTTP transport (`mcpStreamableHttp` creates a session
+ * per connection).
+ *
  * **Scope limit:** records live in this process only. A restart, or a second replica, cannot answer
  * `tasks/get` for a task started elsewhere. The expensive half of the work *is* already durable —
  * the on-disk library cache — so a warm coordinate replays as an all-but-instantly `Completed`
@@ -153,16 +168,17 @@ class TaskStore(
     private val records = ConcurrentHashMap<String, TaskRecord>()
 
     /**
-     * Registers a task, launches [TaskRun.block] on this store's own scope, and returns the initial
-     * `working` snapshot for an immediate `CreateTaskResult`.
+     * Registers a task owned by [owner], launches [TaskRun.block] on this store's own scope, and
+     * returns the initial `working` snapshot for an immediate `CreateTaskResult`.
      *
      * The work is deliberately **not** launched in the caller's coroutine: the `tools/call` response
      * must go back before the tool finishes, which is the whole point of a task.
      */
-    fun start(run: TaskRun): Task {
+    fun start(owner: String, run: TaskRun): Task {
         sweepExpired()
         val record = TaskRecord(
             taskId = UUID.randomUUID().toString(),
+            owner = owner,
             label = run.label,
             createdAt = now(),
             ttlMs = effectiveTtl(run.requested?.ttl),
@@ -191,13 +207,15 @@ class TaskStore(
         return initial
     }
 
-    /** Current state of [taskId] (`tasks/get`). */
-    fun get(taskId: String): Task = withRecord(taskId) { synchronized(it) { it.snapshot() } }
+    /** Current state of [owner]'s [taskId] (`tasks/get`). */
+    fun get(owner: String, taskId: String): Task =
+        withRecord(owner, taskId) { synchronized(it) { it.snapshot() } }
 
-    /** Every live task, newest first (`tasks/list`). */
-    fun list(): List<Task> {
+    /** [owner]'s live tasks, newest first (`tasks/list`) — never another session's. */
+    fun list(owner: String): List<Task> {
         sweepExpired()
         return records.values
+            .filter { it.owner == owner }
             .map { synchronized(it) { it.snapshot() } }
             .sortedByDescending { it.createdAt }
     }
@@ -206,7 +224,7 @@ class TaskStore(
      * The finished tool result (`tasks/result`). A tool that reported `isError` still *completed* —
      * the payload carries the error, so it is returned rather than raised.
      */
-    fun payload(taskId: String): CallToolResult = withRecord(taskId) { record ->
+    fun payload(owner: String, taskId: String): CallToolResult = withRecord(owner, taskId) { record ->
         synchronized(record) {
             record.result ?: throw TaskNotReadyException(taskId, record.status)
         }
@@ -218,8 +236,8 @@ class TaskStore(
      * in-flight download/analysis stops rather than running on unobserved. Terminal tasks are
      * returned unchanged — cancelling a finished task is a no-op, not an error.
      */
-    fun cancel(taskId: String): Task {
-        val record = withRecord(taskId) { it }
+    fun cancel(owner: String, taskId: String): Task {
+        val record = withRecord(owner, taskId) { it }
         val job = synchronized(record) { if (record.terminal) return record.snapshot() else record.job }
         job?.cancel()
         // The job's own CancellationException path publishes `cancelled`; report it now so the
@@ -310,9 +328,17 @@ class TaskStore(
         record.snapshot()
     }
 
-    private fun <T> withRecord(taskId: String, block: (TaskRecord) -> T): T {
+    /**
+     * Resolves a client-supplied [taskId] within [owner]'s tasks.
+     *
+     * A record owned by a different session raises the *same* [UnknownTaskException] as a missing
+     * one, deliberately: distinguishing "not yours" from "not here" would turn `tasks/get` into an
+     * oracle for other sessions' task ids.
+     */
+    private fun <T> withRecord(owner: String, taskId: String, block: (TaskRecord) -> T): T {
         sweepExpired()
-        return block(records[taskId] ?: throw UnknownTaskException(taskId))
+        val record = records[taskId]?.takeIf { it.owner == owner } ?: throw UnknownTaskException(taskId)
+        return block(record)
     }
 
     /**

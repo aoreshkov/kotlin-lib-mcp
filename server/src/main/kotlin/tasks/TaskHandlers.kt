@@ -53,11 +53,16 @@ import kotlinx.serialization.json.put
  */
 
 /**
- * Installs task support on [session]. Call once per session, after `Server.createSession`.
+ * Installs task support on this session. Call once per session, after `Server.createSession`.
  *
  * Only registered for the stdio transport today: `runStdioServer` owns the `ServerSession`, whereas
  * the HTTP transport hands session creation to the SDK's `mcpStreamableHttp`, which exposes no
- * per-session hook. The capability is advertised to match (see `serverCapabilities`).
+ * per-session hook (`Server.onConnect` takes no session argument). The capability is advertised to
+ * match (see `serverCapabilities`).
+ *
+ * [store] is shared across sessions, so every lookup below passes this session's `sessionId` as the
+ * owner — see `TaskStore`. That holds regardless of transport, so lifting the stdio restriction is
+ * a question of finding a registration hook, not of task visibility.
  */
 fun ServerSession.registerTaskHandlers(server: Server, store: TaskStore) {
     // Replaces the SDK's own tools/call handler; see [dispatchToolCall] for the passthrough contract.
@@ -65,9 +70,11 @@ fun ServerSession.registerTaskHandlers(server: Server, store: TaskStore) {
         dispatchToolCall(server.tools, server.clientConnection(sessionId), store, request)
     }
 
+    // Every lookup below is scoped to this session: the store holds tasks for all of them, and one
+    // client must never see (or cancel) another's. See `TaskStore`.
     setRequestHandler<GetTaskRequest>(Method.Defined.TasksGet) { request, _ ->
         taskSpan(METHOD_TASKS_GET, sessionId, request.params.meta) {
-            mapTaskErrors { store.get(request.taskId).asGetTaskResult() }
+            mapTaskErrors { store.get(sessionId, request.taskId).asGetTaskResult() }
         }
     }
 
@@ -76,21 +83,23 @@ fun ServerSession.registerTaskHandlers(server: Server, store: TaskStore) {
             mapTaskErrors {
                 // tasks/result returns the original request's result shape verbatim — for a
                 // tools/call task that is a CallToolResult, re-encoded as the raw payload object.
-                GetTaskPayloadResult(McpJson.encodeToJsonElement(store.payload(request.taskId)) as JsonObject)
+                GetTaskPayloadResult(
+                    McpJson.encodeToJsonElement(store.payload(sessionId, request.taskId)) as JsonObject
+                )
             }
         }
     }
 
     setRequestHandler<ListTasksRequest>(Method.Defined.TasksList) { request, _ ->
         taskSpan(METHOD_TASKS_LIST, sessionId, request.params?.meta) {
-            // The store is process-local and self-expiring, so the whole list fits one page.
-            ListTasksResult(tasks = store.list(), nextCursor = null)
+            // This session's tasks are process-local and self-expiring, so they fit one page.
+            ListTasksResult(tasks = store.list(sessionId), nextCursor = null)
         }
     }
 
     setRequestHandler<CancelTaskRequest>(Method.Defined.TasksCancel) { request, _ ->
         taskSpan(METHOD_TASKS_CANCEL, sessionId, request.params.meta) {
-            mapTaskErrors { store.cancel(request.taskId).asGetTaskResult() }
+            mapTaskErrors { store.cancel(sessionId, request.taskId).asGetTaskResult() }
         }
     }
 }
@@ -135,7 +144,13 @@ internal suspend fun dispatchToolCall(
 private val RegisteredTool.acceptsTasks: Boolean
     get() = tool.execution?.taskSupport.let { it == TaskSupport.Optional || it == TaskSupport.Required }
 
-/** Hands the call to [TaskStore] and answers immediately with the `working` handle. */
+/**
+ * Hands the call to [TaskStore] and answers immediately with the `working` handle.
+ *
+ * The task is owned by the calling session — `ClientConnection.sessionId` is the same id the
+ * `tasks/…` handlers scope their lookups by, since the connection is the one the SDK built for that
+ * session.
+ */
 private fun startTask(
     store: TaskStore,
     connection: ClientConnection,
@@ -143,7 +158,8 @@ private fun startTask(
     request: CallToolRequest,
 ): CreateTaskResult {
     val task = store.start(
-        TaskRun(
+        owner = connection.sessionId,
+        run = TaskRun(
             label = request.name,
             requested = request.task,
             onStatus = { connection.sendTaskStatus(it) },
