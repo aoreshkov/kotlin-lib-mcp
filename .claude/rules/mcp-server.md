@@ -56,6 +56,16 @@ The `tasks` capability and the handlers are both driven by `ServerConfig.tasksEn
 never disagree; advertising the capability without handlers makes the SDK route methods that answer
 nothing.
 
+**Tasks are owned by a session.** One `TaskStore` serves every session, so every client-facing
+operation takes the caller's `sessionId` as `owner` and filters by it — `dispatchToolCall` takes it
+from `ClientConnection.sessionId`, the `tasks/…` handlers from `ServerSession.sessionId`, and they
+are the same id by construction. A `taskId` belonging to another session raises the *same*
+`UnknownTaskException` as one that never existed; keep it that way, or the error becomes an oracle
+for other sessions' ids. This is invisible with a single stdio client and load-bearing the moment
+the HTTP transport is allowed to run tasks, since `mcpStreamableHttp` creates a session per
+connection and `tasks/result` returns whole tool results. Never add an unscoped `list()`/`get()`
+back to `TaskStore`.
+
 **Dispatch concurrency is the SDK's job now (0.15.0):** `Protocol` launches inbound requests and
 notifications on a per-connection handler scope once `notifications/initialized` has arrived,
 keeping responses inline and letting `ping`/`cancelled`/`progress`/`initialized` bypass its

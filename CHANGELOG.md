@@ -45,6 +45,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tag guard drops its third-file check accordingly.
 
 ### Fixed
+- **Tasks are now scoped to the session that created them.** `TaskStore` held a flat registry and
+  `tasks/list` returned every record, so any client could enumerate — and `tasks/get`,
+  `tasks/result` and `tasks/cancel` could read, retrieve and kill — another client's tasks and
+  their full tool results. Unreachable today because `--tasks` is stdio-only (one session per
+  process), but a prerequisite for ever enabling it on the HTTP transport, where
+  `mcpStreamableHttp` creates a session per connection. A `taskId` owned by another session now
+  raises the same `UnknownTaskException` as one that never existed, so the error cannot be used to
+  probe for other sessions' ids.
 - **`kotlinx.collections.immutable` classpath shadowing.** `kotlin-compiler` (pulled in by `:core`
   for the Analysis API) bundles 127 classes of an unrelocated pre-0.5 copy, which wins on the
   runtime classpath. kotlin-sdk 0.15.0 rewrote `Protocol` and `FeatureRegistry` around the newer

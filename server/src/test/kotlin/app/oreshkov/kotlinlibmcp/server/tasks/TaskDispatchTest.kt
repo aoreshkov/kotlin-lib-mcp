@@ -71,13 +71,14 @@ class TaskDispatchTest {
     fun aCallWithoutTaskRunsSynchronouslyEvenForATaskableTool() = runTest {
         val store = store(testScheduler)
 
-        val result = dispatchToolCall(tools, FakeConnection(), store, call("taskable"))
+        val connection = FakeConnection()
+        val result = dispatchToolCall(tools, connection, store, call("taskable"))
 
         // `taskSupport: optional` is an offer, not a redirect: a client that does not ask for a
         // task keeps getting a plain CallToolResult.
         val callResult = assertIs<CallToolResult>(result)
         assertEquals("ran", (callResult.content.single() as TextContent).text)
-        assertTrue(store.list().isEmpty(), "a non-task call must not create a task")
+        assertTrue(store.list(connection.sessionId).isEmpty(), "a non-task call must not create a task")
         store.close()
     }
 
@@ -85,12 +86,13 @@ class TaskDispatchTest {
     fun aTaskOnANonTaskableToolDegradesToASynchronousCall() = runTest {
         val store = store(testScheduler)
 
-        val result = dispatchToolCall(tools, FakeConnection(), store, call("plain", TaskMetadata()))
+        val connection = FakeConnection()
+        val result = dispatchToolCall(tools, connection, store, call("plain", TaskMetadata()))
 
         // Absent `execution` means Forbidden per the spec. Serving the call normally is friendlier
         // than failing, and the client still gets its answer.
         assertIs<CallToolResult>(result)
-        assertTrue(store.list().isEmpty())
+        assertTrue(store.list(connection.sessionId).isEmpty())
         store.close()
     }
 
@@ -150,8 +152,11 @@ class TaskDispatchTest {
 
         advanceUntilIdle()
 
-        assertEquals(TaskStatus.Completed, store.get(created.task.taskId).status)
-        assertEquals("ran", (store.payload(created.task.taskId).content.single() as TextContent).text)
+        assertEquals(TaskStatus.Completed, store.get(connection.sessionId, created.task.taskId).status)
+        assertEquals(
+            "ran",
+            (store.payload(connection.sessionId, created.task.taskId).content.single() as TextContent).text,
+        )
         store.close()
     }
 
@@ -201,7 +206,7 @@ class TaskDispatchTest {
 
         // The client polling tasks/get now sees input_required, its cue to open tasks/result and
         // pick up the question the server is holding.
-        val parked = store.get(created.task.taskId)
+        val parked = store.get(connection.sessionId, created.task.taskId)
         assertEquals(TaskStatus.InputRequired, parked.status)
         assertEquals("Waiting for an answer", parked.statusMessage)
         assertEquals(created.task.taskId, seenTaskId)
@@ -214,7 +219,7 @@ class TaskDispatchTest {
             listOf(TaskStatus.Working, TaskStatus.InputRequired, TaskStatus.Working, TaskStatus.Completed),
             connection.notifications.filterIsInstance<TaskStatusNotification>().map { it.params?.status },
         )
-        assertEquals(TaskStatus.Completed, store.get(created.task.taskId).status)
+        assertEquals(TaskStatus.Completed, store.get(connection.sessionId, created.task.taskId).status)
         store.close()
     }
 
@@ -227,16 +232,37 @@ class TaskDispatchTest {
             CallToolResult(content = listOf(TextContent("ran")))
         }
 
+        val connection = FakeConnection()
         val created = assertIs<CreateTaskResult>(
-            dispatchToolCall(mapOf("asking" to asking), FakeConnection(), store, call("asking", TaskMetadata()))
+            dispatchToolCall(mapOf("asking" to asking), connection, store, call("asking", TaskMetadata()))
         )
         advanceUntilIdle()
-        assertEquals(TaskStatus.InputRequired, store.get(created.task.taskId).status)
+        assertEquals(TaskStatus.InputRequired, store.get(connection.sessionId, created.task.taskId).status)
 
         // A user who abandons the prompt must not strand the task waiting forever.
-        assertEquals(TaskStatus.Cancelled, store.cancel(created.task.taskId).status)
+        assertEquals(TaskStatus.Cancelled, store.cancel(connection.sessionId, created.task.taskId).status)
         advanceUntilIdle()
-        assertEquals(TaskStatus.Cancelled, store.get(created.task.taskId).status)
+        assertEquals(TaskStatus.Cancelled, store.get(connection.sessionId, created.task.taskId).status)
+        store.close()
+    }
+
+    @Test
+    fun aTaskIsOwnedByTheSessionThatDispatchedIt() = runTest {
+        val store = store(testScheduler)
+        val alice = FakeConnection(sessionId = "alice")
+        val bob = FakeConnection(sessionId = "bob")
+
+        val created = assertIs<CreateTaskResult>(
+            dispatchToolCall(tools, alice, store, call("taskable", TaskMetadata()))
+        )
+        advanceUntilIdle()
+
+        // dispatchToolCall takes the owner from the ClientConnection it was handed, which is the
+        // same session the tasks/… handlers scope their lookups by. Without that, `tasks/list` on
+        // the HTTP transport would enumerate every connected client's work.
+        assertEquals(listOf(created.task.taskId), store.list("alice").map { it.taskId })
+        assertTrue(store.list(bob.sessionId).isEmpty(), "bob must not see alice's task")
+        assertFailsWith<UnknownTaskException> { store.payload(bob.sessionId, created.task.taskId) }
         store.close()
     }
 }
