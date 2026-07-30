@@ -21,20 +21,30 @@ listeners, so `resources/list` stays live). The trap is `ToolSupport.kt`'s `addT
 drop its `icon` argument and the call silently resolves back to the SDK's iconless *member*
 overload and still compiles. `ToolRegistrationTest.everyToolDeclaresADistinctIcon` pins that.
 
-**Resource templates gotcha:** the SDK's default `PathSegmentTemplateMatcher` throws
-`NoSuchMethodError` at runtime — `kotlin-compiler` (via `core`) bundles an old unrelocated
-`kotlinx.collections.immutable` that shadows the SDK's. `ServerOptions` must keep the custom
-`segmentTemplateMatcherFactory` (`server/.../resources/SegmentTemplateMatcher.kt`).
+**Classpath-shadowing gotcha:** `kotlin-compiler` (via `core`) is a fat jar bundling old,
+*unrelocated* copies of libraries we also depend on for real, and the first copy on the classpath
+wins. Gradle sorts the genuine artifacts well behind it (shared transitives sort late, so
+declaration order does **not** fix it), so `server/build.gradle.kts` hoists the real jars to the
+front of the `test`, `run` and `startScripts` classpaths (`hoistOverKotlinCompiler`). Two families
+are known:
+
+- `kotlinx.collections.immutable` — 127 classes of a pre-0.5 release. Since kotlin-sdk 0.15.0 built
+  `Protocol` and `FeatureRegistry` on the newer `PersistentMap.putting`/`removing`, this took out
+  `Server.addTool` itself; before that it only surfaced inside the SDK's `PathSegmentTemplateMatcher`,
+  which is why `resources/SegmentTemplateMatcher.kt` exists and why `ServerOptions` passes
+  `segmentTemplateMatcherFactory`. The hoist likely makes the SDK's own matcher viable again, but the
+  custom one is tested and in use — don't swap it without re-verifying at runtime, not just in tests.
+- `io.opentelemetry.api` 1.41.0 — see below.
+
+When adding any dependency `kotlin-compiler` might also bundle, check with
+`unzip -l <kotlin-compiler.jar> | grep <package-path>` before trusting the classpath.
 
 **Same trap, OpenTelemetry:** `kotlin-compiler` also bundles ~83 *stripped stubs* of an old
 unrelocated `io.opentelemetry.api` (1.41.0 — `Attributes`, `OpenTelemetry`, `Tracer`,
-`TracerProvider` are empty shells). Gradle sorts the real `opentelemetry-api` well behind that fat
-jar on the runtime classpath, so the stubs win and `--otel` dies with
-`NoSuchMethodError: Attributes.empty()`. Declaration order does **not** fix it; `server/build.gradle.kts`
-hoists the genuine OTel jars to the front of the `test`, `run` and `startScripts` classpaths
-(`hoistOpenTelemetry`). Keep that in place, and when adding any dependency that `kotlin-compiler`
-might also bundle, check with
-`unzip -l <kotlin-compiler.jar> | grep <package-path>` before trusting the classpath.
+`TracerProvider` are empty shells), so without the hoist above `--otel` dies with
+`NoSuchMethodError: Attributes.empty()`. Keep both prefixes in `hoistOverKotlinCompiler`'s list, and
+keep that list *local to the function* — a script-level `val` captured in the filter is a Gradle
+script object reference and the configuration cache refuses to serialize it.
 
 **Tasks gotcha:** `tasks/TaskHandlers.kt` **replaces** the SDK's `tools/call` handler (that is the
 only way to answer with a `CreateTaskResult` — `Server.handleCallTool` is hard-typed to
@@ -46,15 +56,22 @@ The `tasks` capability and the handlers are both driven by `ServerConfig.tasksEn
 never disagree; advertising the capability without handlers makes the SDK route methods that answer
 nothing.
 
-**Serial-dispatch gotcha (why `ConcurrentDispatchTransport` exists):** in kotlin-sdk 0.14.0 the stdio
-pipeline is strictly one-frame-at-a-time — `StdioServerTransport.processorPump` awaits `onMessage`
-before reading the next frame, and `Protocol.onRequest` awaits the handler inline. So **any**
-server-to-client request made from inside a tool handler (an `elicitation/create`, sampling, roots)
-deadlocks forever: the client's answer is sitting in the pipe, unread, behind the handler waiting for
-it. `transport/ConcurrentDispatchTransport.kt` wraps the SDK transport and `launch`es non-`initialize`
-*requests*, leaving `initialize`, notifications and **responses** inline (responses must stay inline —
-`Protocol.onResponse` only completes the waiting deferred). Do not remove it, and do not add an
-`await` to the inline path. `ConcurrentDispatchTransportTest` pins both halves.
+**Dispatch concurrency is the SDK's job now (0.15.0):** `Protocol` launches inbound requests and
+notifications on a per-connection handler scope once `notifications/initialized` has arrived,
+keeping responses inline and letting `ping`/`cancelled`/`progress`/`initialized` bypass its
+concurrency bounds. Up to 0.14.0 the stdio pipeline was strictly one-frame-at-a-time, so any
+server-to-client request from inside a tool handler (an `elicitation/create`, sampling, roots)
+deadlocked forever; `transport/ConcurrentDispatchTransport.kt` existed solely to break that and was
+**deleted** in the 0.15.0 bump. Do not reintroduce a decorator like it — launching frames before
+`Protocol` sees them defeats its `CoroutineStart.UNDISPATCHED` arrival-order guarantee and races
+`notifications/cancelled` against the in-flight registration it depends on.
+
+Two obligations this puts on our code, both already satisfied — keep them that way:
+always re-throw `CancellationException` from handlers (that is what makes a withdrawn
+`tools/call` actually stop the download), and never replace a control-method handler
+(`ping`, `notifications/cancelled`, `notifications/progress`, `notifications/initialized`) with slow
+code — replacing `cancelled` disables inbound cancellation outright. `ConcurrentDispatchTest` pins
+the anti-deadlock property, the serial handshake, and cancellation.
 
 **Telemetry authoring:** every MCP entry point opens its span through the helpers in
 `server/.../telemetry/Telemetry.kt` (`guarded` for tools — it is a `ClientConnection` extension so

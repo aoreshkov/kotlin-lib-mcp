@@ -18,6 +18,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tools/list`.
 
 ### Changed
+- **MCP Kotlin SDK 0.14.0 → 0.15.0.** The wire types are unchanged; the substance is that
+  `Protocol` now dispatches inbound handlers concurrently itself (bounded, order-preserving, gated
+  on `notifications/initialized`) and tracks in-flight requests so `notifications/cancelled`
+  genuinely cancels the running handler. Consequences:
+  - `transport/ConcurrentDispatchTransport.kt`, which existed only to stop a nested
+    `elicitation/create` deadlocking the single-threaded stdio pipeline, was **deleted**. The
+    behaviour it provided is now the SDK's, and is exercised by `ConcurrentDispatchTest`.
+  - **A long `fetch_library` can now be cancelled by the client** and the download actually stops,
+    rather than running on unobserved.
+  - Concurrent dispatch was previously stdio-only; it is now a `Protocol` property, so elicitation
+    from inside a tool works over Streamable HTTP too.
+- `fetch_library` progress notifications now carry `relatedRequestId`, so Streamable HTTP routes
+  them onto the originating `tools/call`'s SSE stream instead of the standalone one.
+- The HTTP transport now sends an **SSE heartbeat** every 30s. The SDK's default is none, and a
+  `fetch_library` that downloads and parses a large library can idle past a proxy's timeout.
+
 - **Logging capability retired to opt-in** (MCP 2025-11-25 blesses stderr for all stdio
   logging): the server no longer advertises the deprecated `logging` capability by default,
   and log-forwarding to clients (`notifications/message`) is now gated behind the new
@@ -27,6 +43,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   (baked into a classpath resource read by `ServerVersion`) instead of a hand-maintained
   `SERVER_VERSION` constant, so it can never drift from the release version. The release
   tag guard drops its third-file check accordingly.
+
+### Fixed
+- **`kotlinx.collections.immutable` classpath shadowing.** `kotlin-compiler` (pulled in by `:core`
+  for the Analysis API) bundles 127 classes of an unrelocated pre-0.5 copy, which wins on the
+  runtime classpath. kotlin-sdk 0.15.0 rewrote `Protocol` and `FeatureRegistry` around the newer
+  `PersistentMap.putting`/`removing`, so even `Server.addTool` threw `NoSuchMethodError` at startup.
+  `server/build.gradle.kts` now hoists the genuine jar ahead of `kotlin-compiler` on the `test`,
+  `run` and `startScripts` classpaths, alongside the OpenTelemetry jars that already needed it.
 
 ## [0.3.0] - 2026-07-14
 

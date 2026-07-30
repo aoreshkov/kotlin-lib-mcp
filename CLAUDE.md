@@ -34,7 +34,7 @@ compile automatically when Kotlin sources changed (`.claude/hooks/stop-verify.sh
 
 ## Tech stack (versions live ONLY in `gradle/libs.versions.toml`)
 
-- Kotlin **2.4.x** · MCP `io.modelcontextprotocol:kotlin-sdk-server:0.14.0` · Ktor **3.5.x**
+- Kotlin **2.4.x** · MCP `io.modelcontextprotocol:kotlin-sdk-server:0.15.0` · Ktor **3.5.x**
 - kotlinx-serialization-json · kotlinx-coroutines
 - Source parsing: Kotlin **Analysis API (standalone mode)** — must be version-matched to Kotlin
 - `kotlin-metadata-jvm` (optional API cross-check) · Compose Multiplatform (Desktop)
@@ -86,11 +86,12 @@ file on purpose**: the draft 2026-07-28 spec replaces this nested-request shape 
 `server.sessions[sessionId]?.clientCapabilities`; and a client may advertise **url-mode only**, which must
 not be answered with a form (see `supportsForm`, the counterpart of the SDK's `supportsUrl`).
 
-Elicitation only works at all because of **`transport/ConcurrentDispatchTransport.kt`**: the SDK's stdio
-pipeline handles one frame at a time, so a server→client request issued *inside* a tool handler would
-otherwise deadlock on its own answer. The wrapper launches non-`initialize` requests and keeps
-notifications and responses inline. Details and the "don't undo this" warning are in
-`.claude/rules/mcp-server.md`.
+Elicitation only works at all because **`Protocol` dispatches inbound requests concurrently** once
+`notifications/initialized` has arrived — otherwise a server→client request issued *inside* a tool
+handler would deadlock on its own answer, since the reply sits unread behind the handler waiting for
+it. That is the SDK's own behaviour as of 0.15.0; up to 0.14.0 it took a local decorator
+(`transport/ConcurrentDispatchTransport.kt`, now deleted). `ConcurrentDispatchTest` pins it and
+`.claude/rules/mcp-server.md` explains what must not be reintroduced.
 
 **Tasks (SEP-1686)** are **opt-in** behind `--tasks`, **stdio only** (`tasks/TaskStore.kt`,
 `tasks/TaskHandlers.kt`): `fetch_library` declares `execution.taskSupport: "optional"`, a

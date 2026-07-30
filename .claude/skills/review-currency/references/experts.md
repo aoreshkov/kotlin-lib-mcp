@@ -43,7 +43,7 @@ Streamable HTTP).
 
 **Research (official sources only):** modelcontextprotocol.io — current spec revision
 and changelog; github.com/modelcontextprotocol/kotlin-sdk releases (latest
-`kotlin-sdk-server` version and migration notes since 0.14.0); MCP registry docs and
+`kotlin-sdk-server` version and migration notes since the pinned version); MCP registry docs and
 current `server.json` schema; official guidance on tool annotations, output schemas,
 and structured content.
 
