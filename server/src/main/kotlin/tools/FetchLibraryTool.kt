@@ -8,6 +8,7 @@ import app.oreshkov.kotlinlibmcp.server.elicitation.resolveCoordinate
 import app.oreshkov.kotlinlibmcp.server.icons.Glyph
 import io.modelcontextprotocol.kotlin.sdk.server.ClientConnection
 import io.modelcontextprotocol.kotlin.sdk.server.Server
+import io.modelcontextprotocol.kotlin.sdk.shared.currentRequestHandlerExtra
 import io.modelcontextprotocol.kotlin.sdk.types.ProgressNotification
 import io.modelcontextprotocol.kotlin.sdk.types.ProgressNotificationParams
 import io.modelcontextprotocol.kotlin.sdk.types.ProgressToken
@@ -78,18 +79,32 @@ fun Server.registerFetchLibraryTool(
     }
 }
 
-/** Best-effort: a dropped progress frame must never fail the fetch itself. */
+/**
+ * Best-effort: a dropped progress frame must never fail the fetch itself.
+ *
+ * Sent through the in-flight request's [currentRequestHandlerExtra] when there is one, so the
+ * notification carries `relatedRequestId` and Streamable HTTP routes it onto *this* `tools/call`'s
+ * SSE stream rather than the standalone one. A tool handler never has the JSON-RPC id to pass by
+ * hand — the SDK puts the extra in the handler's coroutine context (0.15.0) precisely so it does
+ * not have to be plumbed through every signature.
+ *
+ * The fallback is not padding: a task-augmented run executes on `TaskStore`'s own scope, which the
+ * handler context does not reach — and correctly so, since that request was already answered with a
+ * `CreateTaskResult`. Those frames are tied to their task through `_meta` instead.
+ */
 private suspend fun ClientConnection.sendFetchProgress(token: ProgressToken, progress: FetchProgress) {
-    runCatching {
-        notification(
-            ProgressNotification(
-                ProgressNotificationParams(
-                    progressToken = token,
-                    progress = progress.step.toDouble(),
-                    total = progress.totalSteps.toDouble(),
-                    message = progress.message,
-                )
-            )
+    val frame = ProgressNotification(
+        ProgressNotificationParams(
+            progressToken = token,
+            progress = progress.step.toDouble(),
+            total = progress.totalSteps.toDouble(),
+            message = progress.message,
         )
+    )
+    runCatching {
+        when (val extra = currentRequestHandlerExtra()) {
+            null -> notification(frame)
+            else -> extra.sendNotification(frame)
+        }
     }
 }

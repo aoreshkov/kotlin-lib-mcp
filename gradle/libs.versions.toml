@@ -4,7 +4,7 @@ kotlin = "2.4.0"
 kover = "0.9.9"
 
 # Third-party
-mcp-kotlin-sdk = "0.14.0"
+mcp-kotlin-sdk = "0.15.0"
 ktor = "3.5.1"
 compose = "1.11.1"             # aligned to Kotlin 2.4.0
 kotlinx-coroutines = "1.11.0"

@@ -17,16 +17,16 @@ import kotlinx.io.buffered
  * before it starts serving. This is the transport that can do so: the session object is right here,
  * whereas the HTTP transport delegates session creation to the SDK.
  *
- * The SDK transport is wrapped in [ConcurrentDispatchTransport] so a request handler can be
- * answered *while it runs* — without it the stdio pipeline is strictly serial and any
- * server-to-client request made from inside a tool (an `elicitation/create`) deadlocks.
+ * The raw SDK transport is used directly: since kotlin-sdk 0.15.0 `Protocol` dispatches inbound
+ * requests concurrently once `notifications/initialized` has arrived, so a handler that makes a
+ * server-to-client request (an `elicitation/create`) no longer blocks the read loop that has to
+ * deliver the answer. Before 0.15.0 that required a local decorator around this transport — see
+ * `.claude/rules/mcp-server.md`.
  */
 suspend fun runStdioServer(server: Server, taskStore: TaskStore? = null) {
-    val transport = ConcurrentDispatchTransport(
-        StdioServerTransport(
-            input = System.`in`.asSource().buffered(),
-            output = System.out.asSink().buffered(),
-        )
+    val transport = StdioServerTransport(
+        input = System.`in`.asSource().buffered(),
+        output = System.out.asSink().buffered(),
     )
     val session = server.createSession(transport)
     // After createSession (it installs the SDK's own tools/call handler, which this replaces) but
