@@ -13,6 +13,7 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -21,6 +22,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /*
  * Task-augmented execution (SEP-1686) for tool calls.
@@ -81,6 +83,13 @@ private class TaskRecord(
     var lastUpdatedAt: Instant = createdAt
     var result: CallToolResult? = null
     var job: Job? = null
+
+    /**
+     * Completed as soon as the record reaches a terminal status. `tasks/result` awaits it, which is
+     * how the spec's "MUST block the response until the task reaches a terminal status" is served
+     * without polling.
+     */
+    val finished: CompletableDeferred<Unit> = CompletableDeferred()
 
     val terminal: Boolean get() = status != TaskStatus.Working && status != TaskStatus.InputRequired
 
@@ -233,11 +242,28 @@ class TaskStore(
      * `isError` still has its payload: the spec requires `tasks/result` to return exactly what the
      * underlying request would have returned, so the error content is returned rather than raised.
      */
-    fun payload(owner: String, taskId: String): CallToolResult = withRecord(owner, taskId) { record ->
-        synchronized(record) {
+    suspend fun payload(owner: String, taskId: String): CallToolResult {
+        val record = withRecord(owner, taskId) { it }
+        if (!record.finished.isCompleted) {
+            // "When a receiver receives a tasks/result request for a task in any other non-terminal
+            // status (working or input_required), it MUST block the response until the task reaches
+            // a terminal status." Bounded by what is left of the TTL: past that the record may be
+            // swept, and nothing would ever complete the wait.
+            val budget = remainingTtl(record)
+            if (withTimeoutOrNull(budget) { record.finished.await() } == null) {
+                throw TaskNotReadyException(taskId, synchronized(record) { record.status })
+            }
+        }
+        return synchronized(record) {
+            // Terminal with no payload: cancelled, or a body that threw outside `invokeTool`. The
+            // spec allows tasks/result to answer with a JSON-RPC error in exactly that case.
             record.result ?: throw TaskNotReadyException(taskId, record.status)
         }
     }
+
+    /** Milliseconds left before [record] may be swept; never negative. */
+    private fun remainingTtl(record: TaskRecord): Long =
+        (record.createdAt.toEpochMilli() + record.ttlMs - now().toEpochMilli()).coerceAtLeast(0)
 
     /**
      * Cancels [taskId] (`tasks/cancel`), returning the resulting state. Cancelling the job unwinds
@@ -340,9 +366,15 @@ class TaskStore(
         runCatching { record.onStatus(snapshot) }
     }
 
+    /**
+     * Applies [mutate] under the record's monitor and returns the resulting snapshot, releasing any
+     * `tasks/result` call parked on [TaskRecord.finished] if the change was terminal. Every path
+     * that can end a task goes through here, so no terminal transition can forget to unblock.
+     */
     private fun update(record: TaskRecord, mutate: () -> Unit): Task = synchronized(record) {
         mutate()
         record.lastUpdatedAt = now()
+        if (record.terminal) record.finished.complete(Unit)
         record.snapshot()
     }
 
