@@ -32,6 +32,7 @@ import io.modelcontextprotocol.kotlin.sdk.types.TaskStatusNotificationParams
 import io.modelcontextprotocol.kotlin.sdk.types.TaskSupport
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import io.modelcontextprotocol.kotlin.sdk.types.UrlElicitationRequiredException
+import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -53,16 +54,47 @@ import kotlinx.serialization.json.put
  */
 
 /**
- * Installs task support on this session. Call once per session, after `Server.createSession`.
+ * Installs task support on every session [this] server accepts — the entry point for transports
+ * that never hand us a `ServerSession`.
  *
- * Only registered for the stdio transport today: `runStdioServer` owns the `ServerSession`, whereas
- * the HTTP transport hands session creation to the SDK's `mcpStreamableHttp`, which exposes no
- * per-session hook (`Server.onConnect` takes no session argument). The capability is advertised to
- * match (see `serverCapabilities`).
+ * `mcpStreamableHttp` creates a session per connection deep inside the SDK, and the only way out is
+ * `Server.onConnect`, which takes no argument saying *which* session connected. So each time it
+ * fires, sweep every session and configure the ones not seen before. Sweeping rather than guessing
+ * (`sessions.values.last()`, as `completions/LibraryCompletions.kt` has to) is deliberate: two
+ * connections can be accepted concurrently, and one's callback may well run after the other has
+ * already been added, so "the last one" is not reliably "the new one".
+ *
+ * **Ordering is safe.** `Server.createSession` fires `onConnect` after `session.connect(transport)`
+ * but *before* the Streamable HTTP route feeds the POST body to the transport, so the handlers are
+ * in place before the session's first frame is dispatched — not merely before its first `tools/call`.
+ */
+fun Server.installTaskHandlersOnEverySession(store: TaskStore) {
+    val configured = ConcurrentHashMap.newKeySet<String>()
+
+    fun configureNewSessions() {
+        sessions.values.forEach { session ->
+            // add() is the claim: whichever sweep wins configures, so concurrent ones cannot
+            // double-register, and a session is never left without handlers.
+            if (configured.add(session.sessionId)) {
+                session.registerTaskHandlers(this, store)
+                session.onClose { configured.remove(session.sessionId) }
+            }
+        }
+    }
+
+    onConnect { configureNewSessions() }
+    // Also covers anything already connected, so this is safe to call at any point in setup rather
+    // than only before the first client arrives.
+    configureNewSessions()
+}
+
+/**
+ * Installs task support on one session. Call after `Server.createSession`, for transports that own
+ * the session object — stdio, where `runStdioServer` has it directly. HTTP goes through
+ * [installTaskHandlersOnEverySession] instead.
  *
  * [store] is shared across sessions, so every lookup below passes this session's `sessionId` as the
- * owner — see `TaskStore`. That holds regardless of transport, so lifting the stdio restriction is
- * a question of finding a registration hook, not of task visibility.
+ * owner — see `TaskStore`.
  */
 fun ServerSession.registerTaskHandlers(server: Server, store: TaskStore) {
     // Replaces the SDK's own tools/call handler; see [dispatchToolCall] for the passthrough contract.

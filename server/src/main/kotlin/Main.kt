@@ -32,7 +32,8 @@ private val USAGE = """
                                defaults to protocol http/protobuf and endpoint http://localhost:4318.
       --tasks                  Accept task-augmented tools/call (SEP-1686) for fetch_library, and
                                answer tasks/get, tasks/result, tasks/list and tasks/cancel. Off by
-                               default. stdio only — ignored with --transport http.
+                               default. Works on both transports; task records live in this process
+                               and each session sees only its own.
       --help                   Show this help and exit
 
     Telemetry (--otel):
@@ -48,6 +49,7 @@ private val USAGE = """
       server --transport http --allowed-host mcp.example.com:3000 --allowed-origin https://mcp.example.com
       server --transport stdio --cache-dir /tmp/klm --repo https://maven.google.com
       server --transport stdio --tasks
+      server --transport http --port 3000 --tasks
       OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 server --transport stdio --otel
 """.trimIndent()
 
@@ -118,12 +120,6 @@ private fun fail(message: String): Nothing {
 
 fun main(args: Array<String>) {
     val options = parseArgs(args)
-    if (options.config.tasks && !options.config.tasksEnabled) {
-        System.err.println(
-            "Warning: --tasks is stdio-only and has no effect with --transport http; the tasks " +
-                "capability will not be advertised."
-        )
-    }
     runBlocking {
         McpServerFactory.create(options.config).use { handle ->
             when (options.transport) {
@@ -134,6 +130,7 @@ fun main(args: Array<String>) {
                     host = options.host,
                     allowedHosts = options.allowedHosts,
                     allowedOrigins = options.allowedOrigins,
+                    taskStore = handle.taskStore,
                 )
             }
         }

@@ -52,19 +52,28 @@ only way to answer with a `CreateTaskResult` — `Server.handleCallTool` is hard
 its non-task branch must reproduce the SDK's semantics exactly: unknown tool → `isError` result,
 `CancellationException` and `UrlElicitationRequiredException` re-thrown, anything else flattened to
 `isError`. `TaskDispatchTest` pins this — if you touch `dispatchToolCall`, keep those tests green.
-The `tasks` capability and the handlers are both driven by `ServerConfig.tasksEnabled` so they can
-never disagree; advertising the capability without handlers makes the SDK route methods that answer
+The `tasks` capability and the handlers are both driven by `ServerConfig.tasks` so they can never
+disagree; advertising the capability without handlers makes the SDK route methods that answer
 nothing.
+
+**Registering them differs per transport**, because the SDK only sometimes hands us the session.
+stdio calls `registerTaskHandlers` on the `ServerSession` `runStdioServer` owns. HTTP has no such
+object — `mcpStreamableHttp` creates a session per connection internally — so it goes through
+`installTaskHandlersOnEverySession`, which hooks `Server.onConnect` and **sweeps** `server.sessions`
+configuring any it has not seen. Sweep, don't pick `sessions.values.last()`: that callback takes no
+argument saying which session connected, and two concurrent `createSession` calls can interleave so
+that "the last session" is already configured while the other has no handlers at all. Ordering is
+safe either way — `createSession` fires `onConnect` before the Streamable HTTP route feeds the POST
+body to the transport.
 
 **Tasks are owned by a session.** One `TaskStore` serves every session, so every client-facing
 operation takes the caller's `sessionId` as `owner` and filters by it — `dispatchToolCall` takes it
 from `ClientConnection.sessionId`, the `tasks/…` handlers from `ServerSession.sessionId`, and they
 are the same id by construction. A `taskId` belonging to another session raises the *same*
 `UnknownTaskException` as one that never existed; keep it that way, or the error becomes an oracle
-for other sessions' ids. This is invisible with a single stdio client and load-bearing the moment
-the HTTP transport is allowed to run tasks, since `mcpStreamableHttp` creates a session per
-connection and `tasks/result` returns whole tool results. Never add an unscoped `list()`/`get()`
-back to `TaskStore`.
+for other sessions' ids. This is invisible with a single stdio client and load-bearing on HTTP,
+where `mcpStreamableHttp` creates a session per connection and `tasks/result` returns whole tool
+results. Never add an unscoped `list()`/`get()` back to `TaskStore`.
 
 **Dispatch concurrency is the SDK's job now (0.15.0):** `Protocol` launches inbound requests and
 notifications on a per-connection handler scope once `notifications/initialized` has arrived,

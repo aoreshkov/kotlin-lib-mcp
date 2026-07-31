@@ -143,13 +143,12 @@ Under `--tasks`, a task-augmented `fetch_library` parks in the **`input_required
 question is outstanding and returns to `working` once answered; the `elicitation/create` carries the
 `io.modelcontextprotocol/related-task` `_meta` tying it to the task.
 
-> **Note on concurrency.** The Kotlin SDK's stdio transport processes one frame at a time and waits
-> for each request handler to finish before reading the next, so a server-initiated request made
-> from inside a tool call could never be answered — the reply would be stuck behind the very handler
-> waiting for it. The stdio transport is therefore wrapped so that requests other than `initialize`
-> are dispatched concurrently, while notifications and responses stay inline and ordered. Besides
-> making elicitation possible, this means `ping`, `tasks/get` and `notifications/cancelled` are
-> answered promptly during a long `fetch_library` instead of queueing behind it.
+> **Note on concurrency.** A server-initiated request from inside a tool call only works because the
+> SDK dispatches inbound requests concurrently once the session is initialized — otherwise the
+> client's reply would be stuck behind the very handler waiting for it. Besides making elicitation
+> possible, this means `ping`, `tasks/get` and `notifications/cancelled` are answered promptly
+> during a long `fetch_library` instead of queueing behind it, and a `fetch_library` the client
+> cancels actually stops.
 
 ## Telemetry
 

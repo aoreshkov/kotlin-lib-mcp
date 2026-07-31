@@ -63,9 +63,10 @@ internal fun serverInfo(): Implementation = Implementation(
  * `notifications/message` only when the operator opts in with `--forward-logs-to-client`. Presence
  * of any non-null value advertises a capability; the SDK then handles `logging/setLevel` per session.
  *
- * `tasks` must stay off unless the `tasks/…` handlers were actually installed for the session
- * (stdio only — see `registerTaskHandlers`): the SDK gates those methods on this capability, so
- * advertising it without the handlers would promise a surface that answers nothing.
+ * `tasks` must stay off unless the `tasks/…` handlers were actually installed for the session (see
+ * `registerTaskHandlers` / `installTaskHandlersOnEverySession`): the SDK gates those methods on
+ * this capability, so advertising it without the handlers would promise a surface that answers
+ * nothing. Both are driven by [ServerConfig.tasks], so the two cannot disagree.
  */
 internal fun serverCapabilities(
     forwardLogsToClient: Boolean,
@@ -113,8 +114,8 @@ data class ServerConfig(
      * `fetch_library` today (`--tasks`). Off by default while the extension is young: on, the
      * server advertises the `tasks` capability and answers `tasks/get`/`result`/`list`/`cancel`.
      *
-     * **stdio only.** See `tasks/TaskHandlers.kt` — the HTTP transport gives no per-session hook to
-     * register the handlers on, so [McpServerFactory] leaves this off for `http` regardless.
+     * Supported on both transports. Task records are per-process and owned by the session that
+     * created them (see `tasks/TaskStore.kt`), so on HTTP each connection sees only its own.
      */
     val tasks: Boolean = false,
     /**
@@ -122,10 +123,7 @@ data class ServerConfig(
      * Only meaningful when [otel] is set.
      */
     val transport: String = "stdio",
-) {
-    /** Whether tasks are both requested and supported on the configured transport. */
-    val tasksEnabled: Boolean get() = tasks && !transport.equals("http", ignoreCase = true)
-}
+)
 
 /**
  * A configured MCP [server] plus the core collaborators it was built from. The [service] and
@@ -179,7 +177,7 @@ object McpServerFactory {
             options = ServerOptions(
                 capabilities = serverCapabilities(
                     forwardLogsToClient = config.forwardLogsToClient,
-                    tasks = config.tasksEnabled,
+                    tasks = config.tasks,
                 ),
                 // Not the SDK default matcher — see SegmentTemplateMatcher.kt for why.
                 resourceTemplateMatcherFactory = segmentTemplateMatcherFactory,
@@ -229,9 +227,8 @@ object McpServerFactory {
             fetcher = fetcher,
             logForwarderScope = logForwarderScope,
             otelSdk = otelSdk,
-            // Only when the transport can actually install the handlers; the capability above
-            // follows the same condition so the two can never disagree.
-            taskStore = if (config.tasksEnabled) TaskStore() else null,
+            // The capability above follows the same flag, so the two can never disagree.
+            taskStore = if (config.tasks) TaskStore() else null,
         )
     }
 }

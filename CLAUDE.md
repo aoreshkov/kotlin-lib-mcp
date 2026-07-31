@@ -93,16 +93,22 @@ it. That is the SDK's own behaviour as of 0.15.0; up to 0.14.0 it took a local d
 (`transport/ConcurrentDispatchTransport.kt`, now deleted). `ConcurrentDispatchTest` pins it and
 `.claude/rules/mcp-server.md` explains what must not be reintroduced.
 
-**Tasks (SEP-1686)** are **opt-in** behind `--tasks`, **stdio only** (`tasks/TaskStore.kt`,
+**Tasks (SEP-1686)** are **opt-in** behind `--tasks`, on **both transports** (`tasks/TaskStore.kt`,
 `tasks/TaskHandlers.kt`): `fetch_library` declares `execution.taskSupport: "optional"`, a
 task-augmented `tools/call` returns a handle immediately, and `tasks/get`/`result`/`list`/`cancel`
 plus `notifications/tasks/status` are served. The SDK ships the wire types but **no execution
 engine** — `Server.handleCallTool` ignores `params.task` — so we replace the `tools/call` handler
 via `Protocol.setRequestHandler`; the non-task path must stay identical to the SDK's, which
-`TaskDispatchTest` pins. Task records are in-memory (process-local). A task whose body needs client
+`TaskDispatchTest` pins. Task records are in-memory (process-local) and **owned by the session that
+created them**, so on HTTP each connection sees only its own. A task whose body needs client
 input parks in `TaskStatus.InputRequired` and back: `TaskStore.start` puts a `TaskContext` in the
 **coroutine context** (same trick as the OTel span) so a tool body can call `awaitingInput { }` without
 any layer between it and the store knowing about tasks.
+
+Registration differs per transport because the SDK only sometimes gives us the session: stdio calls
+`registerTaskHandlers` on the `ServerSession` it owns, while HTTP goes through
+`installTaskHandlersOnEverySession`, which sweeps `server.sessions` from `Server.onConnect` (that
+callback takes no argument saying *which* session connected).
 
 **OTel traces** over OTLP/HTTP are **opt-in** behind `--otel` (`telemetry/Telemetry.kt`): one
 `SERVER` span per MCP request, opened in `guarded`/`resourceSpan`/`promptSpan`/`completionSpan`,
