@@ -3,7 +3,7 @@
   "name": "io.github.aoreshkov/kotlin-lib-mcp",
   "title": "Kotlin Library Sources",
   "description": "Exposes the public API, KDoc and sources of Maven-published Kotlin/Java libraries to MCP clients",
-  "version": "0.3.0",
+  "version": "0.4.0",
   "websiteUrl": "https://github.com/aoreshkov/kotlin-lib-mcp",
   "icons": [
     {
@@ -19,7 +19,7 @@
   "packages": [
     {
       "registryType": "oci",
-      "identifier": "ghcr.io/aoreshkov/kotlin-lib-mcp:0.3.0",
+      "identifier": "ghcr.io/aoreshkov/kotlin-lib-mcp:0.4.0",
       "transport": {
         "type": "stdio"
       }
