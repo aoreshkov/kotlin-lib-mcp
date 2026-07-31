@@ -37,14 +37,22 @@ compile automatically when Kotlin sources changed (`.claude/hooks/stop-verify.sh
 - Kotlin **2.4.x** · MCP `io.modelcontextprotocol:kotlin-sdk-server:0.15.0` · Ktor **3.5.x**
 - kotlinx-serialization-json · kotlinx-coroutines
 - Source parsing: Kotlin **Analysis API (standalone mode)** — must be version-matched to Kotlin
-- `kotlin-metadata-jvm` (optional API cross-check) · Compose Multiplatform (Desktop)
+- Compose Multiplatform (Desktop)
 - Logging: Kermit (common) → SLF4J/Logback (JVM sink) · Tests: kotlin-test, coroutines-test, Ktor `MockEngine`
 
 ## Conventions & gotchas
 
 - **Versions are centralized** in `gradle/libs.versions.toml`. Kotlin and the Analysis API
   artifacts must share the **exact same version** — always bump them together (use the
-  `/analysis-api-bump` skill; cut releases with `/release`).
+  `/analysis-api-bump` skill; cut releases with `/release`). The catalog follows Gradle's
+  naming guidance (1–3 dash-separated segments, camelCase inside a segment) and carries **no
+  entry a build script doesn't consume** — in particular `[plugins]` holds only the one alias
+  a module applies with `alias(...)`; everything else is applied by id from `build-logic`.
+- **`core`'s public ABI is locked** by the Kotlin Gradle plugin's built-in `abiValidation`
+  (`kmp-library.gradle.kts`; the standalone binary-compatibility-validator it replaces is
+  frozen). `./gradlew build` runs `checkKotlinAbi`; intentional API changes need
+  `./gradlew updateKotlinAbi` and a committed `core/api/core.api`. The DSL is still
+  `@ExperimentalAbiValidation`, so treat a Kotlin bump as able to break it.
 - **stdio transport: NEVER write to stdout** except MCP protocol frames. All logging goes to
   stderr or a file, or it corrupts the protocol stream.
 - **Core parsing/fetch gotchas** (Analysis API isolation, per-target KMP source jars) live in

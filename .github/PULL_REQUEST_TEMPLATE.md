@@ -8,7 +8,7 @@
 
 ## Checklist
 
-- [ ] `./gradlew build` passes locally (includes tests and `apiCheck`)
-- [ ] Ran `./gradlew apiDump` and committed `core/api/core.api` (only if the public API of `core` changed intentionally)
+- [ ] `./gradlew build` passes locally (includes tests and `checkKotlinAbi`)
+- [ ] Ran `./gradlew updateKotlinAbi` and committed `core/api/core.api` (only if the public API of `core` changed intentionally)
 - [ ] `CHANGELOG.md` updated under `[Unreleased]` (user-visible changes only)
 - [ ] No stdout writes on the stdio path (logging goes to stderr)

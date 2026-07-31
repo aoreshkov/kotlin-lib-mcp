@@ -9,7 +9,7 @@ argument-hint: "[target Kotlin version, e.g. 2.4.10]"
 
 The Analysis API (standalone K2/FIR) is the single most version-fragile part of this repo.
 Kotlin and every `*-for-ide` artifact **must share the exact same version**, and two runtime
-deps (`caffeine`, `coroutines-intellij`) are pinned to match what the bundled IntelliJ core
+deps (`caffeine`, `intellijCoroutines`) are pinned to match what the bundled IntelliJ core
 expects. Getting this wrong shows up as `NoSuchMethodError` / `NoClassDefFoundError` at
 runtime or as silent loss of type resolution — never a clean compile error. Follow the steps;
 do not eyeball it.
@@ -18,17 +18,17 @@ do not eyeball it.
 
 Read `gradle/libs.versions.toml` and record:
 
-- `kotlin` — the shared version ref used by **all** of: `kotlin-metadata-jvm`,
-  `analysis-api-standalone`, `analysis-api-high-level`, `analysis-api-k2`,
-  `analysis-api-low-level-fir`, `analysis-api-impl-base`, `analysis-api-platform`,
-  `analysis-api-symbol-light-classes`, `kotlin-compiler`, plus the `kotlin-*` plugins.
+- `kotlin` — the shared version ref used by **all** of: `analysisApi-standalone`,
+  `analysisApi-highLevel`, `analysisApi-k2`, `analysisApi-lowLevelFir`,
+  `analysisApi-implBase`, `analysisApi-platform`, `analysisApi-symbolLightClasses`,
+  `kotlin-compiler`, plus the `kotlin-*` / `composeCompiler-*` plugin artifacts.
 - `caffeine` (comment: "runtime dep of the Analysis API `-for-ide` jars; matches Kotlin's own pin").
-- `coroutines-intellij` (comment: "JetBrains coroutines fork the bundled IJ core expects (KT-81457)").
+- `intellijCoroutines` (comment: "JetBrains coroutines fork the bundled IJ core expects (KT-81457)").
 - `compose` (comment: "aligned to Kotlin X.Y.Z") — Compose is Kotlin-coupled too.
 
 Because every Analysis-API artifact uses `version.ref = "kotlin"`, bumping the single
 `kotlin` entry moves them all. The risk is **not** forgetting one artifact — it's the three
-coupled satellites (`caffeine`, `coroutines-intellij`, `compose`) and undocumented API breaks.
+coupled satellites (`caffeine`, `intellijCoroutines`, `compose`) and undocumented API breaks.
 
 ## 2. Confirm the target and its coupled expectations (official sources)
 
@@ -41,7 +41,7 @@ For `$ARGUMENTS` (or the intended target Kotlin version), verify against officia
 - Does the new Kotlin change the **caffeine** version its `-for-ide` jars expect? (Check the
   Kotlin build's own bundled version.) If so, update the `caffeine` pin to match and update
   the comment.
-- Is **KT-81457** fixed in this version, making the `coroutines-intellij` fork pin
+- Is **KT-81457** fixed in this version, making the `intellijCoroutines` fork pin
   unnecessary? If yes, that's a chance to drop the fork; if not, keep the pin.
 - Compose Multiplatform ↔ Kotlin compatibility: pick the `compose` version aligned to the
   new Kotlin (JetBrains compatibility table) and update the `# aligned to Kotlin …` comment.
@@ -54,7 +54,7 @@ is wanted — they research official sources and respect the documented pins.
 In `gradle/libs.versions.toml` **only** (never inline versions):
 
 - Set `kotlin = "<target>"`.
-- Update `caffeine`, `coroutines-intellij`, `compose` only if step 2 showed the constraint
+- Update `caffeine`, `intellijCoroutines`, `compose` only if step 2 showed the constraint
   moved — and update their explanatory comments to reflect the new constraint.
 
 ## 4. Rebuild and verify source analysis actually works
@@ -71,6 +71,6 @@ A green compile is **not** sufficient — the Analysis API fails at runtime, not
 ## 5. Report
 
 Summarize: old → new Kotlin version, which coupled pins moved (and why, with the official
-source), whether the `coroutines-intellij` fork is still needed, and the verification evidence
+source), whether the `intellijCoroutines` fork is still needed, and the verification evidence
 (test result + a resolved signature from a fetched library). Note anything that degraded to
 PSI-only fallback. Do not commit unless asked.

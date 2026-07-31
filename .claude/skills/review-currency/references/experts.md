@@ -12,18 +12,18 @@ verbatim into one subagent prompt. Keys (`kotlin`, `mcp`, `deps`, `ci`, `securit
 K2 Analysis API, and the kotlinx library ecosystem.
 
 **Inspect:** `gradle/libs.versions.toml` (versions `kotlin`, `ksp`,
-`kotlinx-coroutines`, `kotlinx-serialization`, `caffeine`, `coroutines-intellij`, and
+`kotlinxCoroutines`, `kotlinxSerialization`, `caffeine`, `intellijCoroutines`, and
 every `*-for-ide` Analysis API artifact), `build-logic/` convention plugins, KMP
 source-set layout in `core/`.
 
 **Research (official sources only):** kotlinlang.org release notes and roadmap, Kotlin
 GitHub releases, KSP releases, kotlinx-coroutines/serialization releases, the
 YouTrack issues referenced in catalog comments (e.g. KT-81457 — is it fixed, making
-the `coroutines-intellij` fork pin obsolete?).
+the `intellijCoroutines` fork pin obsolete?).
 
 **Project gotchas:** Kotlin and all Analysis API `-for-ide` artifacts MUST share the
 exact same version — any bump recommendation must bump them together. The `caffeine`
-and `coroutines-intellij` pins exist to match the Analysis API's own expectations;
+and `intellijCoroutines` pins exist to match the Analysis API's own expectations;
 check whether the latest Kotlin changes those expectations rather than flagging the
 pins as stale. The Analysis API is version-fragile and isolated behind
 `SourceAnalyzer` — call out breaking API changes in newer Kotlin versions, not just
@@ -36,7 +36,7 @@ version numbers.
 **Persona:** Model Context Protocol specialist who follows the MCP specification,
 the Kotlin SDK, and MCP registry/server-distribution practices.
 
-**Inspect:** `gradle/libs.versions.toml` (`mcp-kotlin-sdk`), `server/` tool
+**Inspect:** `gradle/libs.versions.toml` (`mcpKotlinSdk`), `server/` tool
 registrations (tool annotations, `outputSchema`, `structuredContent`, resources,
 prompts — see `server/.../tools/`), `server.json`, transport setup (stdio and
 Streamable HTTP).
@@ -66,15 +66,19 @@ plugins current across JVM/KMP projects.
 
 **Research (official sources only):** gradle.org releases; Maven Central and each
 project's official release page for latest stable versions of Ktor, Compose
-Multiplatform, Kover, binary-compatibility-validator, Kermit, logback, slf4j,
-kotlin-logging; Compose↔Kotlin compatibility tables on the JetBrains docs.
+Multiplatform, Kover, Kermit, logback, slf4j, kotlin-logging; Compose↔Kotlin
+compatibility tables on the JetBrains docs.
 
 **Project gotchas:** Versions live ONLY in `gradle/libs.versions.toml` — never suggest
 inline versions. Deliberate pins are documented in catalog comments (`caffeine 2.9.3`
-matches the Analysis API's own pin; `kotlin-logging` matches the MCP SDK's transitive
+matches the Analysis API's own pin; `kotlinLogging` matches the MCP SDK's transitive
 facade; `compose` is aligned to the Kotlin version) — report these as intentional
 `info` findings with the constraint, and only recommend bumps that keep the
-constraints satisfied. JUnit 4 is used deliberately with kotlin-test. Kotlin-coupled
+constraints satisfied. Aliases follow Gradle's naming guidance (1–3 dash-separated
+segments, camelCase within a segment) and the catalog holds no entry a build script
+doesn't consume — flag additions that break either rule. ABI validation is the Kotlin
+Gradle plugin's built-in `abiValidation {}`, not the frozen standalone
+binary-compatibility-validator plugin; don't propose readopting it. Kotlin-coupled
 artifacts belong to the `kotlin` expert; skip them beyond noting shared constraints.
 
 ---

@@ -6,7 +6,7 @@ dependencies {
     implementation(project(":core"))
     implementation(project(":server")) // reuses McpServerFactory/LibraryService — UI stays thin
     implementation(compose.desktop.currentOs)
-    implementation(libs.mcp.kotlin.sdk)
+    implementation(libs.mcp.kotlinSdkServer)
     implementation(libs.ktor.server.cio)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.coroutines.swing)
