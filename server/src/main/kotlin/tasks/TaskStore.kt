@@ -221,8 +221,9 @@ class TaskStore(
     }
 
     /**
-     * The finished tool result (`tasks/result`). A tool that reported `isError` still *completed* —
-     * the payload carries the error, so it is returned rather than raised.
+     * The finished tool result (`tasks/result`). A task that `failed` because the tool reported
+     * `isError` still has its payload: the spec requires `tasks/result` to return exactly what the
+     * underlying request would have returned, so the error content is returned rather than raised.
      */
     fun payload(owner: String, taskId: String): CallToolResult = withRecord(owner, taskId) { record ->
         synchronized(record) {
@@ -285,10 +286,15 @@ class TaskStore(
         val snapshot = update(record) {
             when (outcome) {
                 is Outcome.Done -> {
-                    record.status = TaskStatus.Completed
+                    // A tool that reported isError did not complete successfully: 2025-11-25 is
+                    // explicit that "for tool calls specifically, this includes cases where the
+                    // tool call result has isError set to true" → `failed`. The result is still
+                    // kept, because tasks/result must return exactly what the underlying request
+                    // would have returned — the error content the model needs to read and act on.
+                    val failed = outcome.result.isError == true
+                    record.status = if (failed) TaskStatus.Failed else TaskStatus.Completed
                     record.result = outcome.result
-                    record.statusMessage =
-                        if (outcome.result.isError == true) "Completed with a tool error" else null
+                    record.statusMessage = if (failed) "The tool reported an error" else null
                 }
                 is Outcome.Failed -> {
                     record.status = TaskStatus.Failed

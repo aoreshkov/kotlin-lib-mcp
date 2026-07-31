@@ -83,7 +83,7 @@ class TaskStoreTest {
     }
 
     @Test
-    fun aToolErrorStillCountsAsCompleted() = runTest {
+    fun aToolErrorFailsTheTaskButKeepsThePayload() = runTest {
         val store = TestScopeStore(CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)))
 
         val started = store.start(
@@ -92,11 +92,12 @@ class TaskStoreTest {
         )
         advanceUntilIdle()
 
-        // SEP-1303: a tool that reports isError delivered a result. The task succeeded at running
-        // it; the error belongs in the payload, where the model can read and act on it.
+        // 2025-11-25: "for tool calls specifically, this includes cases where the tool call result
+        // has isError set to true" — the task failed.
         val task = store.get(S1, started.taskId)
-        assertEquals(TaskStatus.Completed, task.status)
+        assertEquals(TaskStatus.Failed, task.status)
         assertNotNull(task.statusMessage)
+        // ...but tasks/result must still return what the call would have returned, error and all.
         assertEquals(true, store.payload(S1, started.taskId).isError)
         store.close()
     }
