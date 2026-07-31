@@ -59,12 +59,19 @@ nothing.
 **Registering them differs per transport**, because the SDK only sometimes hands us the session.
 stdio calls `registerTaskHandlers` on the `ServerSession` `runStdioServer` owns. HTTP has no such
 object — `mcpStreamableHttp` creates a session per connection internally — so it goes through
-`installTaskHandlersOnEverySession`, which hooks `Server.onConnect` and **sweeps** `server.sessions`
-configuring any it has not seen. Sweep, don't pick `sessions.values.last()`: that callback takes no
-argument saying which session connected, and two concurrent `createSession` calls can interleave so
-that "the last session" is already configured while the other has no handlers at all. Ordering is
-safe either way — `createSession` fires `onConnect` before the Streamable HTTP route feeds the POST
-body to the transport.
+`installTaskHandlersOnEverySession`, which delegates to `onEachSession` (below).
+
+**Per-session registration goes through `onEachSession` (`SessionSetup.kt`).** Anything the SDK does
+not wire into sessions itself — the `completion/complete` handler, the `tasks/…` surface — has to be
+installed by us, and the only hook is `Server.onConnect`, which takes no argument saying *which*
+session connected (and `createSession` is not `open`). `onEachSession` **sweeps** `server.sessions`
+on each callback, claiming each through a concurrent set. **Never reach for
+`sessions.values.last()`**: the session is registered before `onConnect` fires, so two concurrent
+`createSession` calls can interleave such that "the last session" is already configured while the
+other is left with no handler for its whole lifetime. Ordering is safe either way — `createSession`
+fires `onConnect` before the Streamable HTTP route feeds the POST body to the transport.
+`SessionSetupTest.configuresEverySessionNotJustTheNewest` is the test that actually discriminates
+the sweep from the shortcut; keep it green.
 
 **Tasks are owned by a session.** One `TaskStore` serves every session, so every client-facing
 operation takes the caller's `sessionId` as `owner` and filters by it — `dispatchToolCall` takes it

@@ -4,10 +4,29 @@ import app.oreshkov.kotlinlibmcp.core.LibraryCache
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.model.LibraryIndex
 import app.oreshkov.kotlinlibmcp.model.PackageInfo
+import app.oreshkov.kotlinlibmcp.server.FakeTransport
+import app.oreshkov.kotlinlibmcp.server.handshake
+import app.oreshkov.kotlinlibmcp.server.resources.LIBRARY_INDEX_URI_TEMPLATE
+import io.modelcontextprotocol.kotlin.sdk.server.Server
+import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
+import io.modelcontextprotocol.kotlin.sdk.types.CompleteRequest
+import io.modelcontextprotocol.kotlin.sdk.types.CompleteRequestParams
 import io.modelcontextprotocol.kotlin.sdk.types.CompleteRequestParams.Argument
+import io.modelcontextprotocol.kotlin.sdk.types.CompleteResult
+import io.modelcontextprotocol.kotlin.sdk.types.EmptyJsonObject
+import io.modelcontextprotocol.kotlin.sdk.types.Implementation
+import io.modelcontextprotocol.kotlin.sdk.types.RequestId
+import io.modelcontextprotocol.kotlin.sdk.types.ResourceTemplateReference
+import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
+import io.modelcontextprotocol.kotlin.sdk.types.toJSON
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertIs
+import kotlin.test.assertNotNull
 import kotlin.time.Instant
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
 class LibraryCompletionsTest {
@@ -106,6 +125,49 @@ class LibraryCompletionsTest {
             FakeCache(cached),
         )
         assertEquals(emptyList(), result)
+    }
+
+    // --- registration: the handler has to reach every session, not just the newest ---
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun everySessionAnswersCompletionComplete() = runTest {
+        val server = Server(
+            serverInfo = Implementation(name = "test", version = "0"),
+            options = ServerOptions(
+                capabilities = ServerCapabilities(completions = EmptyJsonObject),
+                handlerCoroutineContext = StandardTestDispatcher(testScheduler),
+            ),
+        )
+        server.registerLibraryCompletions(FakeCache(cached))
+
+        val alice = FakeTransport()
+        val aliceSession = server.createSession(alice)
+        val bob = FakeTransport()
+        val bobSession = server.createSession(bob)
+        alice.handshake()
+        bob.handshake()
+
+        val request = CompleteRequest(
+            CompleteRequestParams(
+                argument = Argument("group", "io"),
+                ref = ResourceTemplateReference(uri = LIBRARY_INDEX_URI_TEMPLATE),
+            )
+        ).toJSON()
+
+        alice.deliver(request.copy(id = RequestId(2L)))
+        bob.deliver(request.copy(id = RequestId(2L)))
+        runCurrent()
+
+        // A session left unconfigured would answer -32601 Method not found instead, and its client
+        // would silently lose autocomplete for its whole lifetime.
+        for ((name, transport) in listOf("alice" to alice, "bob" to bob)) {
+            val result = assertNotNull(transport.responseTo(2), "$name got no completion response")
+            assertEquals(listOf("io.ktor"), assertIs<CompleteResult>(result.result).completion.values)
+        }
+
+        aliceSession.close()
+        bobSession.close()
     }
 }
 

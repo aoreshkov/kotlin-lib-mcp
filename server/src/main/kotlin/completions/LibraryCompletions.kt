@@ -2,6 +2,7 @@ package app.oreshkov.kotlinlibmcp.server.completions
 
 import app.oreshkov.kotlinlibmcp.core.LibraryCache
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
+import app.oreshkov.kotlinlibmcp.server.onEachSession
 import app.oreshkov.kotlinlibmcp.server.resources.LIBRARY_INDEX_URI_TEMPLATE
 import app.oreshkov.kotlinlibmcp.server.telemetry.completionSpan
 import io.modelcontextprotocol.kotlin.sdk.server.Server
@@ -34,9 +35,9 @@ private const val MAX_COMPLETIONS = 100
  */
 fun Server.registerLibraryCompletions(cache: LibraryCache) {
     // The SDK's Server wires tools/prompts/resources into each session but has no completion hook,
-    // so — as the SDK's own conformance suite does — install the handler on each connecting session.
-    onConnect {
-        val session = sessions.values.lastOrNull() ?: return@onConnect
+    // so the handler is installed per session. See `onEachSession` for why every session has to be
+    // swept rather than picking the newest one.
+    onEachSession { session ->
         session.setRequestHandler<CompleteRequest>(Method.Defined.CompletionComplete) { request, _ ->
             completionSpan(session.sessionId, request.params.meta) {
                 val values = runCatching {
