@@ -99,8 +99,12 @@ task-augmented `tools/call` returns a handle immediately, and `tasks/get`/`resul
 plus `notifications/tasks/status` are served. The SDK ships the wire types but **no execution
 engine** — `Server.handleCallTool` ignores `params.task` — so we replace the `tools/call` handler
 via `Protocol.setRequestHandler`; the non-task path must stay identical to the SDK's, which
-`TaskDispatchTest` pins. Task records are in-memory (process-local) and **owned by the session that
-created them**, so on HTTP each connection sees only its own. A task whose body needs client
+`TaskDispatchTest` pins. Task records are **persisted** to `<cacheDir>/tasks` (`tasks/TaskRecordStore.kt`)
+and **owned by the session that created them**, so on HTTP each connection sees only its own. A
+record recovered after a restart is *orphaned* — its session is gone, so it is reachable by exact
+`taskId` from any caller but never returned by `tasks/list`; that split is the spec's model for a
+server with no authorization context, and the reasoning is in the `TaskStore` KDoc. Anything still
+`working` at shutdown is restored as `failed`. A task whose body needs client
 input parks in `TaskStatus.InputRequired` and back: `TaskStore.start` puts a `TaskContext` in the
 **coroutine context** (same trick as the OTel span) so a tool body can call `awaitingInput { }` without
 any layer between it and the store knowing about tasks.

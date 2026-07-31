@@ -10,6 +10,7 @@ import app.oreshkov.kotlinlibmcp.server.prompts.registerExplainPublicApiPrompt
 import app.oreshkov.kotlinlibmcp.server.resources.addLibraryIndexResource
 import app.oreshkov.kotlinlibmcp.server.resources.registerLibraryIndexTemplate
 import app.oreshkov.kotlinlibmcp.server.resources.segmentTemplateMatcherFactory
+import app.oreshkov.kotlinlibmcp.server.tasks.TaskRecordStore
 import app.oreshkov.kotlinlibmcp.server.tasks.TaskStore
 import app.oreshkov.kotlinlibmcp.server.telemetry.startTelemetry
 import app.oreshkov.kotlinlibmcp.server.telemetry.stopTelemetry
@@ -228,7 +229,12 @@ object McpServerFactory {
             logForwarderScope = logForwarderScope,
             otelSdk = otelSdk,
             // The capability above follows the same flag, so the two can never disagree.
-            taskStore = if (config.tasks) TaskStore() else null,
+            // Records live under the cache root so `--cache-dir` moves them like everything else.
+            taskStore = if (config.tasks) {
+                TaskStore(recordStore = TaskRecordStore(config.cacheDir.resolve("tasks")))
+            } else {
+                null
+            },
         )
     }
 }

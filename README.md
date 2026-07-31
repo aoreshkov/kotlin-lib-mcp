@@ -143,6 +143,25 @@ Under `--tasks`, a task-augmented `fetch_library` parks in the **`input_required
 question is outstanding and returns to `working` once answered; the `elicitation/create` carries the
 `io.modelcontextprotocol/related-task` `_meta` tying it to the task.
 
+### Tasks
+
+Pass **`--tasks`** to accept task-augmented `tools/call` for `fetch_library` (SEP-1686) and answer
+`tasks/get` / `tasks/result` / `tasks/list` / `tasks/cancel`. Works on both transports.
+
+Task records are **persisted** under `<cache-dir>/tasks`, so a completed task and its result are
+still retrievable after the server restarts. A task that was still running when the server stopped
+comes back as `failed` — its work did not survive, only the record did. Records are dropped once
+their TTL elapses (10 minutes by default, 1 hour maximum).
+
+> **Task IDs are bearer tokens for tasks that outlive their session.** A task belongs to the MCP
+> session that created it, and while that session is connected no other session can read, list or
+> cancel it. But a session ID is per-connection: after a restart your client reconnects with a new
+> one, so a recovered task is instead reachable by **anyone presenting its exact task ID**. That is
+> the model the MCP spec prescribes for servers with no authorization context — which this one is,
+> being loopback-first with no auth — and task IDs are 122-bit `SecureRandom` UUIDs accordingly.
+> `tasks/list` never returns recovered tasks, only the calling session's own. If you expose this
+> server beyond loopback, put authentication in front of it.
+
 > **Note on concurrency.** A server-initiated request from inside a tool call only works because the
 > SDK dispatches inbound requests concurrently once the session is initialized — otherwise the
 > client's reply would be stuck behind the very handler waiting for it. Besides making elicitation
@@ -229,7 +248,8 @@ Requires JDK 21 (resolved automatically via Gradle toolchains).
 Downloads and the parsed index live under the OS cache dir + `kotlin-lib-mcp`
 (`%LOCALAPPDATA%\kotlin-lib-mcp` on Windows, `~/Library/Caches/kotlin-lib-mcp` on macOS,
 `$XDG_CACHE_HOME/kotlin-lib-mcp` elsewhere), keyed by `group/artifact/version` — browsable and
-safe to delete. `--cache-dir` overrides it.
+safe to delete. `--cache-dir` overrides it. Under `--tasks`, task records live in a `tasks/`
+subdirectory of the same root.
 
 ## Notes
 

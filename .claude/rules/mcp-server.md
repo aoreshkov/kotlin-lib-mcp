@@ -82,6 +82,22 @@ for other sessions' ids. This is invisible with a single stdio client and load-b
 where `mcpStreamableHttp` creates a session per connection and `tasks/result` returns whole tool
 results. Never add an unscoped `list()`/`get()` back to `TaskStore`.
 
+**The one exception is an orphan** — a record `TaskRecordStore` recovered from a previous process.
+Its owning session died with that process, so strict binding would make every persisted task
+permanently unreachable. `get`/`payload`/`cancel` therefore accept an orphan from any caller
+presenting its exact `taskId`, while **`list` still never returns one**. That is the spec's model
+where no authorization context exists ("receivers MUST generate cryptographically secure task IDs
+with enough entropy"; "receivers that cannot identify requestors SHOULD NOT declare `tasks.list`" —
+we can identify live requestors, and we never list what we cannot attribute). Keep both halves:
+widening `list` to orphans, or dropping the bypass, each breaks a specific named test in
+`TaskPersistenceTest`.
+
+**Persistence ordering is load-bearing.** `update()` writes to disk *before* completing the
+`finished` deferred that `tasks/result` awaits. Completing it first lets a client observe a terminal
+task that a crash a moment later resurrects as `working`. Writes are synchronous on purpose —
+launching them lets `close()` cancel the final state a task reaches during shutdown, which is
+exactly the state a restart needs.
+
 **Dispatch concurrency is the SDK's job now (0.15.0):** `Protocol` launches inbound requests and
 notifications on a per-connection handler scope once `notifications/initialized` has arrived,
 keeping responses inline and letting `ping`/`cancelled`/`progress`/`initialized` bypass its

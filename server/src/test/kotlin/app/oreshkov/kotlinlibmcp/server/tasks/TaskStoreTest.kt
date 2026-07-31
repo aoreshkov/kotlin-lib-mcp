@@ -15,11 +15,13 @@ import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.async
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.advanceUntilIdle
+import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
 /**
@@ -66,24 +68,46 @@ class TaskStoreTest {
     }
 
     @Test
-    fun payloadIsRefusedUntilTheTaskFinishes() = runTest {
+    fun payloadBlocksUntilTheTaskFinishes() = runTest {
         val store = TestScopeStore(CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)))
         val gate = CompletableDeferred<Unit>()
 
-        val started = store.start(S1, taskRun { gate.await(); ok() })
+        val started = store.start(S1, taskRun { gate.await(); ok("late") })
         advanceUntilIdle()
+        assertEquals(TaskStatus.Working, store.get(S1, started.taskId).status)
 
-        // Still Working: tasks/result must say "poll tasks/get", not hand back a half-result.
-        assertFailsWith<TaskNotReadyException> { store.payload(S1, started.taskId) }
+        // "MUST block the response until the task reaches a terminal status" — so this call parks
+        // rather than erroring, and only resolves once the body finishes.
+        val payload = async { store.payload(S1, started.taskId) }
+        runCurrent()
+        assertTrue(payload.isActive, "tasks/result must not answer while the task is still working")
 
         gate.complete(Unit)
         advanceUntilIdle()
+
+        assertEquals("late", (payload.await().content.single() as TextContent).text)
         assertEquals(TaskStatus.Completed, store.get(S1, started.taskId).status)
         store.close()
     }
 
     @Test
-    fun aToolErrorStillCountsAsCompleted() = runTest {
+    fun payloadOfATerminalTaskWithNoResultIsAnError() = runTest {
+        val store = TestScopeStore(CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)))
+        val never = CompletableDeferred<Unit>()
+
+        val started = store.start(S1, taskRun { never.await(); ok() })
+        advanceUntilIdle()
+        store.cancel(S1, started.taskId)
+        advanceUntilIdle()
+
+        // A cancelled task never produced a payload. The spec lets tasks/result answer with a
+        // JSON-RPC error there — what it must not do is block forever on a task that is finished.
+        assertFailsWith<TaskNotReadyException> { store.payload(S1, started.taskId) }
+        store.close()
+    }
+
+    @Test
+    fun aToolErrorFailsTheTaskButKeepsThePayload() = runTest {
         val store = TestScopeStore(CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)))
 
         val started = store.start(
@@ -92,11 +116,12 @@ class TaskStoreTest {
         )
         advanceUntilIdle()
 
-        // SEP-1303: a tool that reports isError delivered a result. The task succeeded at running
-        // it; the error belongs in the payload, where the model can read and act on it.
+        // 2025-11-25: "for tool calls specifically, this includes cases where the tool call result
+        // has isError set to true" — the task failed.
         val task = store.get(S1, started.taskId)
-        assertEquals(TaskStatus.Completed, task.status)
+        assertEquals(TaskStatus.Failed, task.status)
         assertNotNull(task.statusMessage)
+        // ...but tasks/result must still return what the call would have returned, error and all.
         assertEquals(true, store.payload(S1, started.taskId).isError)
         store.close()
     }
@@ -136,15 +161,20 @@ class TaskStoreTest {
     }
 
     @Test
-    fun cancellingAFinishedTaskIsANoOp() = runTest {
+    fun cancellingAFinishedTaskIsRejected() = runTest {
         val store = TestScopeStore(CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)))
 
         val started = store.start(S1, taskRun { ok() })
         advanceUntilIdle()
 
-        // Cancelling after the fact is a race a well-behaved client can lose; it must not be an
-        // error, and it must not rewrite a delivered result.
-        assertEquals(TaskStatus.Completed, store.cancel(S1, started.taskId).status)
+        // "Receivers MUST reject cancellation requests for tasks already in a terminal status
+        // with error code -32602" — a client that raced the completion has to learn which way it
+        // went, rather than being told the cancel succeeded.
+        val error = assertFailsWith<TaskAlreadyTerminalException> { store.cancel(S1, started.taskId) }
+        assertContains(error.message.orEmpty(), "completed")
+
+        // ...and the delivered result is untouched.
+        assertEquals(TaskStatus.Completed, store.get(S1, started.taskId).status)
         assertNotNull(store.payload(S1, started.taskId))
         store.close()
     }

@@ -13,6 +13,7 @@ import java.util.concurrent.ConcurrentHashMap
 import kotlin.coroutines.AbstractCoroutineContextElement
 import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -21,6 +22,7 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
+import kotlinx.coroutines.withTimeoutOrNull
 
 /*
  * Task-augmented execution (SEP-1686) for tool calls.
@@ -75,12 +77,25 @@ private class TaskRecord(
     val createdAt: Instant,
     val ttlMs: Long,
     val onStatus: suspend (Task) -> Unit,
+    /**
+     * True for a record loaded from disk at startup. Its owning session died with the previous
+     * process, so no live caller can ever match [owner] — see [TaskStore] for what that unlocks and
+     * what it deliberately does not.
+     */
+    val orphaned: Boolean = false,
 ) {
     var status: TaskStatus = TaskStatus.Working
     var statusMessage: String? = null
     var lastUpdatedAt: Instant = createdAt
     var result: CallToolResult? = null
     var job: Job? = null
+
+    /**
+     * Completed as soon as the record reaches a terminal status. `tasks/result` awaits it, which is
+     * how the spec's "MUST block the response until the task reaches a terminal status" is served
+     * without polling.
+     */
+    val finished: CompletableDeferred<Unit> = CompletableDeferred()
 
     val terminal: Boolean get() = status != TaskStatus.Working && status != TaskStatus.InputRequired
 
@@ -93,6 +108,19 @@ private class TaskRecord(
         ttl = ttlMs,
         pollInterval = POLL_INTERVAL_MS,
     )
+
+    /** The on-disk form of the current state. Call under the record's monitor. */
+    fun persisted(): PersistedTask = PersistedTask(
+        taskId = taskId,
+        owner = owner,
+        label = label,
+        status = status,
+        statusMessage = statusMessage,
+        createdAt = ISO.format(createdAt),
+        lastUpdatedAt = ISO.format(lastUpdatedAt),
+        ttlMs = ttlMs,
+        result = result?.toPersistedJson(),
+    )
 }
 
 private val ISO: DateTimeFormatter = DateTimeFormatter.ISO_INSTANT
@@ -101,9 +129,17 @@ private val ISO: DateTimeFormatter = DateTimeFormatter.ISO_INSTANT
 internal class UnknownTaskException(taskId: String) :
     Exception("Unknown or expired task '$taskId'")
 
-/** Raised by `tasks/result` before the task reaches a terminal state. */
+/** Raised by `tasks/result` when a terminal task has no payload to hand back. */
 internal class TaskNotReadyException(taskId: String, status: TaskStatus) :
-    Exception("Task '$taskId' is still $status — poll tasks/get until it reports 'completed'")
+    Exception("Task '$taskId' ended as $status without producing a result")
+
+/**
+ * Raised by `tasks/cancel` for a task that already finished. The spec makes this an error rather
+ * than a no-op: "Receivers MUST reject cancellation requests for tasks already in a terminal status
+ * (completed, failed, or cancelled) with error code -32602 (Invalid params)."
+ */
+internal class TaskAlreadyTerminalException(taskId: String, status: TaskStatus) :
+    Exception("Cannot cancel task '$taskId': already in terminal status '${status.name.lowercase()}'")
 
 /**
  * The running task, carried in the coroutine context so a tool body can report that it is waiting
@@ -142,30 +178,105 @@ class TaskContext internal constructor(
 }
 
 /**
- * In-memory registry of running and recently-finished tasks.
+ * Registry of running and recently-finished tasks, optionally persisted so they survive a restart.
  *
  * **Tasks belong to the session that created them.** Every client-facing operation takes the
  * caller's `sessionId` as `owner` and will not see another session's records: a `taskId` belonging
  * to someone else is reported as [UnknownTaskException], exactly as an id that never existed, so
- * the error cannot be used to probe for other sessions' tasks. Task ids are unguessable UUIDs
- * anyway; the scoping is what makes `tasks/list` safe, since it would otherwise enumerate every
- * client's work — and `tasks/result` payloads are full tool results.
+ * the error cannot be used to probe for other sessions' tasks. That scoping is what makes
+ * `tasks/list` safe, since it would otherwise enumerate every client's work — and `tasks/result`
+ * payloads are full tool results.
  *
  * With one stdio client this is invisible. It matters the moment more than one session exists,
  * which is the normal case for the Streamable HTTP transport (`mcpStreamableHttp` creates a session
  * per connection).
  *
- * **Scope limit:** records live in this process only. A restart, or a second replica, cannot answer
- * `tasks/get` for a task started elsewhere. The expensive half of the work *is* already durable —
- * the on-disk library cache — so a warm coordinate replays as an all-but-instantly `Completed`
- * task; making the records themselves durable is a separate change.
+ * ### Tasks that outlive their session
+ *
+ * A [recordStore] makes records durable. But a session id is a per-connection UUID, so after a
+ * restart the client reconnects with a new one and *no* live caller can ever match a restored
+ * record's [owner]. Binding strictly would make every persisted task permanently unreachable, which
+ * would defeat the point of persisting it.
+ *
+ * Restored records are therefore marked orphaned, and the rule splits:
+ *
+ * - **`tasks/list` never returns an orphan.** Only the caller's own live-session tasks, as before.
+ * - **`tasks/get`/`result`/`cancel` accept an orphan from any caller that presents its exact id.**
+ *
+ * This is the model the spec prescribes where no authorization context exists — as here, a
+ * loopback-first server with no auth: *"If context-binding is unavailable, receivers MUST generate
+ * cryptographically secure task IDs with enough entropy to prevent guessing."* Ids come from
+ * [UUID.randomUUID], which is `SecureRandom`-backed (122 bits). Live sessions keep the stronger
+ * guarantee; the relaxation applies only to records that would otherwise be dead weight.
+ *
+ * ### Scope limit
+ *
+ * Persistence is per-process-tree, not shared: a second replica reading a different directory
+ * cannot answer `tasks/get` for a task this one started. Multi-replica needs shared storage *and* a
+ * real authorization context, neither of which this server has.
  */
 class TaskStore(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     private val now: () -> Instant = Instant::now,
+    private val recordStore: TaskRecordStore? = null,
 ) : Closeable {
 
     private val records = ConcurrentHashMap<String, TaskRecord>()
+
+    init {
+        recordStore?.let { restore(it) }
+    }
+
+    /**
+     * Loads persisted records at startup.
+     *
+     * Anything still `working` or `input_required` was interrupted by the shutdown — its coroutine
+     * is gone and nothing will ever finish it, so it is moved to `failed`. That is a legal
+     * transition (only terminal states may not move) and it matters for more than tidiness: a
+     * restored `working` record would make `tasks/result` block until the TTL expired, waiting on a
+     * task that cannot complete.
+     */
+    private fun restore(store: TaskRecordStore) {
+        store.sweepTempFiles()
+        val cutoff = now()
+        var recovered = 0
+        var interrupted = 0
+        for (persisted in store.loadAll()) {
+            val createdAt = runCatching { Instant.parse(persisted.createdAt) }.getOrNull()
+            if (createdAt == null || createdAt.plusMillis(persisted.ttlMs) < cutoff) {
+                store.delete(persisted.taskId)
+                continue
+            }
+            val wasRunning = persisted.status == TaskStatus.Working ||
+                persisted.status == TaskStatus.InputRequired
+            val record = TaskRecord(
+                taskId = persisted.taskId,
+                owner = persisted.owner,
+                label = persisted.label,
+                createdAt = createdAt,
+                ttlMs = persisted.ttlMs,
+                onStatus = {}, // the session that wanted the notifications is gone
+                orphaned = true,
+            ).apply {
+                status = if (wasRunning) TaskStatus.Failed else persisted.status
+                statusMessage =
+                    if (wasRunning) "Server restarted while this task was running" else persisted.statusMessage
+                lastUpdatedAt = runCatching { Instant.parse(persisted.lastUpdatedAt) }.getOrDefault(createdAt)
+                result = persisted.result?.toCallToolResultOrNull()
+                // Everything restored is terminal, so no tasks/result call can park on it.
+                finished.complete(Unit)
+            }
+            records[record.taskId] = record
+            recovered++
+            if (wasRunning) {
+                interrupted++
+                store.save(record.persisted())
+            }
+        }
+        if (recovered > 0) {
+            log.i { "Recovered $recovered task(s) from disk ($interrupted interrupted by the restart)" }
+        }
+    }
 
     /**
      * Registers a task owned by [owner], launches [TaskRun.block] on this store's own scope, and
@@ -186,6 +297,9 @@ class TaskStore(
         )
         records[record.taskId] = record
         val initial = synchronized(record) { record.snapshot() }
+        // Before the body runs, so a crash mid-fetch still leaves a record to recover as `failed`
+        // rather than a task the client holds an id for and the server has never heard of.
+        persist(record)
         log.i { "Task ${record.taskId} started (${run.label})" }
 
         record.job = scope.launch {
@@ -211,34 +325,60 @@ class TaskStore(
     fun get(owner: String, taskId: String): Task =
         withRecord(owner, taskId) { synchronized(it) { it.snapshot() } }
 
-    /** [owner]'s live tasks, newest first (`tasks/list`) — never another session's. */
+    /**
+     * [owner]'s live tasks, newest first (`tasks/list`) — never another session's, and **never an
+     * orphan**: a record restored from a previous process cannot be attributed to any live caller,
+     * and enumerating it would hand its metadata to whoever asked first.
+     */
     fun list(owner: String): List<Task> {
         sweepExpired()
         return records.values
-            .filter { it.owner == owner }
+            .filter { it.owner == owner && !it.orphaned }
             .map { synchronized(it) { it.snapshot() } }
             .sortedByDescending { it.createdAt }
     }
 
     /**
-     * The finished tool result (`tasks/result`). A tool that reported `isError` still *completed* —
-     * the payload carries the error, so it is returned rather than raised.
+     * The finished tool result (`tasks/result`). A task that `failed` because the tool reported
+     * `isError` still has its payload: the spec requires `tasks/result` to return exactly what the
+     * underlying request would have returned, so the error content is returned rather than raised.
      */
-    fun payload(owner: String, taskId: String): CallToolResult = withRecord(owner, taskId) { record ->
-        synchronized(record) {
+    suspend fun payload(owner: String, taskId: String): CallToolResult {
+        val record = withRecord(owner, taskId) { it }
+        if (!record.finished.isCompleted) {
+            // "When a receiver receives a tasks/result request for a task in any other non-terminal
+            // status (working or input_required), it MUST block the response until the task reaches
+            // a terminal status." Bounded by what is left of the TTL: past that the record may be
+            // swept, and nothing would ever complete the wait.
+            val budget = remainingTtl(record)
+            if (withTimeoutOrNull(budget) { record.finished.await() } == null) {
+                throw TaskNotReadyException(taskId, synchronized(record) { record.status })
+            }
+        }
+        return synchronized(record) {
+            // Terminal with no payload: cancelled, or a body that threw outside `invokeTool`. The
+            // spec allows tasks/result to answer with a JSON-RPC error in exactly that case.
             record.result ?: throw TaskNotReadyException(taskId, record.status)
         }
     }
 
+    /** Milliseconds left before [record] may be swept; never negative. */
+    private fun remainingTtl(record: TaskRecord): Long =
+        (record.createdAt.toEpochMilli() + record.ttlMs - now().toEpochMilli()).coerceAtLeast(0)
+
     /**
      * Cancels [taskId] (`tasks/cancel`), returning the resulting state. Cancelling the job unwinds
      * the tool body through the `CancellationException` that `guarded` already re-throws, so the
-     * in-flight download/analysis stops rather than running on unobserved. Terminal tasks are
-     * returned unchanged — cancelling a finished task is a no-op, not an error.
+     * in-flight download/analysis stops rather than running on unobserved.
+     *
+     * @throws TaskAlreadyTerminalException if the task already finished — the spec requires an
+     * error here, not a no-op, so a client that raced the completion learns which way it went.
      */
     fun cancel(owner: String, taskId: String): Task {
         val record = withRecord(owner, taskId) { it }
-        val job = synchronized(record) { if (record.terminal) return record.snapshot() else record.job }
+        val job = synchronized(record) {
+            if (record.terminal) throw TaskAlreadyTerminalException(taskId, record.status) else record.job
+        }
         job?.cancel()
         // The job's own CancellationException path publishes `cancelled`; report it now so the
         // response does not depend on that coroutine having been rescheduled yet.
@@ -285,10 +425,15 @@ class TaskStore(
         val snapshot = update(record) {
             when (outcome) {
                 is Outcome.Done -> {
-                    record.status = TaskStatus.Completed
+                    // A tool that reported isError did not complete successfully: 2025-11-25 is
+                    // explicit that "for tool calls specifically, this includes cases where the
+                    // tool call result has isError set to true" → `failed`. The result is still
+                    // kept, because tasks/result must return exactly what the underlying request
+                    // would have returned — the error content the model needs to read and act on.
+                    val failed = outcome.result.isError == true
+                    record.status = if (failed) TaskStatus.Failed else TaskStatus.Completed
                     record.result = outcome.result
-                    record.statusMessage =
-                        if (outcome.result.isError == true) "Completed with a tool error" else null
+                    record.statusMessage = if (failed) "The tool reported an error" else null
                 }
                 is Outcome.Failed -> {
                     record.status = TaskStatus.Failed
@@ -319,25 +464,60 @@ class TaskStore(
             record.lastUpdatedAt = now()
             record.snapshot()
         }
+        persist(record)
         runCatching { record.onStatus(snapshot) }
     }
 
-    private fun update(record: TaskRecord, mutate: () -> Unit): Task = synchronized(record) {
-        mutate()
-        record.lastUpdatedAt = now()
-        record.snapshot()
+    /**
+     * Applies [mutate] under the record's monitor and returns the resulting snapshot, releasing any
+     * `tasks/result` call parked on [TaskRecord.finished] if the change was terminal. Every path
+     * that can end a task goes through here, so no terminal transition can forget to unblock.
+     */
+    private fun update(record: TaskRecord, mutate: () -> Unit): Task {
+        val (snapshot, terminal) = synchronized(record) {
+            mutate()
+            record.lastUpdatedAt = now()
+            record.snapshot() to record.terminal
+        }
+        persist(record)
+        // Released only *after* the new state is on disk. Completing it inside the lock would let a
+        // client observe a finished task through tasks/result that a crash a moment later would
+        // resurrect as `working` — the one inconsistency persistence exists to prevent.
+        if (terminal) record.finished.complete(Unit)
+        return snapshot
     }
 
     /**
-     * Resolves a client-supplied [taskId] within [owner]'s tasks.
+     * Writes [record]'s current state to disk.
      *
-     * A record owned by a different session raises the *same* [UnknownTaskException] as a missing
-     * one, deliberately: distinguishing "not yours" from "not here" would turn `tasks/get` into an
-     * oracle for other sessions' task ids.
+     * **Synchronous, deliberately.** Launching the write instead would be cancelled by [close] —
+     * losing exactly the final state a task reaches during shutdown, which is the state a restart
+     * most needs — and would leave two saves free to land out of order. Records are a few KB and
+     * written only on state changes (four per task in the common case), so the cost is a couple of
+     * milliseconds on a path that is already doing network and disk work.
+     *
+     * Called outside the record's monitor. Failures are swallowed and logged by the record store:
+     * durability is a bonus, and losing it must never fail a task the client is waiting on.
+     */
+    private fun persist(record: TaskRecord) {
+        val store = recordStore ?: return
+        store.save(synchronized(record) { record.persisted() })
+    }
+
+    /**
+     * Resolves a client-supplied [taskId] for [owner].
+     *
+     * Accepts the record if the caller owns it, **or** if it is an orphan from a previous process —
+     * see the class KDoc for why that fallback exists and why `tasks/list` does not share it.
+     *
+     * A record owned by a different *live* session raises the *same* [UnknownTaskException] as a
+     * missing one, deliberately: distinguishing "not yours" from "not here" would turn `tasks/get`
+     * into an oracle for other sessions' task ids.
      */
     private fun <T> withRecord(owner: String, taskId: String, block: (TaskRecord) -> T): T {
         sweepExpired()
-        val record = records[taskId]?.takeIf { it.owner == owner } ?: throw UnknownTaskException(taskId)
+        val record = records[taskId]?.takeIf { it.owner == owner || it.orphaned }
+            ?: throw UnknownTaskException(taskId)
         return block(record)
     }
 
@@ -347,11 +527,18 @@ class TaskStore(
      */
     private fun sweepExpired() {
         val cutoff = now()
+        val expired = mutableListOf<String>()
         records.values.removeAll { record ->
             synchronized(record) {
-                record.terminal && record.createdAt.plusMillis(record.ttlMs) < cutoff
+                (record.terminal && record.createdAt.plusMillis(record.ttlMs) < cutoff)
+                    .also { if (it) expired += record.taskId }
             }
         }
+        if (expired.isEmpty()) return
+        val store = recordStore ?: return
+        // The spec lets a receiver delete a task and its results once the TTL elapses; dropping the
+        // file too is what keeps a restart from resurrecting what this process just swept.
+        expired.forEach { store.delete(it) }
     }
 
     private fun effectiveTtl(requested: Long?): Long =

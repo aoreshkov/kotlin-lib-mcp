@@ -253,6 +253,11 @@ private inline fun <T> mapTaskErrors(block: () -> T): T = try {
 } catch (e: TaskNotReadyException) {
     throw McpException(
         code = RPCError.ErrorCode.INVALID_PARAMS,
-        message = e.message ?: "Task is not complete",
+        message = e.message ?: "Task produced no result",
+    )
+} catch (e: TaskAlreadyTerminalException) {
+    throw McpException(
+        code = RPCError.ErrorCode.INVALID_PARAMS,
+        message = e.message ?: "Task already finished",
     )
 }

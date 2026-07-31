@@ -32,8 +32,10 @@ private val USAGE = """
                                defaults to protocol http/protobuf and endpoint http://localhost:4318.
       --tasks                  Accept task-augmented tools/call (SEP-1686) for fetch_library, and
                                answer tasks/get, tasks/result, tasks/list and tasks/cancel. Off by
-                               default. Works on both transports; task records live in this process
-                               and each session sees only its own.
+                               default. Works on both transports. Records are stored under
+                               <cache-dir>/tasks and survive a restart; each session sees only its
+                               own in tasks/list, and a recovered task is reachable by its exact
+                               task id. See the README before exposing this beyond loopback.
       --help                   Show this help and exit
 
     Telemetry (--otel):
