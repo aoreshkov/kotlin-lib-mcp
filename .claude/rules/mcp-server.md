@@ -98,6 +98,15 @@ task that a crash a moment later resurrects as `working`. Writes are synchronous
 launching them lets `close()` cancel the final state a task reaches during shutdown, which is
 exactly the state a restart needs.
 
+For the same reason **`close()` writes the terminal state itself**, marking every non-terminal record
+`failed` on the calling thread *before* `scope.cancel()`. Left to the job's own
+`CancellationException` path it lands from a `Dispatchers.Default` thread — after `close()` returned,
+possibly after the JVM exited — so the same task came back `cancelled` or `failed` depending on
+thread timing (a real CI flake). Marking first also makes `publish`'s `if (!record.terminal)` guard
+swallow the late `cancelled`. `TaskPersistenceTest` pins both halves: the graceful path through
+`close()`, and the crash path (a record left `working` on disk, no `close()`) through `restore()`;
+neither test may simulate a crash by calling `close()`.
+
 **Dispatch concurrency is the SDK's job now (0.15.0):** `Protocol` launches inbound requests and
 notifications on a per-connection handler scope once `notifications/initialized` has arrived,
 keeping responses inline and letting `ping`/`cancelled`/`progress`/`initialized` bypass its

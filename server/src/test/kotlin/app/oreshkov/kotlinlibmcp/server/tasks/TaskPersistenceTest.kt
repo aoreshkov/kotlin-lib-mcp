@@ -87,23 +87,46 @@ class TaskPersistenceTest {
     }
 
     @Test
-    fun aTaskInterruptedByTheRestartComesBackFailed(): Unit = runBlocking {
+    fun aTaskInterruptedByACrashComesBackFailed(): Unit = runBlocking {
         val dir = tempDir()
         val never = CompletableDeferred<Unit>()
         val first = store(dir)
         // `start` persists before the body runs, so the record is on disk while still `working`.
         val started = first.start(alice, job { never.await(); ok() })
         assertEquals(TaskStatus.Working, first.get(alice, started.taskId).status)
-        first.close()
 
-        // Its coroutine died with the process and nothing will ever finish it. Leaving it `working`
-        // would make tasks/result block until the TTL expired on a task that cannot complete.
+        // A hard crash: the process is gone without `close` running, so the record on disk is still
+        // `working` and nothing will ever finish it. Leaving it that way would make tasks/result
+        // block until the TTL expired on a task that cannot complete. `first` is deliberately left
+        // open — closing it is what a *graceful* shutdown does, and it writes a terminal state
+        // (see [aGracefulShutdownFailsInFlightTasksOnDisk]); `cleanUp` closes it after the asserts.
         val second = store(dir)
         val restored = second.get(alice, started.taskId)
         assertEquals(TaskStatus.Failed, restored.status)
         assertContains(restored.statusMessage.orEmpty(), "restart")
 
         // Terminal on restore, so tasks/result answers instead of parking.
+        assertFailsWith<TaskNotReadyException> { second.payload(alice, started.taskId) }
+    }
+
+    @Test
+    fun aGracefulShutdownFailsInFlightTasksOnDisk(): Unit = runBlocking {
+        val dir = tempDir()
+        val never = CompletableDeferred<Unit>()
+        val first = store(dir)
+        val started = first.start(alice, job { never.await(); ok() })
+        assertEquals(TaskStatus.Working, first.get(alice, started.taskId).status)
+
+        // `close` must write the terminal state itself, before cancelling the scope. Left to the
+        // job's own cancellation path it would land from another thread — after this returns, and
+        // possibly after the JVM has exited — so the same task would come back `cancelled` or
+        // `failed` depending on thread timing.
+        first.close()
+
+        val second = store(dir)
+        val restored = second.get(alice, started.taskId)
+        assertEquals(TaskStatus.Failed, restored.status)
+        assertContains(restored.statusMessage.orEmpty(), "shut down")
         assertFailsWith<TaskNotReadyException> { second.payload(alice, started.taskId) }
     }
 
