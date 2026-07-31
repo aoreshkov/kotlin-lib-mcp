@@ -8,6 +8,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Task records survive a server restart.** They are written to `<cache-dir>/tasks/<taskId>.json`
+  (one file each, temp-file-then-move so a crash cannot leave a half-written record), so a completed
+  task and its result are still retrievable afterwards. A task that was still running when the
+  server stopped is restored as `failed` — its work did not survive, only the record — which also
+  keeps a zombie `working` record from blocking `tasks/result` until its TTL expires.
+
+  A task's owner is a per-connection session id, so after a restart no live caller can match a
+  restored record and strict binding would leave every persisted task unreachable. Restored records
+  are therefore reachable by **exact task id** from any caller, while `tasks/list` still returns only
+  the calling session's own tasks. This is the model the 2025-11-25 spec prescribes for a receiver
+  with no authorization context — as here, loopback-first with no auth — and task ids are 122-bit
+  `SecureRandom` UUIDs accordingly. The limitation is documented in the README, as the spec asks.
+
+  This is restart survival on a single node; multi-replica would additionally need shared storage
+  and a real authorization context.
 - **`--tasks` now works on the HTTP transport**, not just stdio. It was restricted because
   `mcpStreamableHttp` creates a session per connection inside the SDK and hands back no
   `ServerSession` to register the `tasks/…` handlers on. `installTaskHandlersOnEverySession` hooks
@@ -53,6 +68,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tag guard drops its third-file check accordingly.
 
 ### Fixed
+- **Three deviations from the 2025-11-25 tasks spec**, all found while designing task persistence:
+  - A `tools/call` whose result carried `isError: true` completed the task as `completed`; the spec
+    says such a task `failed` ("for tool calls specifically, this includes cases where the tool call
+    result has `isError` set to true"). The result is still returned by `tasks/result`. This settles
+    the SEP-1303-vs-spec question left open when tasks first shipped.
+  - `tasks/cancel` on an already-terminal task returned it unchanged; the spec requires `-32602`.
+    Answering success told a client that raced the completion its task was cancelled when the result
+    had in fact been delivered.
+  - `tasks/result` on a `working` or `input_required` task returned `-32602`; the spec requires it to
+    **block until terminal**. This is load-bearing for elicitation: the documented flow is that a
+    client seeing `input_required` calls `tasks/result` and receives the server's question there.
 - **`completion/complete` could go missing on a session.** Registration picked
   `sessions.values.last()` from `Server.onConnect`, which says nothing about *which* session
   connected; two concurrent connections can interleave so that the newest session is already
