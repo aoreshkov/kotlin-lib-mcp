@@ -407,8 +407,31 @@ class TaskStore(
         transition(taskId, TaskStatus.Working, null)
     }
 
-    /** Cancels every in-flight task; called from `McpServerHandle.close()`. */
+    /**
+     * Ends every in-flight task; called from `McpServerHandle.close()`.
+     *
+     * Each one is moved to `failed` **here, on the calling thread, before the scope is cancelled**,
+     * so the terminal state is on disk by the time this returns. Leaving it to the job's own
+     * `CancellationException` path would publish it from a [Dispatchers.Default] thread, racing both
+     * the restart that reads the file and the JVM exit that may cut the write short — the same task
+     * would then come back as `cancelled` or `failed` depending on thread timing. Marking first also
+     * means that path finds the record already terminal and leaves it alone.
+     *
+     * `failed` rather than `cancelled`: the spec's `cancelled` means the requestor asked, and nobody
+     * did — the server went away. It matches what [restore] does for a record a hard crash left
+     * `working`, with a different message so the two provenances stay distinguishable.
+     *
+     * [TaskRun.onStatus] is deliberately not fired: it is `suspend`, and the transport it would
+     * notify over is being torn down in the same breath.
+     */
     override fun close() {
+        records.values.forEach { record ->
+            if (synchronized(record) { record.terminal }) return@forEach
+            update(record) {
+                record.status = TaskStatus.Failed
+                record.statusMessage = "Server shut down while this task was running"
+            }
+        }
         scope.cancel()
         records.clear()
     }
