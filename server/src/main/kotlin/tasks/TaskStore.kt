@@ -101,9 +101,17 @@ private val ISO: DateTimeFormatter = DateTimeFormatter.ISO_INSTANT
 internal class UnknownTaskException(taskId: String) :
     Exception("Unknown or expired task '$taskId'")
 
-/** Raised by `tasks/result` before the task reaches a terminal state. */
+/** Raised by `tasks/result` when a terminal task has no payload to hand back. */
 internal class TaskNotReadyException(taskId: String, status: TaskStatus) :
-    Exception("Task '$taskId' is still $status — poll tasks/get until it reports 'completed'")
+    Exception("Task '$taskId' ended as $status without producing a result")
+
+/**
+ * Raised by `tasks/cancel` for a task that already finished. The spec makes this an error rather
+ * than a no-op: "Receivers MUST reject cancellation requests for tasks already in a terminal status
+ * (completed, failed, or cancelled) with error code -32602 (Invalid params)."
+ */
+internal class TaskAlreadyTerminalException(taskId: String, status: TaskStatus) :
+    Exception("Cannot cancel task '$taskId': already in terminal status '${status.name.lowercase()}'")
 
 /**
  * The running task, carried in the coroutine context so a tool body can report that it is waiting
@@ -234,12 +242,16 @@ class TaskStore(
     /**
      * Cancels [taskId] (`tasks/cancel`), returning the resulting state. Cancelling the job unwinds
      * the tool body through the `CancellationException` that `guarded` already re-throws, so the
-     * in-flight download/analysis stops rather than running on unobserved. Terminal tasks are
-     * returned unchanged — cancelling a finished task is a no-op, not an error.
+     * in-flight download/analysis stops rather than running on unobserved.
+     *
+     * @throws TaskAlreadyTerminalException if the task already finished — the spec requires an
+     * error here, not a no-op, so a client that raced the completion learns which way it went.
      */
     fun cancel(owner: String, taskId: String): Task {
         val record = withRecord(owner, taskId) { it }
-        val job = synchronized(record) { if (record.terminal) return record.snapshot() else record.job }
+        val job = synchronized(record) {
+            if (record.terminal) throw TaskAlreadyTerminalException(taskId, record.status) else record.job
+        }
         job?.cancel()
         // The job's own CancellationException path publishes `cancelled`; report it now so the
         // response does not depend on that coroutine having been rescheduled yet.

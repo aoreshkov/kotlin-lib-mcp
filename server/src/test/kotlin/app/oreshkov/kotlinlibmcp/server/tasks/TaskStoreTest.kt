@@ -137,15 +137,20 @@ class TaskStoreTest {
     }
 
     @Test
-    fun cancellingAFinishedTaskIsANoOp() = runTest {
+    fun cancellingAFinishedTaskIsRejected() = runTest {
         val store = TestScopeStore(CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)))
 
         val started = store.start(S1, taskRun { ok() })
         advanceUntilIdle()
 
-        // Cancelling after the fact is a race a well-behaved client can lose; it must not be an
-        // error, and it must not rewrite a delivered result.
-        assertEquals(TaskStatus.Completed, store.cancel(S1, started.taskId).status)
+        // "Receivers MUST reject cancellation requests for tasks already in a terminal status
+        // with error code -32602" — a client that raced the completion has to learn which way it
+        // went, rather than being told the cancel succeeded.
+        val error = assertFailsWith<TaskAlreadyTerminalException> { store.cancel(S1, started.taskId) }
+        assertContains(error.message.orEmpty(), "completed")
+
+        // ...and the delivered result is untouched.
+        assertEquals(TaskStatus.Completed, store.get(S1, started.taskId).status)
         assertNotNull(store.payload(S1, started.taskId))
         store.close()
     }
