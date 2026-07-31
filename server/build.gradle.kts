@@ -19,7 +19,7 @@ dependencies {
     runtimeOnly(libs.opentelemetry.sender.jdk)
 
     implementation(project(":core"))
-    implementation(libs.mcp.kotlin.sdk)
+    implementation(libs.mcp.kotlinSdkServer)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.ktor.server.core)
@@ -27,7 +27,7 @@ dependencies {
     implementation(libs.kermit)
 
     implementation(libs.slf4j.api)
-    implementation(libs.kotlin.logging)
+    implementation(libs.kotlinLogging)
 
     testImplementation(libs.kotlin.test)
     testImplementation(libs.kotlinx.coroutines.test)

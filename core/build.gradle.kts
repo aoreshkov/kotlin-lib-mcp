@@ -31,13 +31,13 @@ kotlin {
                 // Kotlin Analysis API (standalone, K2/FIR) — JVM-only, version-matched to Kotlin.
                 // The `-for-ide` shaded jars declare logical (non-`-for-ide`) deps that aren't
                 // published separately, so each is pulled with transitive resolution disabled.
-                implementation(libs.analysis.api.standalone.coordinates()) { isTransitive = false }
-                implementation(libs.analysis.api.high.level.coordinates()) { isTransitive = false }
-                implementation(libs.analysis.api.k2.coordinates()) { isTransitive = false }
-                implementation(libs.analysis.api.low.level.fir.coordinates()) { isTransitive = false }
-                implementation(libs.analysis.api.impl.base.coordinates()) { isTransitive = false }
-                implementation(libs.analysis.api.platform.coordinates()) { isTransitive = false }
-                implementation(libs.analysis.api.symbol.light.classes.coordinates()) { isTransitive = false }
+                implementation(libs.analysisApi.standalone.coordinates()) { isTransitive = false }
+                implementation(libs.analysisApi.highLevel.coordinates()) { isTransitive = false }
+                implementation(libs.analysisApi.k2.coordinates()) { isTransitive = false }
+                implementation(libs.analysisApi.lowLevelFir.coordinates()) { isTransitive = false }
+                implementation(libs.analysisApi.implBase.coordinates()) { isTransitive = false }
+                implementation(libs.analysisApi.platform.coordinates()) { isTransitive = false }
+                implementation(libs.analysisApi.symbolLightClasses.coordinates()) { isTransitive = false }
                 // Compiler + bundled IntelliJ core, resolved transitively from Maven Central.
                 implementation(libs.kotlin.compiler)
                 // Runtime-only deps of the non-transitive `-for-ide` jars (LL FIR caches), plus
@@ -45,7 +45,7 @@ kotlin {
                 // (KT-81457 workaround, same as detekt) — without it pooled workers die with
                 // NoClassDefFoundError: kotlinx.coroutines.internal.intellij.IntellijCoroutines.
                 runtimeOnly(libs.caffeine)
-                runtimeOnly(libs.kotlinx.coroutines.core.intellij)
+                runtimeOnly(libs.intellij.coroutinesCore)
             }
         }
         getByName("jvmTest") {

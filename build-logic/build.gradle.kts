@@ -6,9 +6,8 @@ plugins {
 // plugins' gradle-plugin artifacts must be on this build's classpath.
 dependencies {
     implementation(libs.kotlin.gradle.plugin)
-    implementation(libs.kotlin.serialization.gradle.plugin)
+    implementation(libs.kotlin.serialization.plugin)
     implementation(libs.compose.gradle.plugin)
-    implementation(libs.compose.compiler.gradle.plugin)
+    implementation(libs.composeCompiler.gradle.plugin)
     implementation(libs.kover.gradle.plugin)
-    implementation(libs.bcv.gradle.plugin)
 }

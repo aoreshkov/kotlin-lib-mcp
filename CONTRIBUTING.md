@@ -23,10 +23,10 @@ you invest time.
 - **Dependency versions live only in `gradle/libs.versions.toml`.** Never hard-code a version
   in a build script.
 - **Kotlin and the Analysis API artifacts are version-locked** — they must share the exact
-  same version. Always bump `kotlin` and the `analysis-api-*` entries together.
-- **Public API of `core` is validated.** If you intentionally change it, run
-  `./gradlew apiDump` and commit the updated `core/api/core.api`; `./gradlew build` fails
-  otherwise.
+  same version. Always bump `kotlin` and the `analysisApi-*` entries together.
+- **Public API of `core` is validated** by the Kotlin Gradle plugin's ABI validation. If you
+  intentionally change it, run `./gradlew updateKotlinAbi` and commit the updated
+  `core/api/core.api`; `./gradlew build` fails otherwise.
 - **stdio transport: never write to stdout.** Only MCP protocol frames may go to stdout —
   all logging goes to stderr/file (Kermit → SLF4J → Logback). A stray `println` corrupts
   the protocol stream.

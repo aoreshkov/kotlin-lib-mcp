@@ -41,6 +41,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `tools/list`.
 
 ### Changed
+- **Build only — ABI validation moved into the Kotlin Gradle plugin.** The standalone
+  `binary-compatibility-validator` plugin is frozen (JetBrains folded it into KGP), so
+  `kmp-library.gradle.kts` now enables `abiValidation {}` instead. The dump format and
+  `core/api/core.api` are byte-identical; the task names changed: `apiCheck` → `checkKotlinAbi`
+  (still run by `./gradlew build`) and `apiDump` → `updateKotlinAbi`. The DSL is experimental,
+  so a Kotlin bump can break it.
+- **Build only — version catalog cleaned up** against Gradle's published guidance: entries no
+  build script consumed are gone (`junit`, `slf4j-android`, `kotlin-metadata-jvm`, two unused
+  Ktor artifacts, and every `[plugins]` alias except the one a module applies with `alias(…)`),
+  and aliases now follow the documented naming convention (1–3 dash-separated segments,
+  camelCase inside a segment) — e.g. `analysis-api-symbol-light-classes` →
+  `analysisApi-symbolLightClasses`. No dependency of the published modules changed — the
+  removed entries were declared nowhere and the renames only move aliases.
 - **MCP Kotlin SDK 0.14.0 → 0.15.0.** The wire types are unchanged; the substance is that
   `Protocol` now dispatches inbound handlers concurrently itself (bounded, order-preserving, gated
   on `notifications/initialized`) and tracks in-flight requests so `notifications/cancelled`
