@@ -5,6 +5,7 @@ import app.oreshkov.kotlinlibmcp.server.telemetry.METHOD_TASKS_GET
 import app.oreshkov.kotlinlibmcp.server.telemetry.METHOD_TASKS_LIST
 import app.oreshkov.kotlinlibmcp.server.telemetry.METHOD_TASKS_RESULT
 import app.oreshkov.kotlinlibmcp.server.telemetry.taskSpan
+import app.oreshkov.kotlinlibmcp.server.onEachSession
 import io.modelcontextprotocol.kotlin.sdk.server.ClientConnection
 import io.modelcontextprotocol.kotlin.sdk.server.RegisteredTool
 import io.modelcontextprotocol.kotlin.sdk.server.Server
@@ -32,7 +33,6 @@ import io.modelcontextprotocol.kotlin.sdk.types.TaskStatusNotificationParams
 import io.modelcontextprotocol.kotlin.sdk.types.TaskSupport
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import io.modelcontextprotocol.kotlin.sdk.types.UrlElicitationRequiredException
-import java.util.concurrent.ConcurrentHashMap
 import kotlinx.coroutines.CancellationException
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.buildJsonObject
@@ -55,38 +55,12 @@ import kotlinx.serialization.json.put
 
 /**
  * Installs task support on every session [this] server accepts — the entry point for transports
- * that never hand us a `ServerSession`.
+ * that never hand us a `ServerSession`, which today means HTTP.
  *
- * `mcpStreamableHttp` creates a session per connection deep inside the SDK, and the only way out is
- * `Server.onConnect`, which takes no argument saying *which* session connected. So each time it
- * fires, sweep every session and configure the ones not seen before. Sweeping rather than guessing
- * (`sessions.values.last()`, as `completions/LibraryCompletions.kt` has to) is deliberate: two
- * connections can be accepted concurrently, and one's callback may well run after the other has
- * already been added, so "the last one" is not reliably "the new one".
- *
- * **Ordering is safe.** `Server.createSession` fires `onConnect` after `session.connect(transport)`
- * but *before* the Streamable HTTP route feeds the POST body to the transport, so the handlers are
- * in place before the session's first frame is dispatched — not merely before its first `tools/call`.
+ * See [onEachSession] for why this cannot simply pick the newest session.
  */
-fun Server.installTaskHandlersOnEverySession(store: TaskStore) {
-    val configured = ConcurrentHashMap.newKeySet<String>()
-
-    fun configureNewSessions() {
-        sessions.values.forEach { session ->
-            // add() is the claim: whichever sweep wins configures, so concurrent ones cannot
-            // double-register, and a session is never left without handlers.
-            if (configured.add(session.sessionId)) {
-                session.registerTaskHandlers(this, store)
-                session.onClose { configured.remove(session.sessionId) }
-            }
-        }
-    }
-
-    onConnect { configureNewSessions() }
-    // Also covers anything already connected, so this is safe to call at any point in setup rather
-    // than only before the first client arrives.
-    configureNewSessions()
-}
+fun Server.installTaskHandlersOnEverySession(store: TaskStore) =
+    onEachSession { session -> session.registerTaskHandlers(this, store) }
 
 /**
  * Installs task support on one session. Call after `Server.createSession`, for transports that own

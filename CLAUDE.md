@@ -107,8 +107,10 @@ any layer between it and the store knowing about tasks.
 
 Registration differs per transport because the SDK only sometimes gives us the session: stdio calls
 `registerTaskHandlers` on the `ServerSession` it owns, while HTTP goes through
-`installTaskHandlersOnEverySession`, which sweeps `server.sessions` from `Server.onConnect` (that
-callback takes no argument saying *which* session connected).
+`installTaskHandlersOnEverySession`. Both that and the completion handler build on
+**`onEachSession` (`SessionSetup.kt`)**, which sweeps `server.sessions` from `Server.onConnect` —
+that callback takes no argument saying *which* session connected, and picking the newest loses a
+session when two connections are accepted concurrently.
 
 **OTel traces** over OTLP/HTTP are **opt-in** behind `--otel` (`telemetry/Telemetry.kt`): one
 `SERVER` span per MCP request, opened in `guarded`/`resourceSpan`/`promptSpan`/`completionSpan`,

@@ -53,6 +53,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   tag guard drops its third-file check accordingly.
 
 ### Fixed
+- **`completion/complete` could go missing on a session.** Registration picked
+  `sessions.values.last()` from `Server.onConnect`, which says nothing about *which* session
+  connected; two concurrent connections can interleave so that the newest session is already
+  configured while the other never gets the handler and answers `-32601 Method not found` for its
+  whole lifetime. The sweep introduced for tasks is now shared as `onEachSession`
+  (`SessionSetup.kt`) and used by both.
 - **Tasks are now scoped to the session that created them.** `TaskStore` held a flat registry and
   `tasks/list` returned every record, so any client could enumerate — and `tasks/get`,
   `tasks/result` and `tasks/cancel` could read, retrieve and kill — another client's tasks and
