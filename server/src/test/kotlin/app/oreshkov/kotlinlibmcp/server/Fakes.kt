@@ -10,6 +10,9 @@ import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.model.LibraryIndex
 import io.modelcontextprotocol.kotlin.sdk.server.ClientConnection
 import io.modelcontextprotocol.kotlin.sdk.shared.RequestOptions
+import io.modelcontextprotocol.kotlin.sdk.shared.Transport
+import io.modelcontextprotocol.kotlin.sdk.shared.TransportSendOptions
+import io.modelcontextprotocol.kotlin.sdk.types.ClientCapabilities
 import io.modelcontextprotocol.kotlin.sdk.types.CreateMessageRequest
 import io.modelcontextprotocol.kotlin.sdk.types.CreateMessageResult
 import io.modelcontextprotocol.kotlin.sdk.types.ElicitRequest
@@ -17,6 +20,15 @@ import io.modelcontextprotocol.kotlin.sdk.types.ElicitRequestParams
 import io.modelcontextprotocol.kotlin.sdk.types.ElicitResult
 import io.modelcontextprotocol.kotlin.sdk.types.ElicitationCompleteNotification
 import io.modelcontextprotocol.kotlin.sdk.types.EmptyResult
+import io.modelcontextprotocol.kotlin.sdk.types.Implementation
+import io.modelcontextprotocol.kotlin.sdk.types.InitializeRequest
+import io.modelcontextprotocol.kotlin.sdk.types.InitializeRequestParams
+import io.modelcontextprotocol.kotlin.sdk.types.InitializedNotification
+import io.modelcontextprotocol.kotlin.sdk.types.JSONRPCError
+import io.modelcontextprotocol.kotlin.sdk.types.JSONRPCMessage
+import io.modelcontextprotocol.kotlin.sdk.types.JSONRPCRequest
+import io.modelcontextprotocol.kotlin.sdk.types.JSONRPCResponse
+import io.modelcontextprotocol.kotlin.sdk.types.LATEST_PROTOCOL_VERSION
 import io.modelcontextprotocol.kotlin.sdk.types.ListRootsRequest
 import io.modelcontextprotocol.kotlin.sdk.types.ListRootsResult
 import io.modelcontextprotocol.kotlin.sdk.types.LoggingMessageNotification
@@ -24,6 +36,7 @@ import io.modelcontextprotocol.kotlin.sdk.types.PingRequest
 import io.modelcontextprotocol.kotlin.sdk.types.RequestId
 import io.modelcontextprotocol.kotlin.sdk.types.ResourceUpdatedNotification
 import io.modelcontextprotocol.kotlin.sdk.types.ServerNotification
+import io.modelcontextprotocol.kotlin.sdk.types.toJSON
 
 /*
  * Offline collaborators for server tests: a fetcher that serves a canned version catalog and
@@ -126,3 +139,52 @@ internal fun fakeService(catalog: VersionCatalog = VersionCatalog(versions = emp
         cache = UnusedCache,
         repos = emptyList(),
     )
+
+/**
+ * Stands in for a real `Transport`: lets a test push frames the way a read loop would, and inspect
+ * what the session wrote back. Shared by the tests that drive a genuine `ServerSession`.
+ */
+internal class FakeTransport : Transport {
+    private var handler: suspend (JSONRPCMessage) -> Unit = {}
+    private var closeBlock: () -> Unit = {}
+
+    /** Everything the session has written, in order. */
+    val sent: MutableList<JSONRPCMessage> = mutableListOf()
+
+    override fun onMessage(block: suspend (JSONRPCMessage) -> Unit) { handler = block }
+    override suspend fun start() = Unit
+    override suspend fun send(message: JSONRPCMessage, options: TransportSendOptions?) { sent += message }
+    override suspend fun close() = closeBlock()
+    override fun onClose(block: () -> Unit) { closeBlock = block }
+    override fun onError(block: (Throwable) -> Unit) = Unit
+
+    /** Feeds a frame exactly as a transport's processor pump does: awaiting the handler. */
+    suspend fun deliver(message: JSONRPCMessage) = handler(message)
+
+    fun responseTo(id: Long): JSONRPCResponse? =
+        sent.filterIsInstance<JSONRPCResponse>().firstOrNull { it.id == RequestId(id) }
+
+    fun errorTo(id: Long): JSONRPCError? =
+        sent.filterIsInstance<JSONRPCError>().firstOrNull { it.id == RequestId(id) }
+
+    fun outgoingRequest(method: String): JSONRPCRequest? =
+        sent.filterIsInstance<JSONRPCRequest>().firstOrNull { it.method == method }
+}
+
+/** An `initialize` frame with [id], advertising no client capabilities. */
+internal fun mcpInitialize(id: Long): JSONRPCRequest = InitializeRequest(
+    InitializeRequestParams(
+        protocolVersion = LATEST_PROTOCOL_VERSION,
+        capabilities = ClientCapabilities(),
+        clientInfo = Implementation(name = "test-client", version = "0"),
+    )
+).toJSON().copy(id = RequestId(id))
+
+/**
+ * Drives the MCP handshake. Until `notifications/initialized` arrives the SDK dispatches inbound
+ * frames serially, so tests that care about concurrency must get past this first.
+ */
+internal suspend fun FakeTransport.handshake(id: Long = 1) {
+    deliver(mcpInitialize(id))
+    deliver(InitializedNotification().toJSON())
+}

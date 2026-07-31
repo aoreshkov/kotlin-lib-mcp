@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`--tasks` now works on the HTTP transport**, not just stdio. It was restricted because
+  `mcpStreamableHttp` creates a session per connection inside the SDK and hands back no
+  `ServerSession` to register the `tasks/…` handlers on. `installTaskHandlersOnEverySession` hooks
+  `Server.onConnect` and sweeps `server.sessions`, configuring any it has not seen — sweeping rather
+  than taking `sessions.values.last()`, since that callback says nothing about *which* session
+  connected and two concurrent connections can interleave. Task records are owned by the session
+  that created them, so each HTTP connection sees only its own. The stdio-only warning `--tasks`
+  printed under `--transport http` is gone.
 - **Icons (SEP-973)** on every MCP object the server exposes: `serverInfo`, all ten tools, the
   `explain_public_api` prompt, and the library-index resource and resource template. `serverInfo`
   also gained the `title` and `websiteUrl` branding fields it already declares in `server.json`.
@@ -48,9 +56,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **Tasks are now scoped to the session that created them.** `TaskStore` held a flat registry and
   `tasks/list` returned every record, so any client could enumerate — and `tasks/get`,
   `tasks/result` and `tasks/cancel` could read, retrieve and kill — another client's tasks and
-  their full tool results. Unreachable today because `--tasks` is stdio-only (one session per
-  process), but a prerequisite for ever enabling it on the HTTP transport, where
-  `mcpStreamableHttp` creates a session per connection. A `taskId` owned by another session now
+  their full tool results. Unreachable while `--tasks` was stdio-only (one session per process),
+  and a prerequisite for enabling it on the HTTP transport above, where `mcpStreamableHttp` creates
+  a session per connection. A `taskId` owned by another session now
   raises the same `UnknownTaskException` as one that never existed, so the error cannot be used to
   probe for other sessions' ids.
 - **`kotlinx.collections.immutable` classpath shadowing.** `kotlin-compiler` (pulled in by `:core`

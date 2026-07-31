@@ -1,5 +1,7 @@
 package app.oreshkov.kotlinlibmcp.server.transport
 
+import app.oreshkov.kotlinlibmcp.server.tasks.TaskStore
+import app.oreshkov.kotlinlibmcp.server.tasks.installTaskHandlersOnEverySession
 import co.touchlab.kermit.Logger
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.embeddedServer
@@ -36,6 +38,10 @@ private val SSE_HEARTBEAT_PERIOD: Duration = 30.seconds
  * need no port. The SDK also caps POST bodies (4 MiB default) and supports an `eventStore`
  * for SSE resumability; both are left at their defaults here.
  *
+ * When [taskStore] is non-null (`--tasks`), task support is installed on every session this server
+ * accepts. Unlike stdio there is no session object here to register on — see
+ * [installTaskHandlersOnEverySession].
+ *
  * An SSE heartbeat *is* configured, because the SDK's default is none: a `fetch_library` that
  * downloads and parses a large library can go minutes without emitting a frame, and idle
  * connections get culled by proxies and load balancers long before that. [SSE_HEARTBEAT_PERIOD]
@@ -47,6 +53,7 @@ fun runHttpServer(
     host: String = LOOPBACK_HOST,
     allowedHosts: List<String> = emptyList(),
     allowedOrigins: List<String> = emptyList(),
+    taskStore: TaskStore? = null,
 ) {
     val log = Logger.withTag("HttpTransport")
     log.i { "MCP Streamable HTTP endpoint on http://$host:$port/mcp" }
@@ -55,6 +62,8 @@ fun runHttpServer(
     }
     if (allowedHosts.isNotEmpty()) log.i { "Additionally accepting Host: $allowedHosts" }
     if (allowedOrigins.isNotEmpty()) log.i { "Additionally accepting Origin: $allowedOrigins" }
+    // Before the engine starts, so no connection can be accepted ahead of the hook.
+    taskStore?.let { server.installTaskHandlersOnEverySession(it) }
     embeddedServer(CIO, host = host, port = port) {
         mcpStreamableHttp(
             allowedHosts = (LOCALHOST_HOSTS + allowedHosts).takeIf { allowedHosts.isNotEmpty() },
