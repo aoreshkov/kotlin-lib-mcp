@@ -15,6 +15,9 @@ Desktop dashboard runs the same server in-process for control, logs, and cache b
     parsing), `ZipExtractor`, `AnalysisApiSourceAnalyzer`, on-disk cache.
 - `server/` — **JVM app**: registers MCP tools and runs the transports. Runnable headless.
 - `dashboard/` — **Compose Desktop** control panel (optional). Embeds `server`.
+- `tools/` — **asset generators**, never shipped: the SEP-973 icon PNGs and the repository's
+  social preview card. No dependencies, nothing depends on it; built by `./gradlew build` only so
+  it cannot rot. `./gradlew :tools:generateIcons` / `:tools:generateSocialPreview`.
 
 `server` and `dashboard` both depend on `core`. `server` runs without Compose.
 
@@ -74,8 +77,8 @@ library plus a `kotlinlib://{group}/{artifact}/{version}/index` **resource templ
 "explain the public API" **prompt** — exercising all three MCP primitives.
 
 **Icons (SEP-973)** are on `serverInfo`, every tool, the prompt and the resource/template
-(`icons/Icons.kt`, PNGs in `server/src/main/resources/icons/`, drawn by
-`assets/icons/GenerateIcons.java`). Inline `data:` PNG URIs, deliberately — see the file header for
+(`icons/Icons.kt`, PNGs in `server/src/main/resources/icons/`, drawn by `:tools`). Inline `data:`
+PNG URIs, deliberately — see the file header for
 why PNG and why not `https://`; the `icons` traps in the SDK's `add*` overloads are in
 `.claude/rules/mcp-server.md`.
 

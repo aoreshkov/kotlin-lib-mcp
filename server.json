@@ -20,9 +20,25 @@
     {
       "registryType": "oci",
       "identifier": "ghcr.io/aoreshkov/kotlin-lib-mcp:0.4.0",
+      "runtimeHint": "docker",
+      "runtimeArguments": [
+        {
+          "type": "named",
+          "name": "-v",
+          "value": "kotlin-lib-mcp-cache:/home/mcp/.cache",
+          "description": "Persist the downloaded sources and parsed index across container runs. Without it every session re-downloads and re-analyzes each library, since the container is --rm."
+        }
+      ],
       "transport": {
         "type": "stdio"
       }
     }
-  ]
+  ],
+  "_meta": {
+    "io.modelcontextprotocol.registry/publisher-provided": {
+      "com.github": {
+        "serverDisplayName": "Kotlin Library Sources"
+      }
+    }
+  }
 }

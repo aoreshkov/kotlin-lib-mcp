@@ -11,7 +11,7 @@ Every tool declares a `title`, behavior annotations (`readOnlyHint`/`openWorldHi
 (`server/.../tools/OutputSchemas.kt`), and an SEP-973 `icon`; `toolResult` returns JSON text **and**
 matching `structuredContent`. When adding a tool, pass all four to `addTool` — use the shared
 `LOCAL_READ_ONLY`/`REPOSITORY_READ_ONLY` annotation constants in `ToolSupport.kt`, and add a new
-`Glyph` entry (plus its PNG, via `assets/icons/GenerateIcons.java`) in `server/.../icons/Icons.kt`.
+`Glyph` entry (plus its PNG, via `./gradlew :tools:generateIcons`) in `server/.../icons/Icons.kt`.
 
 **Icons gotcha:** `icons` exists only on the `Tool`/`Prompt`/`Resource`/`ResourceTemplate` types,
 never on the SDK's `addTool(name, …)`/`addPrompt(name, …)`/`addResource(uri, …)` convenience
