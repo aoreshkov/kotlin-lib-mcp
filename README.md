@@ -14,6 +14,12 @@ library (e.g. `io.ktor:ktor-client-core:3.5.1`), parses them with the Kotlin **A
 dependencies/metadata, raw source + search — to MCP clients such as Claude Code and Claude
 Desktop. An optional Compose Desktop dashboard runs the same server in-process.
 
+[<img src="https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square" alt="Install in VS Code">](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522kotlin-lib%2522%252C%2522command%2522%253A%2522docker%2522%252C%2522args%2522%253A%255B%2522run%2522%252C%2522-i%2522%252C%2522--rm%2522%252C%2522-v%2522%252C%2522kotlin-lib-mcp-cache%253A%252Fhome%252Fmcp%252F.cache%2522%252C%2522ghcr.io%252Faoreshkov%252Fkotlin-lib-mcp%2522%255D%257D)
+[<img src="https://img.shields.io/badge/VS_Code_Insiders-Install_Server-24bfa5?style=flat-square" alt="Install in VS Code Insiders">](https://insiders.vscode.dev/redirect?url=vscode-insiders%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522kotlin-lib%2522%252C%2522command%2522%253A%2522docker%2522%252C%2522args%2522%253A%255B%2522run%2522%252C%2522-i%2522%252C%2522--rm%2522%252C%2522-v%2522%252C%2522kotlin-lib-mcp-cache%253A%252Fhome%252Fmcp%252F.cache%2522%252C%2522ghcr.io%252Faoreshkov%252Fkotlin-lib-mcp%2522%255D%257D)
+
+Those install the Docker image. For Claude Code, or to run the release zip without Docker, see
+[Quick start](#quick-start-no-build-required).
+
 <!-- mcp-name: io.github.aoreshkov/kotlin-lib-mcp -->
 
 ![Claude Code fetching a library and reading KDoc via kotlin-lib-mcp](assets/demo.gif)
@@ -219,7 +225,8 @@ origin, and the spec asks consumers to prefer same-origin icons and fetch them w
 so inlining removes the third-party fetch entirely and keeps the icons working offline and inside
 the container image. The payload is **PNG**, the one format icon-rendering clients *must* support
 (`image/svg+xml` is only a SHOULD, and the spec warns it may carry executable content). The glyphs
-are drawn by [`assets/icons/GenerateIcons.java`](assets/icons/GenerateIcons.java) and kept small —
+are drawn by [`tools/src/main/kotlin/GenerateIcons.kt`](tools/src/main/kotlin/GenerateIcons.kt)
+(`./gradlew :tools:generateIcons`) and kept small —
 about 800 bytes encoded each, since they ride in every `tools/list`.
 
 [sep-973]: https://modelcontextprotocol.io/specification/2025-11-25/basic#icons
@@ -242,6 +249,7 @@ Requires JDK 21 (resolved automatically via Gradle toolchains).
 | `core/` | KMP library: domain model + ports (`commonMain`); Maven fetcher, zip extractor, Analysis API analyzer, on-disk cache (`jvmMain`) |
 | `server/` | JVM app: MCP tools/resources/prompts + stdio and Streamable HTTP transports |
 | `dashboard/` | Compose Desktop control panel embedding the server (optional) |
+| `tools/` | Asset generators (icon PNGs, social preview card). Never shipped; nothing depends on it |
 
 ## Cache
 

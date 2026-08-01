@@ -20,7 +20,8 @@ import java.util.Base64
  *    ships the format every client can render.
  *
  * The bytes are inline in every `tools/list`, so the glyphs are kept small (~600 B each, ~800 B
- * base64) — see `assets/icons/GenerateIcons.java`, which draws and regenerates them.
+ * base64) — see `tools/src/main/kotlin/GenerateIcons.kt` (`./gradlew :tools:generateIcons`), which
+ * draws and regenerates them.
  */
 
 /**

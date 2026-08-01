@@ -38,3 +38,7 @@ dependencyResolutionManagement {
 }
 
 include(":core", ":server", ":dashboard")
+
+// Asset generators (icons, social preview). Built by `./gradlew build` so they cannot rot,
+// but nothing depends on them and nothing ships them.
+include(":tools")
