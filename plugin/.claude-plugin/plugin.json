@@ -1,0 +1,15 @@
+{
+  "$schema": "https://json.schemastore.org/claude-code-plugin-manifest.json",
+  "name": "kotlin-lib",
+  "displayName": "Kotlin & Java Library Sources",
+  "version": "0.1.0",
+  "description": "Answers Kotlin/Java library questions from the real published sources jar — resolved signatures, KDoc, dependency tree and source search — instead of recalling them.",
+  "author": {
+    "name": "Atanas Oreshkov",
+    "url": "https://github.com/aoreshkov"
+  },
+  "homepage": "https://github.com/aoreshkov/kotlin-lib-mcp",
+  "repository": "https://github.com/aoreshkov/kotlin-lib-mcp",
+  "license": "Apache-2.0",
+  "keywords": ["kotlin", "java", "jvm", "maven", "gradle", "kdoc", "api", "documentation", "mcp"]
+}

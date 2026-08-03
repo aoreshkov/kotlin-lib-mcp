@@ -49,7 +49,7 @@ const val SERVER_NAME: String = "kotlin-lib-mcp"
 internal fun serverInfo(): Implementation = Implementation(
     name = SERVER_NAME,
     version = ServerVersion.value,
-    title = "Kotlin Library Sources",
+    title = "Kotlin & Java Library Sources",
     websiteUrl = "https://github.com/aoreshkov/kotlin-lib-mcp",
     icons = Glyph.Server.icons,
 )

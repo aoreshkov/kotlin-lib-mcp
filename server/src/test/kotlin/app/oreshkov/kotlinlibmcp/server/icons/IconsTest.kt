@@ -91,7 +91,7 @@ class IconsTest {
         assertEquals(SERVER_NAME, info.name)
         assertEquals(Glyph.Server.icons, info.icons)
         // Mirrors server.json's registry entry, so a client sees the same identity either way.
-        assertEquals("Kotlin Library Sources", info.title)
+        assertEquals("Kotlin & Java Library Sources", info.title)
         assertEquals("https://github.com/aoreshkov/kotlin-lib-mcp", info.websiteUrl)
     }
 
