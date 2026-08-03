@@ -1,0 +1,17 @@
+{
+  "name": "kotlin-lib-mcp",
+  "description": "Kotlin/Java library ground truth for Claude Code, from the published sources jar.",
+  "owner": {
+    "name": "Atanas Oreshkov",
+    "url": "https://github.com/aoreshkov"
+  },
+  "plugins": [
+    {
+      "name": "kotlin-lib",
+      "source": "./plugin",
+      "description": "Answers Kotlin/Java library questions from the real published sources jar — resolved signatures, KDoc, dependency tree and source search — instead of recalling them.",
+      "category": "development",
+      "tags": ["kotlin", "java", "jvm", "maven", "gradle", "kdoc", "documentation", "mcp"]
+    }
+  ]
+}

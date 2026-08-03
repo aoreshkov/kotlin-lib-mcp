@@ -21,6 +21,12 @@ Desktop dashboard runs the same server in-process for control, logs, and cache b
 
 `server` and `dashboard` both depend on `core`. `server` runs without Compose.
 
+Not a Gradle module: **`plugin/`** — the Claude Code plugin packaging (`.mcp.json` pinning the
+GHCR image to its `<major>.<minor>` tag, plus four skills), listed by the repo-root
+`.claude-plugin/marketplace.json` so `/plugin marketplace add aoreshkov/kotlin-lib-mcp` works.
+Validate with `claude plugin validate ./plugin --strict`; the image pin and the plugin's own
+`version` are bumped by the `/release` skill on minor releases.
+
 ## Build & run
 
 ```

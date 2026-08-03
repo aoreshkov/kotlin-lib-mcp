@@ -5,20 +5,26 @@
 [![Release](https://img.shields.io/github/v/release/aoreshkov/kotlin-lib-mcp)](https://github.com/aoreshkov/kotlin-lib-mcp/releases/latest)
 [![License](https://img.shields.io/badge/license-Apache--2.0-blue.svg)](LICENSE)
 [![Kotlin](https://img.shields.io/badge/kotlin-2.4-7F52FF.svg?logo=kotlin)](https://kotlinlang.org)
+[![GitHub MCP Registry](https://img.shields.io/badge/GitHub_MCP_Registry-listed-24292F.svg?logo=github)](https://github.com/mcp/aoreshkov/kotlin-lib-mcp)
 
 Give your AI agent the **real sources** of any Maven-published Kotlin/Java library.
 
 An [MCP](https://modelcontextprotocol.io) server that, on request, downloads the sources of a
 library (e.g. `io.ktor:ktor-client-core:3.5.1`), parses them with the Kotlin **Analysis API**
 (standalone K2/FIR mode), and exposes structured information — public API surface, KDoc,
-dependencies/metadata, raw source + search — to MCP clients such as Claude Code and Claude
-Desktop. An optional Compose Desktop dashboard runs the same server in-process.
+dependencies/metadata, raw source + search — to MCP clients: Claude Code, Claude Desktop,
+IntelliJ IDEA (AI Assistant / Junie), VS Code and GitHub Copilot. An optional Compose Desktop
+dashboard runs the same server in-process.
+
+**[Ten tools](#tools)** — `fetch_library` · `list_packages` · `list_declarations` ·
+`get_api_signature` · `get_kdoc` · `get_source` · `search_source` · `get_dependencies` ·
+`list_versions` · `get_latest_version` — plus MCP resources and a prompt.
 
 [<img src="https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square" alt="Install in VS Code">](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522kotlin-lib%2522%252C%2522command%2522%253A%2522docker%2522%252C%2522args%2522%253A%255B%2522run%2522%252C%2522-i%2522%252C%2522--rm%2522%252C%2522-v%2522%252C%2522kotlin-lib-mcp-cache%253A%252Fhome%252Fmcp%252F.cache%2522%252C%2522ghcr.io%252Faoreshkov%252Fkotlin-lib-mcp%2522%255D%257D)
 [<img src="https://img.shields.io/badge/VS_Code_Insiders-Install_Server-24bfa5?style=flat-square" alt="Install in VS Code Insiders">](https://insiders.vscode.dev/redirect?url=vscode-insiders%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522kotlin-lib%2522%252C%2522command%2522%253A%2522docker%2522%252C%2522args%2522%253A%255B%2522run%2522%252C%2522-i%2522%252C%2522--rm%2522%252C%2522-v%2522%252C%2522kotlin-lib-mcp-cache%253A%252Fhome%252Fmcp%252F.cache%2522%252C%2522ghcr.io%252Faoreshkov%252Fkotlin-lib-mcp%2522%255D%257D)
 
-Those install the Docker image. For Claude Code, or to run the release zip without Docker, see
-[Quick start](#quick-start-no-build-required).
+Those install the Docker image. For Claude Code, IntelliJ IDEA, or to run the release zip without
+Docker, see [Quick start](#quick-start-no-build-required).
 
 <!-- mcp-name: io.github.aoreshkov/kotlin-lib-mcp -->
 
@@ -50,7 +56,17 @@ summaries. This one works from the **published sources jar** — the ground trut
 
 ## Quick start (no build required)
 
-**Option 1 — release zip.** Download the latest
+**Option 1 — Claude Code plugin.** The server plus skills that make Claude reach for it, two
+commands (`/kotlin-lib:api`, `/kotlin-lib:migrate`) and a setup helper. Needs Docker:
+
+```
+/plugin marketplace add aoreshkov/kotlin-lib-mcp
+/plugin install kotlin-lib@kotlin-lib-mcp
+```
+
+See [`plugin/README.md`](plugin/README.md) for what it bundles.
+
+**Option 2 — release zip.** Download the latest
 [release](https://github.com/aoreshkov/kotlin-lib-mcp/releases/latest), unzip (needs a
 Java 21+ runtime), then:
 
@@ -58,15 +74,36 @@ Java 21+ runtime), then:
 claude mcp add kotlin-lib -- /path/to/kotlin-lib-mcp-server-<version>/bin/server --transport stdio
 ```
 
-**Option 2 — Docker.**
+**Option 3 — Docker.**
 
 ```sh
 claude mcp add kotlin-lib -- docker run -i --rm -v kotlin-lib-mcp-cache:/home/mcp/.cache ghcr.io/aoreshkov/kotlin-lib-mcp
 ```
 
-**Option 3 — MCP Registry.** The server is published to the
+**Option 4 — IntelliJ IDEA / Android Studio.** JetBrains IDEs are MCP clients too — which is where
+most Kotlin gets written. Open **Settings | Tools | AI Assistant | Model Context Protocol (MCP)**,
+click **Add**, pick the **stdio** transport and paste:
+
+```json
+{
+  "mcpServers": {
+    "kotlin-lib": {
+      "command": "docker",
+      "args": ["run", "-i", "--rm", "-v", "kotlin-lib-mcp-cache:/home/mcp/.cache", "ghcr.io/aoreshkov/kotlin-lib-mcp"]
+    }
+  }
+}
+```
+
+Choose global or project level, **Apply**, and the tools appear in the AI Assistant chat. Junie
+takes the same JSON in its own MCP settings. Swap `command`/`args` for the release-zip launcher
+(`bin/server --transport stdio`) if you'd rather not use Docker.
+
+**Option 5 — MCP Registry.** The server is published to the
 [official MCP registry](https://registry.modelcontextprotocol.io) as
-`io.github.aoreshkov/kotlin-lib-mcp`; registry-aware clients can install it from there.
+`io.github.aoreshkov/kotlin-lib-mcp`, and listed in the
+[GitHub MCP Registry](https://github.com/mcp/aoreshkov/kotlin-lib-mcp); registry-aware clients can
+install it from there.
 
 Or in `.mcp.json` / Claude Desktop config:
 
@@ -266,6 +303,30 @@ subdirectory of the same root.
 - Kotlin and the Analysis API artifacts are version-locked in `gradle/libs.versions.toml` —
   bump them together. Symbols whose types can't be resolved (missing transitive deps) degrade
   to `bestEffort: true` PSI signatures instead of failing.
+
+## Privacy
+
+**Nothing about you is collected, stored remotely, or shared.** There is no analytics, no
+phone-home, no account, and no credential of any kind.
+
+- **What leaves your machine.** Only requests to the Maven repositories you point it at (Maven
+  Central by default, `--repo` to change): the `maven-metadata.xml`, `.pom`/`.module` metadata and
+  sources jar for the coordinates you ask about. Those repositories see the coordinate and your IP,
+  under their own privacy policies. Pulling the Docker image likewise talks to GHCR. That is the
+  complete list of outbound traffic.
+- **What it reads.** Downloaded library sources only. It does not read, index or transmit your
+  project's code — it has no access to it.
+- **What it stores, and where.** Downloaded artifacts and the parsed index, on your disk only,
+  under the OS cache directory (see [Cache](#cache)) or `--cache-dir`. Under `--tasks`, task
+  records live in a `tasks/` subdirectory. Nothing is written anywhere else.
+- **Retention.** Cached libraries stay until you delete them — the directory is browsable and safe
+  to remove at any time. Task records are dropped once their TTL elapses (10 minutes by default,
+  1 hour maximum).
+- **Logs.** stderr on your machine. `--forward-logs-to-client` (opt-in) mirrors them to your MCP
+  client; `--otel` (opt-in) exports trace spans to the OTLP collector *you* configure, and carries
+  no personal data — method names, tool names, session id, transport. Both are off by default.
+- **Contact.** Questions: [open an issue](https://github.com/aoreshkov/kotlin-lib-mcp/issues).
+  Security or privacy reports: [private vulnerability reporting](SECURITY.md).
 
 ## Contributing
 

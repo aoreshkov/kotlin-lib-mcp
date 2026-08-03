@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "kotlin-lib": {
+      "command": "docker",
+      "args": [
+        "run",
+        "-i",
+        "--rm",
+        "-v",
+        "kotlin-lib-mcp-cache:/home/mcp/.cache",
+        "ghcr.io/aoreshkov/kotlin-lib-mcp:0.4"
+      ]
+    }
+  }
+}

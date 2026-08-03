@@ -1,8 +1,8 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.aoreshkov/kotlin-lib-mcp",
-  "title": "Kotlin Library Sources",
-  "description": "Exposes the public API, KDoc and sources of Maven-published Kotlin/Java libraries to MCP clients",
+  "title": "Kotlin & Java Library Sources",
+  "description": "Kotlin/Java library sources, public API and KDoc from the real Maven sources jar, for AI agents",
   "version": "0.4.0",
   "websiteUrl": "https://github.com/aoreshkov/kotlin-lib-mcp",
   "icons": [
@@ -37,7 +37,7 @@
   "_meta": {
     "io.modelcontextprotocol.registry/publisher-provided": {
       "com.github": {
-        "serverDisplayName": "Kotlin Library Sources"
+        "serverDisplayName": "Kotlin & Java Library Sources"
       }
     }
   }
