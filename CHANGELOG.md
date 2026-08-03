@@ -7,6 +7,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Claude Code plugin (`plugin/`).** Bundles the MCP server with four skills:
+  `library-ground-truth` (model-invoked — resolves the coordinate from the project's build files,
+  warms the cache and answers from the sources jar instead of recall), `/kotlin-lib:api`,
+  `/kotlin-lib:migrate` (public-API diff across two versions plus the call sites it breaks in the
+  workspace) and `/kotlin-lib:setup`. Installable from the repository itself via the root
+  `.claude-plugin/marketplace.json`:
+  `/plugin marketplace add aoreshkov/kotlin-lib-mcp` then
+  `/plugin install kotlin-lib@kotlin-lib-mcp`. The bundled server runs the GHCR image pinned to its
+  `<major>.<minor>` tag and needs Docker; `/kotlin-lib:setup` covers the release-zip alternative.
+- **Privacy section in the README** — what leaves the machine, what is stored and where, retention,
+  and the two opt-in log/telemetry flags.
+- **Install instructions for IntelliJ IDEA / Android Studio** (AI Assistant's MCP settings).
+
+### Changed
+- The advertised server title is now **`Kotlin & Java Library Sources`** (`serverInfo.title` and
+  `server.json`), and the registry description was rewritten for discovery. No protocol or tool
+  behavior changes.
+
 ## [0.4.0] - 2026-07-31
 
 This release brings the server up to the MCP **2025-11-25** specification: tasks,
