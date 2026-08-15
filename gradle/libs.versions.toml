@@ -14,8 +14,8 @@ caffeine = "2.9.3"             # runtime dep of the Analysis API `-for-ide` jars
 intellijCoroutines = "1.10.2-intellij-1"  # JetBrains coroutines fork the bundled IJ core expects (KT-81457)
 slf4j = "2.0.18"
 kotlinLogging = "8.0.4"        # matches the MCP SDK's transitive facade; needed to silence its stdout banner
-logback = "1.6.1"
-opentelemetry = "1.64.0"       # BOM governs every io.opentelemetry artifact below
+logback = "1.6.2"
+opentelemetry = "1.65.0"       # BOM governs every io.opentelemetry artifact below
 
 [libraries]
 # Build (gradle-plugin classpath for build-logic convention plugins)
