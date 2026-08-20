@@ -18,6 +18,19 @@ version and migration notes since the pinned version); MCP registry docs and cur
 `server.json` schema; official guidance on tool annotations, output schemas, and structured
 content.
 
+**Track the SDK, not just its version number.** Since 2026-07-28 the current spec revision is
+one the Kotlin SDK does not implement, so "are we on the latest `kotlin-sdk-server`?" and "are
+we on the current spec?" have different answers and both must be reported. The pinned version
+being the newest release is **not** evidence of spec currency. Check the SDK's implementation
+tracking issue **#842** and the per-SEP issues under it — at minimum **#808** (MRTR, which
+replaces this repo's `elicitation/VersionElicitation.kt`), **#815** (stateless core, which
+removes sessions and therefore `SessionSetup.kt` and `TaskStore`'s ownership model), **#817**
+(Tasks as an extension: `tasks/result` and `tasks/list` are deleted, `tasks/update` added) and
+**#813** (`ttlMs`/`cacheScope` on every list/read result, which this repo does not yet emit).
+Report movement on those as a finding in its own right, and say plainly when there has been
+none. Porting ahead of the SDK is explicitly not recommended: `ConcurrentDispatchTransport.kt`
+was written for 0.14.0 and deleted at 0.15.0 when the SDK shipped the same behaviour.
+
 **Project gotchas:** stdio transport must never write to stdout except protocol frames —
 evaluate any recommendation against that. Every tool deliberately declares title + behavior
 annotations + `outputSchema` and returns JSON text plus matching `structuredContent`; compare
