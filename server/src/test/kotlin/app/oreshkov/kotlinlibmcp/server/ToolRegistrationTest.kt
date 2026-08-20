@@ -61,6 +61,30 @@ class ToolRegistrationTest {
     }
 
     @Test
+    fun toolsAreListedInAStableOrder() {
+        // 2026-07-28 asks servers to return tools/list in a deterministic order, so clients can
+        // cache the list and models get prompt-cache hits on it. This map's iteration order *is*
+        // the wire order, so pinning it here pins tools/list. Registration order is deliberate:
+        // fetch_library leads because every other tool requires it to have run.
+        val expected = listOf(
+            "fetch_library",
+            "list_packages",
+            "list_declarations",
+            "get_api_signature",
+            "get_kdoc",
+            "get_source",
+            "search_source",
+            "get_dependencies",
+            "list_versions",
+            "get_latest_version",
+        )
+        assertEquals(expected, tools().keys.toList())
+        // Two independently built servers must agree — a hash-ordered registry would still be
+        // stable within one JVM, so the assertion above is the one that discriminates.
+        assertEquals(tools().keys.toList(), tools().keys.toList())
+    }
+
+    @Test
     fun everyToolDeclaresTitleAnnotationsAndOutputSchema() {
         tools().forEach { (name, tool) ->
             assertNotNull(tool.title, "$name: missing title")
