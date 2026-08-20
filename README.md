@@ -286,7 +286,7 @@ Requires JDK 21 (resolved automatically via Gradle toolchains).
 | `core/` | KMP library: domain model + ports (`commonMain`); Maven fetcher, zip extractor, Analysis API analyzer, on-disk cache (`jvmMain`) |
 | `server/` | JVM app: MCP tools/resources/prompts + stdio and Streamable HTTP transports |
 | `dashboard/` | Compose Desktop control panel embedding the server (optional) |
-| `tools/` | Asset generators (icon PNGs, social preview card). Never shipped; nothing depends on it |
+| `tools/` | Generator for the SEP-973 icon PNGs the server advertises. The module never ships; its output does |
 
 ## Cache
 

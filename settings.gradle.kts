@@ -39,6 +39,7 @@ dependencyResolutionManagement {
 
 include(":core", ":server", ":dashboard")
 
-// Asset generators (icons, social preview). Built by `./gradlew build` so they cannot rot,
-// but nothing depends on them and nothing ships them.
+// The SEP-973 icon generator. The module itself never ships — its *output* does: the PNGs under
+// server/src/main/resources/icons/ ride inline in every tools/list response. Built by
+// `./gradlew build` so it cannot rot, but nothing depends on it.
 include(":tools")
