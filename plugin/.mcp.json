@@ -8,7 +8,7 @@
         "--rm",
         "-v",
         "kotlin-lib-mcp-cache:/home/mcp/.cache",
-        "ghcr.io/aoreshkov/kotlin-lib-mcp:0.4"
+        "ghcr.io/aoreshkov/kotlin-lib-mcp:0.5"
       ]
     }
   }

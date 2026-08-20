@@ -9,7 +9,7 @@ The plugin ships one MCP server, started for you when the plugin is enabled:
 ```json
 { "command": "docker",
   "args": ["run", "-i", "--rm", "-v", "kotlin-lib-mcp-cache:/home/mcp/.cache",
-           "ghcr.io/aoreshkov/kotlin-lib-mcp:0.4"] }
+           "ghcr.io/aoreshkov/kotlin-lib-mcp:0.5"] }
 ```
 
 **Requirement: Docker must be installed and running.** Nothing else — no JDK, no Gradle, no
@@ -31,8 +31,8 @@ container is `--rm`.
 | Symptom | Cause | Fix |
 |---|---|---|
 | Server never starts; `/plugin` Errors shows the docker command | Docker not installed or daemon not running | Start Docker Desktop / the daemon, then `/reload-plugins` |
-| `manifest unknown` / pull error | Registry unreachable, or an air-gapped machine | `docker pull ghcr.io/aoreshkov/kotlin-lib-mcp:0.4` by hand and read the error |
-| Tools present, every `fetch_library` fails | No network route to Maven Central from the container, or a corporate proxy | Test with `docker run --rm ghcr.io/aoreshkov/kotlin-lib-mcp:0.4 --help`; pass a mirror with `--repo <url>` |
+| `manifest unknown` / pull error | Registry unreachable, or an air-gapped machine | `docker pull ghcr.io/aoreshkov/kotlin-lib-mcp:0.5` by hand and read the error |
+| Tools present, every `fetch_library` fails | No network route to Maven Central from the container, or a corporate proxy | Test with `docker run --rm ghcr.io/aoreshkov/kotlin-lib-mcp:0.5 --help`; pass a mirror with `--repo <url>` |
 | First fetch is very slow | Expected — download plus full source analysis | It is cached afterwards, keyed by `group/artifact/version` |
 | Fetch works, later calls say the library is not fetched | The cache volume is missing from the args | Confirm `-v kotlin-lib-mcp-cache:/home/mcp/.cache` is in the command |
 

@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-08-20
+
+A discoverability and hardening release. The server is now installable as a **Claude Code
+plugin** and listed on github.com/mcp; `search_source` got materially faster and no longer runs
+a model-supplied regex unguarded; and the shipped Docker image is finally exercised in CI, which
+caught a defect that made its cache volume unwritable.
+
 ### Added
 - **Claude Code plugin (`plugin/`).** Bundles the MCP server with four skills:
   `library-ground-truth` (model-invoked — resolves the coordinate from the project's build files,
@@ -17,14 +24,62 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `/plugin marketplace add aoreshkov/kotlin-lib-mcp` then
   `/plugin install kotlin-lib@kotlin-lib-mcp`. The bundled server runs the GHCR image pinned to its
   `<major>.<minor>` tag and needs Docker; `/kotlin-lib:setup` covers the release-zip alternative.
+- **Listed on github.com/mcp** — the registry metadata, icons and repository signals that make the
+  server discoverable without already knowing its coordinate.
 - **Privacy section in the README** — what leaves the machine, what is stored and where, retention,
   and the two opt-in log/telemetry flags.
 - **Install instructions for IntelliJ IDEA / Android Studio** (AI Assistant's MCP settings).
+- **CI now exercises the shipped artifacts.** The Docker image is built and smoke-tested on every
+  run: the non-root `mcp` user is checked to be able to write the declared VOLUME, and the server
+  is driven through a real MCP handshake and `tools/list` on the JDK 25 JRE it actually ships on —
+  the only place a classpath conflict with kotlin-compiler's shaded jars can surface before a user
+  hits it. The `plugin/` manifests are validated too, including the assertion that
+  `plugin/.mcp.json`'s image pin still matches `gradle.properties`.
+- **SBOM attestation and supply-chain hardening.** An SPDX SBOM is now attested for both release
+  artifacts — the zip via `anchore/sbom-action` + `actions/attest-sbom`, the image via buildx's
+  per-platform SPDX attestation. This matters more than usual here: the distribution ships ~100
+  jars including kotlin-compiler's shaded copies of libraries it does not name, so "am I exposed to
+  CVE-X?" was not answerable from the dependency list. Every `actions/checkout` now runs with
+  `persist-credentials: false`, and an OpenSSF Scorecard workflow publishes SARIF to code scanning.
 
 ### Changed
 - The advertised server title is now **`Kotlin & Java Library Sources`** (`serverInfo.title` and
   `server.json`), and the registry description was rewritten for discovery. No protocol or tool
   behavior changes.
+- **`search_source` resolves the extraction directory once per search instead of once per file.**
+  It previously reached the sources through `readSource`, which re-read and re-deserialized the
+  on-disk fetch marker on every call — one extra file read and one extra JSON parse per source
+  file, so 2000 of each to answer a single search of a 2000-file library.
+- **`tools/list` ordering is pinned by a test.** The order was already stable and deliberate
+  (`fetch_library` leads, since every other tool needs it to have run), but nothing asserted it and
+  the registration map's iteration order *is* the wire order. The 2026-07-28 revision asks servers
+  for a stable order so clients can cache the list and models get prompt-cache hits on it.
+- **Kotlin 2.4.0 → 2.4.10**, moving all eight version-locked Analysis API `-for-ide` artifacts with
+  it; `core`'s public ABI is unchanged. Also Gradle 9.7.0 → 9.7.1 (distribution checksum re-pinned)
+  and Logback 1.6.2 → 1.6.3.
+- **Coverage is measured and gated on `:server` too**, not only `:core` — per-module floors (80%
+  `:core`, 60% `:server`) enforced by `build`, since an aggregate would let a thin module hide
+  behind a well-covered one. Kotlin warnings are now errors in all four convention plugins.
+- **`:tools` is narrowed to the SEP-973 icon generator.** The social-preview generator and its
+  committed PNG are gone — nothing in the repository read that image. The remaining generator is
+  product source: its output under `server/src/main/resources/icons/` rides inline in every
+  `tools/list` response.
+
+### Security
+- **A caller-supplied `search_source` regex is now bounded.** The pattern comes straight from the
+  model's arguments and was previously compiled and run unguarded. Patterns are length-capped, a
+  syntax error becomes an argument error rather than a raw `PatternSyntaxException`, and matching
+  runs against a `CharSequence` that aborts after a per-line budget of character reads. The read
+  budget is the only guard that works here: matching never suspends, so `withTimeout` cannot
+  interrupt what is an uncancellable CPU loop, and capping the input length does not help because
+  the blow-up is superlinear in it. Thresholds were measured on JDK 21 rather than assumed — the
+  classic nested-quantifier examples are no longer exponential there, but back-references are.
+
+### Fixed
+- **The Docker image's cache volume was unwritable.** `/home/mcp/.cache` was never created in the
+  image, so Docker auto-created the mount point root-owned and the non-root runtime user could not
+  write its own cache. The Dockerfile now creates the directory owned by `mcp` before `VOLUME`, so
+  Docker seeds a fresh volume from it with the right ownership.
 
 ## [0.4.0] - 2026-07-31
 
@@ -240,7 +295,8 @@ Initial public release.
 - On-disk cache keyed by `group/artifact/version` under the OS cache directory.
 - Optional **Compose Desktop dashboard** embedding the server (control, logs, cache browser).
 
-[Unreleased]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.4.0...HEAD
+[Unreleased]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.5.0...HEAD
+[0.5.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.1.0...v0.2.0
