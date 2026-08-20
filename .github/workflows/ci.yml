@@ -23,6 +23,8 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
 
       - name: Set up JDK 21
         uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
@@ -49,3 +51,116 @@ jobs:
             **/build/reports/tests/
             **/build/test-results/
           retention-days: 7
+
+  claude-code-plugin:
+    name: Claude Code plugin manifests
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # The plugin is consumed straight from this repository by
+      # `/plugin marketplace add aoreshkov/kotlin-lib-mcp`, so a broken manifest ships the
+      # moment it lands on main — there is no build step between here and the user. This job
+      # is that build step; until now the only check was running `claude plugin validate`
+      # by hand.
+      - name: Validate the marketplace and plugin manifests
+        run: |
+          MARKET=.claude-plugin/marketplace.json
+          PLUGIN=plugin/.claude-plugin/plugin.json
+          jq -e '.name and .owner.name and (.plugins | length > 0)' "$MARKET" > /dev/null
+          jq -e '.name and .version and .description' "$PLUGIN" > /dev/null
+
+          # Every marketplace entry must point at a directory that actually holds a plugin,
+          # and must agree with that plugin's own declared name.
+          for src in $(jq -r '.plugins[].source' "$MARKET"); do
+            test -f "${src}/.claude-plugin/plugin.json" || {
+              echo "Marketplace source ${src} has no .claude-plugin/plugin.json"; exit 1; }
+          done
+          market_name=$(jq -r '.plugins[0].name' "$MARKET")
+          plugin_name=$(jq -r '.name' "$PLUGIN")
+          test "$market_name" = "$plugin_name" || {
+            echo "marketplace plugin name '${market_name}' != plugin.json name '${plugin_name}'"
+            exit 1; }
+
+          # Every skill directory the plugin ships must actually contain a SKILL.md.
+          for d in plugin/skills/*/; do
+            test -f "${d}SKILL.md" || { echo "Skill ${d} has no SKILL.md"; exit 1; }
+          done
+
+      # The image pin drifts silently: nothing at runtime notices that the plugin points at
+      # a tag which no longer matches the project version, and users just get an old server.
+      # /release bumps both on a minor release; this asserts it actually happened.
+      - name: Plugin MCP image pin matches the project's <major>.<minor>
+        run: |
+          version=$(sed -n 's/^version=//p' gradle.properties)
+          expected="${version%.*}"
+          image=$(jq -r '.mcpServers["kotlin-lib"].args[-1]' plugin/.mcp.json)
+          actual="${image##*:}"
+          test "$actual" = "$expected" || {
+            echo "plugin/.mcp.json pins ${image} but gradle.properties is ${version}"
+            echo "expected the image tag to be ${expected}"
+            exit 1; }
+          echo "OK: ${image} matches version ${version}"
+
+  docker-smoke:
+    name: Docker image smoke (JDK 25 runtime)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5.7.0
+        with:
+          distribution: temurin
+          java-version: 21
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@9c971963bec38e04b3d30dcc455b5382be2fdbfb # v6.3.0
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      # The Dockerfile is runtime-only: it COPYs the distribution rather than building it,
+      # so `docker build .` alone does not work and this ordering is the supported one.
+      - name: Build server distribution
+        run: ./gradlew :server:installDist
+
+      - name: Build image
+        run: docker build -t kotlin-lib-mcp:smoke .
+
+      # Guards the VOLUME ownership: with an anonymous volume at the declared path, the
+      # mount point must be owned by the runtime user, or the non-root process cannot create
+      # the cache. Docker seeds a fresh volume from the image's directory — so if the
+      # `install -d -o mcp` before VOLUME regresses, the volume comes back root-owned and
+      # every fetch_library fails with AccessDenied on the user's machine, not here.
+      - name: Non-root user can write the cache volume
+        run: |
+          docker run --rm --entrypoint /bin/sh kotlin-lib-mcp:smoke -eu -c '
+            test "$(id -un)" = mcp || { echo "not running as mcp: $(id -un)"; exit 1; }
+            owner=$(stat -c "%U" /home/mcp/.cache)
+            test "$owner" = mcp || { echo "cache mount point owned by ${owner}, expected mcp"; exit 1; }
+            f=/home/mcp/.cache/smoke.txt
+            printf ok > "$f"
+            test -s "$f" || { echo "could not write ${f}"; exit 1; }
+            echo "OK: $(id -un) wrote ${f} on the anonymous volume"
+          '
+
+      # The only place the shipped artifact is exercised on the JDK it actually ships on:
+      # the distribution is compiled against the toolchain's JDK 21, but the image is a
+      # JDK 25 JRE. This also covers tool registration, which is where a classpath conflict
+      # with kotlin-compiler's shaded jars surfaces — as a NoSuchMethodError at startup,
+      # invisible to compilation and to the unit tests.
+      - name: Server completes an MCP handshake and lists its tools
+        run: |
+          out=$( { printf '%s\n' \
+              '{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25","capabilities":{},"clientInfo":{"name":"ci-smoke","version":"0"}}}' \
+              '{"jsonrpc":"2.0","method":"notifications/initialized"}' \
+              '{"jsonrpc":"2.0","id":2,"method":"tools/list"}'
+            sleep 15; } | docker run --rm -i kotlin-lib-mcp:smoke )
+          echo "$out"
+          grep -q '"serverInfo"' <<< "$out" || { echo "initialize returned no serverInfo"; exit 1; }
+          grep -q '"fetch_library"' <<< "$out" || { echo "tools/list did not list fetch_library"; exit 1; }
+          echo "OK: MCP handshake and tools/list answered on the image's JDK"

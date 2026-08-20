@@ -1,6 +1,23 @@
+# Normalize every text file to LF in the repository and check it out as LF, on every
+# platform. Without this baseline, files committed from Windows land as CRLF and drift
+# silently — `.claude/settings.json` in the sibling oracle-forms-mcp repo is CRLF for
+# exactly that reason.
+* text=auto eol=lf
+
 # Shell scripts must use LF on every platform — a CRLF shebang breaks `bash`
-# (e.g. the Claude Code Stop hook in .claude/hooks/).
+# (e.g. the Claude Code Stop hook in .claude/hooks/). Covered by the rule above, but
+# stated explicitly because the failure it prevents is silent and confusing.
 *.sh text eol=lf
 
-# Image assets (the SEP-973 icon PNGs) are never text — no eol conversion, no diffing.
+# The Linux Gradle wrapper script runs on the CI Linux runner.
+gradlew text eol=lf
+
+# Windows scripts must keep CRLF.
+*.bat text eol=crlf
+
+# Binary assets are never text — no eol conversion, no diffing. The PNGs are the
+# SEP-973 icons that ride inline in every tools/list response.
 *.png binary
+*.gif binary
+*.jpg binary
+*.jar binary
