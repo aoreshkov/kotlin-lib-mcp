@@ -18,6 +18,13 @@ kotlin {
     jvm()
     jvmToolchain(21)
 
+    // The codebase compiles warning-free; keep it that way. A Kotlin bump that introduces a new
+    // deprecation will fail the build here, which is the point — that is exactly when it is
+    // cheapest to act on, and this project bumps Kotlin deliberately rather than incidentally.
+    compilerOptions {
+        allWarningsAsErrors = true
+    }
+
     // Published-library policy: every public declaration must carry an explicit visibility and
     // return type. Pairs with the ABI validation below so the ABI is intentional, not inferred.
     explicitApi()
@@ -35,6 +42,24 @@ kotlin {
         getByName("commonTest") {
             dependencies {
                 implementation(libs.findLibrary("kotlin-test").get())
+            }
+        }
+    }
+}
+
+// A floor, not a target: set just under what the suite actually reaches today (84% lines), so it
+// catches a real regression without turning every honest refactor into a coverage negotiation.
+// Deliberately per-module rather than aggregated — an aggregate lets a thin module hide behind a
+// well-covered one, and applying Kover at the root would put build-logic's whole classpath on
+// every subproject, which breaks `:server`'s versioned serialization-plugin alias.
+kover {
+    reports {
+        verify {
+            rule("Line coverage of core must not regress") {
+                bound {
+                    minValue = 80
+                    coverageUnits = kotlinx.kover.gradle.plugin.dsl.CoverageUnit.LINE
+                }
             }
         }
     }

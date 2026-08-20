@@ -37,8 +37,21 @@ jobs:
           validate-wrappers: true
           cache-read-only: ${{ github.ref != 'refs/heads/main' }}
 
-      - name: Build, test and check API compatibility
+      # `build` now also runs `koverVerify` in both covered modules and fails below the floor.
+      - name: Build, test, verify coverage and check API compatibility
         run: ./gradlew build
+
+      # Uploaded from the Linux leg only — the numbers are identical on both, and one copy is
+      # enough to see where a coverage-floor failure came from.
+      - name: Upload coverage reports
+        if: always() && matrix.os == 'ubuntu-latest'
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: coverage-reports
+          path: |
+            core/build/reports/kover/
+            server/build/reports/kover/
+          retention-days: 7
 
       - name: Upload test reports
         if: failure()
