@@ -15,9 +15,11 @@ Desktop dashboard runs the same server in-process for control, logs, and cache b
     parsing), `ZipExtractor`, `AnalysisApiSourceAnalyzer`, on-disk cache.
 - `server/` — **JVM app**: registers MCP tools and runs the transports. Runnable headless.
 - `dashboard/` — **Compose Desktop** control panel (optional). Embeds `server`.
-- `tools/` — **asset generators**, never shipped: the SEP-973 icon PNGs and the repository's
-  social preview card. No dependencies, nothing depends on it; built by `./gradlew build` only so
-  it cannot rot. `./gradlew :tools:generateIcons` / `:tools:generateSocialPreview`.
+- `tools/` — **asset generator**, never shipped: the SEP-973 icon PNGs. Its *output* does ship —
+  `server/src/main/resources/icons/` is read by `icons/Icons.kt` and rides inline in every
+  `tools/list` — so the glyph geometry in `GenerateIcons.kt` is product source, not repo artwork.
+  Nothing depends on the module; `./gradlew build` compiles it only so it cannot rot.
+  `./gradlew :tools:generateIcons`.
 
 `server` and `dashboard` both depend on `core`. `server` runs without Compose.
 
