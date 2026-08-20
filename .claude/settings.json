@@ -6,6 +6,8 @@
       "Bash(./gradlew build*)",
       "Bash(./gradlew test*)",
       "Bash(./gradlew check*)",
+      "Bash(./gradlew updateKotlinAbi*)",
+      "Bash(./gradlew checkKotlinAbi*)",
       "Bash(./gradlew tasks*)",
       "Bash(./gradlew help*)",
       "Bash(./gradlew projects*)",
@@ -45,7 +47,8 @@
         "hooks": [
           {
             "type": "command",
-            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-verify.sh"
+            "command": "bash ${CLAUDE_PROJECT_DIR}/.claude/hooks/stop-verify.sh",
+            "timeout": 300
           }
         ]
       }
