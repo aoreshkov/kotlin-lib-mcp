@@ -51,7 +51,8 @@ fun Server.registerLibraryCompletions(cache: LibraryCache) {
                             }
                         is PromptReference ->
                             if (ref.name == EXPLAIN_PROMPT) promptArgCompletions(request.argument, ctx, cache) else emptyList()
-                        else -> emptyList()
+                        // No `else`: `ref` is sealed, so an SDK that adds a third reference type
+                        // should break this compile rather than silently complete nothing for it.
                     }
                 }.getOrDefault(emptyList())
 
