@@ -10,7 +10,12 @@ LABEL org.opencontainers.image.source="https://github.com/aoreshkov/kotlin-lib-m
       org.opencontainers.image.description="MCP server exposing the sources, public API and KDoc of Maven-published Kotlin/Java libraries" \
       io.modelcontextprotocol.server.name="io.github.aoreshkov/kotlin-lib-mcp"
 
-RUN useradd --create-home mcp
+# The cache directory must exist *and* be owned by `mcp` before the VOLUME below: Docker
+# seeds a fresh volume from the image's directory, permissions included, but auto-creates
+# the mount point root-owned when the path is missing — which would leave the non-root
+# process unable to write its own cache. Guarded by the docker-smoke CI job.
+RUN useradd --create-home mcp \
+ && install -d -o mcp -g mcp /home/mcp/.cache
 USER mcp
 
 COPY --chown=mcp server/build/install/server /app
