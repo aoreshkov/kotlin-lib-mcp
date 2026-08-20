@@ -42,7 +42,7 @@ grep -n '"version"' server.json
 ```
 
 **On a MAJOR or MINOR bump, also repin the plugin.** `plugin/.mcp.json` pins the image to the
-`<major>.<minor>` tag (`ghcr.io/aoreshkov/kotlin-lib-mcp:0.4`), which follows patches on its own
+`<major>.<minor>` tag (`ghcr.io/aoreshkov/kotlin-lib-mcp:0.5`), which follows patches on its own
 but not a minor bump. Update that tag and bump `plugin/.claude-plugin/plugin.json` `.version`
 (its own semver, independent of the server's) so installed plugins actually receive the update —
 the community catalog re-pins from the repo automatically. Patch releases need neither.
