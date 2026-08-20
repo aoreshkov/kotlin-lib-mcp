@@ -32,6 +32,47 @@ class LibraryNotFetchedException(coordinate: LibraryCoordinate) : Exception(
     "Library $coordinate is not fetched yet. Call fetch_library with coordinate \"$coordinate\" first."
 )
 
+/**
+ * Raised when a `search_source` regex exhausts its per-line matching budget — in practice, when
+ * it backtracks catastrophically. Surfaced by `guarded` as a tool error, phrased so the model can
+ * fix the pattern itself.
+ */
+class SearchPatternTooExpensiveException(query: String) : Exception(
+    "The regular expression '$query' is too expensive to evaluate on this source. Back-references " +
+        "and nested quantifiers over long lines are the usual causes. Simplify it, or search for a " +
+        "literal substring instead by omitting 'regex'."
+)
+
+/**
+ * A read-only [CharSequence] view of [text] that aborts after [remaining] character reads.
+ *
+ * `java.util.regex` backtracks by re-reading characters, so a runaway pattern burns `charAt` calls
+ * rather than blocking inside one. Counting them is the only guard that works here: matching never
+ * suspends, so `withTimeout` cannot interrupt the loop — it is a tight, uncancellable CPU loop —
+ * and capping the input length does not help either, because the blow-up is superlinear in it.
+ *
+ * Measured on JDK 21 rather than assumed, because the textbook picture is out of date. The classic
+ * nested-quantifier examples are no longer exponential there: `(a+)+b` is roughly quadratic and
+ * `(x+x+)+y` roughly quartic, so the latter needs a ~200-character line to reach this budget —
+ * which is an unremarkable line length in real source. Back-references are the case that is still
+ * genuinely exponential: `(a+)+\1b` exhausts the budget against 20 characters, in milliseconds.
+ */
+private class BoundedCharSequence(
+    private val text: CharSequence,
+    private val query: String,
+    private var remaining: Int,
+) : CharSequence {
+    override val length: Int get() = text.length
+
+    override fun get(index: Int): Char {
+        if (remaining-- <= 0) throw SearchPatternTooExpensiveException(query)
+        return text[index]
+    }
+
+    override fun subSequence(startIndex: Int, endIndex: Int): CharSequence =
+        BoundedCharSequence(text.subSequence(startIndex, endIndex), query, remaining)
+}
+
 /** A coarse [LibraryService.fetchLibrary] phase: [step] of [totalSteps], human-readable [message]. */
 data class FetchProgress(val step: Int, val totalSteps: Int, val message: String)
 
@@ -149,14 +190,21 @@ class LibraryService(
     ): SearchResults {
         val index = index(coordinate)
         val cap = maxResults.coerceIn(1, MAX_SEARCH_RESULTS)
-        val pattern = if (regex) Regex(query) else null
+        val pattern = if (regex) compileSearchPattern(query) else null
         val hits = mutableListOf<SearchHit>()
         var truncated = false
+        // Resolved once for the whole scan, not once per file: every `fetch` re-reads and
+        // re-deserializes the on-disk cache marker even on a warm hit, so resolving it inside
+        // the loop cost one file read + one JSON parse per source file in the library.
+        val root = sourceRoot(coordinate)
 
         outer@ for (file in index.files) {
-            val lines = readSource(coordinate, file.path).lineSequence()
+            val lines = readSourceUnder(root, file.path).lineSequence()
             for ((lineIndex, line) in lines.withIndex()) {
-                val matches = pattern?.containsMatchIn(line) ?: line.contains(query)
+                val matches = when (pattern) {
+                    null -> line.contains(query)
+                    else -> pattern.containsMatchIn(BoundedCharSequence(line, query, MATCH_BUDGET_PER_LINE))
+                }
                 if (!matches) continue
                 if (hits.size == cap) {
                     truncated = true
@@ -264,6 +312,23 @@ class LibraryService(
 
     // --- internals ---
 
+    /**
+     * Compiles a caller-supplied `search_source` pattern.
+     *
+     * `search_source` takes its regex straight from the model's arguments, so the pattern is
+     * length-capped and a syntax error becomes an argument error the model can act on rather than
+     * a raw `PatternSyntaxException`. Runtime cost is bounded separately, at match time, by
+     * [BoundedCharSequence] — a length cap alone would not help, since backtracking is exponential.
+     */
+    private fun compileSearchPattern(query: String): Regex {
+        require(query.length <= MAX_SEARCH_PATTERN_LENGTH) {
+            "Regular expression is too long (${query.length} characters, limit $MAX_SEARCH_PATTERN_LENGTH)"
+        }
+        return runCatching { Regex(query) }.getOrElse {
+            throw IllegalArgumentException("Invalid regular expression '$query': ${it.message}")
+        }
+    }
+
     private suspend fun symbol(coordinate: LibraryCoordinate, fqName: String): ApiSymbol {
         val symbols = index(coordinate).symbolsByFqName
         // Exact key first; then the first overload (keys are disambiguated with a `#n` suffix).
@@ -272,14 +337,27 @@ class LibraryService(
             ?: throw IllegalArgumentException("No declaration '$fqName' in $coordinate (try list_declarations)")
     }
 
-    /** Reads one extracted source file; the fetch result is cache-marker-backed, so this is warm. */
-    private suspend fun readSource(coordinate: LibraryCoordinate, relativePath: String): String {
-        val extractedDir = fetcher.fetch(coordinate, repos).extractedDir
-        val file = Path.of(extractedDir).resolve(relativePath).normalize()
-        require(file.startsWith(Path.of(extractedDir).normalize())) { "Path escapes the source root: $relativePath" }
+    /**
+     * Normalized on-disk root of [coordinate]'s extracted sources.
+     *
+     * Costs one [MavenSourceFetcher.fetch]. That is a warm cache hit in the steady state, but not
+     * a free one — the JVM fetcher reads and JSON-deserializes the cache marker every time — so
+     * callers that read many files must resolve the root once and use [readSourceUnder].
+     */
+    private suspend fun sourceRoot(coordinate: LibraryCoordinate): Path =
+        Path.of(fetcher.fetch(coordinate, repos).extractedDir).normalize()
+
+    /** Reads one extracted source file beneath an already-resolved [root]. */
+    private suspend fun readSourceUnder(root: Path, relativePath: String): String {
+        val file = root.resolve(relativePath).normalize()
+        require(file.startsWith(root)) { "Path escapes the source root: $relativePath" }
         if (!file.exists()) throw IllegalArgumentException("Source file not found on disk: $relativePath")
         return withContext(Dispatchers.IO) { file.readText() }
     }
+
+    /** Reads one extracted source file; the fetch result is cache-marker-backed, so this is warm. */
+    private suspend fun readSource(coordinate: LibraryCoordinate, relativePath: String): String =
+        readSourceUnder(sourceRoot(coordinate), relativePath)
 
     private fun LibraryIndex.summary(fromCache: Boolean): FetchSummary = FetchSummary(
         coordinate = coordinate,
@@ -291,6 +369,16 @@ class LibraryService(
 
     private companion object {
         const val MAX_SEARCH_RESULTS = 200
+
+        /** Upper bound on a caller-supplied regex; far above any pattern a search needs. */
+        const val MAX_SEARCH_PATTERN_LENGTH = 1_000
+
+        /**
+         * Character reads one line may cost the matcher. A linear pattern spends roughly the
+         * line's length; anything that reaches a million is backtracking, and burns through this
+         * in microseconds. See [BoundedCharSequence].
+         */
+        const val MATCH_BUDGET_PER_LINE = 1_000_000
         const val MAX_DECLARATION_RESULTS = 500
         const val DEFAULT_DECLARATION_RESULTS = 100
         const val MAX_DEPENDENCY_DEPTH = 5
