@@ -6,7 +6,7 @@ kover = "0.9.9"
 # Third-party
 mcpKotlinSdk = "0.15.0"
 ktor = "3.5.2"
-compose = "1.11.1"             # aligned to Kotlin 2.4.x
+compose = "1.12.0"             # aligned to Kotlin 2.4.x
 kotlinxCoroutines = "1.11.0"
 kotlinxSerialization = "1.11.0"
 kermit = "2.1.0"
