@@ -94,6 +94,33 @@ class AnalysisApiSourceAnalyzerTest {
     }
 
     @Test
+    fun rendersParameterDefaultValuesFromSource() {
+        val symbol = assertNotNull(index.symbolsByFqName["com.example.tiny.greetEveryone"])
+
+        assertFalse(symbol.bestEffort, "expected fully resolved symbol, got: ${symbol.signature}")
+        assertContains(symbol.signature, "greeter: com.example.tiny.Greeter = DefaultGreeter()")
+        assertContains(symbol.signature, "separator: kotlin.String = \", \"")
+    }
+
+    @Test
+    fun rendersVisibilityOnPublicDeclarations() {
+        val symbol = assertNotNull(index.symbolsByFqName["com.example.tiny.greetEveryone"])
+
+        assertTrue(
+            symbol.signature.startsWith("public fun greetEveryone"),
+            "visibility should be spelled out, got: ${symbol.signature}",
+        )
+    }
+
+    @Test
+    fun leavesRequiredParametersWithoutADefault() {
+        val symbol = assertNotNull(index.symbolsByFqName["com.example.tiny.greetEveryone"])
+
+        val names = symbol.signature.substringAfter("names: ").substringBefore(",")
+        assertEquals("kotlin.collections.List<kotlin.String>", names, "in: ${symbol.signature}")
+    }
+
+    @Test
     fun degradesUnresolvedTypesToBestEffortPsiSignature() {
         val symbol = assertNotNull(index.symbolsByFqName["com.example.tiny.render"])
 
