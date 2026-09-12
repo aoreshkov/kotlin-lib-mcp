@@ -33,7 +33,10 @@ fun Server.registerFetchLibraryTool(
             "using the other tools. The version may be omitted or set to 'latest' (e.g. " +
             "'io.ktor:ktor-client-core' or 'io.ktor:ktor-client-core:latest') to fetch the latest " +
             "stable release — clients that support elicitation may ask the user to pick a version " +
-            "in that case. Returns a summary (resolved coordinate, KMP targets, file and package counts).",
+            "in that case. Returns a summary (resolved coordinate, KMP targets, file and package " +
+            "counts). Over stdio it also returns 'extractedDir', the local root of the extracted " +
+            "sources: if you have file tools of your own, reading or diffing files under it " +
+            "directly is much cheaper than paging them through get_source.",
         inputSchema = ToolSchema(
             schema = JSON_SCHEMA_DIALECT,
             properties = buildJsonObject {

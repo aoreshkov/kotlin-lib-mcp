@@ -93,6 +93,19 @@ internal fun serverCapabilities(
     },
 )
 
+/** [ServerConfig.transport] for the stdio transport — the one whose client shares our filesystem. */
+const val STDIO_TRANSPORT: String = "stdio"
+
+/**
+ * Whether a client arriving over [transport] shares this process's filesystem, and may therefore be
+ * told local paths (`FetchSummary.extractedDir`).
+ *
+ * Only stdio qualifies: that server is launched by its client, as a child process on the same
+ * machine. Anything else — including a transport name this build does not recognize — is treated as
+ * potentially remote, so a new transport cannot start leaking paths merely by existing.
+ */
+internal fun sharesFilesystemWithClient(transport: String): Boolean = transport == STDIO_TRANSPORT
+
 /** Runtime configuration shared by both transports, populated from the CLI flags in `Main`. */
 data class ServerConfig(
     val cacheDir: Path = OnDiskLibraryCache.defaultCacheRoot(),
@@ -120,10 +133,12 @@ data class ServerConfig(
      */
     val tasks: Boolean = false,
     /**
-     * The transport being run (`stdio` or `http`), used for the `network.transport` span attribute.
-     * Only meaningful when [otel] is set.
+     * The transport being run (`stdio` or `http`). Supplies the `network.transport` span attribute
+     * when [otel] is set, and decides whether `fetch_library` may report the on-disk source root:
+     * a stdio client launched this process and shares its filesystem, an HTTP one may not — see
+     * `LibraryService.exposeLocalPaths`.
      */
-    val transport: String = "stdio",
+    val transport: String = STDIO_TRANSPORT,
 )
 
 /**
@@ -171,6 +186,8 @@ object McpServerFactory {
             analyzer = AnalysisApiSourceAnalyzer(),
             cache = cache,
             repos = config.repos,
+            // Only a stdio client shares this process filesystem, so only it can use a local path.
+            exposeLocalPaths = sharesFilesystemWithClient(config.transport),
         )
 
         val server = Server(
