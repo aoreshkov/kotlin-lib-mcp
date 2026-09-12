@@ -22,9 +22,12 @@ import app.oreshkov.kotlinlibmcp.model.Visibility
 import app.oreshkov.kotlinlibmcp.util.MavenVersions
 import co.touchlab.kermit.Logger
 import java.nio.file.Path
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /** Thrown by read operations when a coordinate has no cached index yet. */
@@ -96,15 +99,49 @@ class LibraryService(
 ) {
     private val log = Logger.withTag("LibraryService")
 
+    /** One in-flight fetch of one coordinate at a time; see [withFetchGate]. */
+    private class FetchGate {
+        val mutex = Mutex()
+
+        /** Callers holding or waiting on [mutex]; guarded by `ConcurrentHashMap.compute`. */
+        var holders: Int = 0
+    }
+
+    private val fetchGates = ConcurrentHashMap<LibraryCoordinate, FetchGate>()
+
+    /** Coordinates with a fetch in flight. Visible for tests, which assert the map is pruned. */
+    internal val inFlightFetchCount: Int get() = fetchGates.size
+
     /**
      * Warms the cache for [coordinate]: download sources, analyze, persist the index. Idempotent.
      * [onProgress] is invoked at each phase boundary (never on a warm cache hit).
+     *
+     * Concurrent calls for the *same* coordinate do the work once: the second caller waits on
+     * [withFetchGate] and then finds the index the first one cached, so it reports `fromCache`
+     * (truthfully — by the time it returned, that is where the index came from) without repeating
+     * the download or the Analysis API pass, which is the expensive half. Different coordinates
+     * never wait on each other. See [withFetchGate] for why this is a gate rather than a shared
+     * `Deferred` of the in-flight result.
      */
     suspend fun fetchLibrary(
         coordinate: LibraryCoordinate,
         onProgress: suspend (FetchProgress) -> Unit = {},
     ): FetchSummary {
+        // Fast path: a warm cache never touches the gate map at all.
         cache.get(coordinate)?.let { return it.summary(fromCache = true) }
+        return withFetchGate(coordinate) {
+            // Re-check under the gate. Whoever held it before us may have cached exactly the index
+            // we were about to compute; without this the gate would serialize the duplicates
+            // instead of eliminating them.
+            cache.get(coordinate)?.let { return@withFetchGate it.summary(fromCache = true) }
+            fetchUncached(coordinate, onProgress)
+        }
+    }
+
+    private suspend fun fetchUncached(
+        coordinate: LibraryCoordinate,
+        onProgress: suspend (FetchProgress) -> Unit,
+    ): FetchSummary {
         log.i { "Fetching and analyzing $coordinate" }
         onProgress(FetchProgress(1, FETCH_STEPS, "Downloading and extracting sources of $coordinate"))
         val fetched = fetcher.fetch(coordinate, repos)
@@ -311,6 +348,40 @@ class LibraryService(
         cache.get(coordinate) ?: throw LibraryNotFetchedException(coordinate)
 
     // --- internals ---
+
+    /**
+     * Runs [body] as the only in-flight fetch of [coordinate], releasing the gate afterwards.
+     *
+     * **Why a gate and not a shared `Deferred` of the in-flight fetch.** Handing the second caller
+     * the first one's `Deferred` is the usual de-duplication trick, and it is wrong here: since SDK
+     * 0.15.0 an inbound `notifications/cancelled` really does cancel a `tools/call` handler, and the
+     * whole point of that is to stop the download. A shared `Deferred` ties both callers to the
+     * first one's fate — cancel the first and the second fails with it — while detaching the work
+     * into a service-scoped coroutine so it survives would mean a withdrawn `fetch_library` keeps
+     * downloading, which is exactly the property `ConcurrentDispatchTest` pins. A gate has neither
+     * problem: each caller runs the work in its *own* coroutine, so cancelling one only releases the
+     * gate and the next waiter does the work itself.
+     *
+     * **Why the map cannot grow without bound.** `coordinate` is caller-supplied, so a client that
+     * asks for a million bogus coordinates must not leave a million mutexes behind. Every entry is
+     * reference-counted and the last leaver removes it. The count is a plain `Int` because it is
+     * only ever read or written inside [ConcurrentHashMap.compute], which holds the bin lock for
+     * the duration — the map is the mutual exclusion, so no atomic is needed.
+     */
+    private suspend fun <T> withFetchGate(coordinate: LibraryCoordinate, body: suspend () -> T): T {
+        val gate = fetchGates.compute(coordinate) { _, existing ->
+            (existing ?: FetchGate()).also { it.holders++ }
+        }!!
+        try {
+            return gate.mutex.withLock { body() }
+        } finally {
+            fetchGates.compute(coordinate) { _, existing ->
+                // Returning null removes the entry. `existing` is always the gate we incremented:
+                // an entry is only ever dropped by its last holder, which is us when this hits 0.
+                existing?.let { if (--it.holders > 0) it else null }
+            }
+        }
+    }
 
     /**
      * Compiles a caller-supplied `search_source` pattern.
