@@ -148,3 +148,32 @@ place so a rename is a single edit.
 
 **Tool-authoring convention and the resource-template `NoSuchMethodError` gotcha** live in
 `.claude/rules/mcp-server.md` (loaded automatically when you edit `server/` sources).
+
+## The 2026-07-28 horizon
+
+We target **2025-11-25**, because that is what the Kotlin SDK declares
+(`LATEST_PROTOCOL_VERSION`). Spec revision **2026-07-28** is stable, but the SDK has shipped none of
+it: as of **2026-09-12** the newest release is still 0.15.0 (2026-07-28, no beta or pre-release) and
+the upstream tracking issue, `modelcontextprotocol/kotlin-sdk#842`, is open and untouched since
+2026-06-18. **There is nothing here to adopt yet, and adopting it early would mean inventing wire
+surface ahead of the SDK.** Re-check that release list and that issue before assuming otherwise —
+this paragraph carries a date precisely because it goes stale.
+
+Three decisions in this repo are load-bearing for that migration. Keep them:
+
+- **`elicitation/VersionElicitation.kt` stays one file.** 2026-07-28 replaces the nested
+  request/response with MRTR (`InputRequiredResult` + a client retry), so a single-file rewrite is
+  the whole migration.
+- **`--tasks` stays opt-in.** Tasks become an `io.modelcontextprotocol/tasks` *extension*, gaining
+  `tasks/update` and moving notifications to one `subscriptions/listen` stream. Opt-in bounds the
+  blast radius to operators who asked for it.
+- **`logging` stays behind `--forward-logs-to-client`, stderr stays primary.** 2026-07-28 deprecates
+  Logging (alongside Roots and Sampling) on a ≥12-month window.
+
+The exposure to look at first, when a beta does land, is **session identity** — 2026-07-28 retires
+`initialize`/`initialized` and `Mcp-Session-Id`, moving identity and capabilities into per-request
+`_meta`. Two things here rest on a session existing: the elicitation gate reads
+`server.sessions[sessionId]?.clientCapabilities`, and task records are *owned* by the session that
+created them. So the first two questions are what replaces that capability lookup, and what the task
+ownership model keys on instead. `SessionSetup.kt` goes with it. Note it; do not pre-emptively
+rewrite it.
