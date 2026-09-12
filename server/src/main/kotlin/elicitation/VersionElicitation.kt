@@ -205,9 +205,17 @@ private fun String.label(default: String): String = when {
 /**
  * The accepted version, validated against what was actually offered.
  *
- * The spec says servers SHOULD validate that the response matches the requested schema, and this is
- * the whole of ours: the value reaches a Maven URL path, so anything not from our own `oneOf` list
- * is discarded in favor of the default rather than trusted.
+ * The spec says servers SHOULD validate that the response matches the requested schema. Since SDK
+ * 0.15.0 this is the **second** gate, not the only one: `ClientConnection.createElicitation`
+ * validates an accepted form-mode response itself (`ElicitationValidation.kt`) and, for a
+ * `TitledSingleSelectEnumSchema`, checks membership in exactly the `oneOf` consts we sent — so an
+ * unoffered value throws `McpException(INVALID_PARAMS)` before it ever reaches here, and [ask]'s
+ * catch-all turns that into the same `options.default` this function would have picked.
+ *
+ * Kept anyway, deliberately. The value reaches a Maven URL path, that upstream check is `internal`
+ * to the SDK and applied only on this one call path, and the 2026-07-28 MRTR migration moves the
+ * answer onto a *retried request* — where nothing guarantees the same validation runs. This is a
+ * cheap gate on a value we should not trust, so it stays until we can see what replaces it.
  */
 private fun ElicitResult.selectedVersion(options: VersionOptions): String {
     val answer = (content?.get(VERSION_FIELD) as? JsonPrimitive)?.contentOrNull

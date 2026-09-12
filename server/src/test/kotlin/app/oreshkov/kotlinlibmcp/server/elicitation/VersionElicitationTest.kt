@@ -8,6 +8,8 @@ import io.modelcontextprotocol.kotlin.sdk.types.ClientCapabilities
 import io.modelcontextprotocol.kotlin.sdk.types.ElicitRequest
 import io.modelcontextprotocol.kotlin.sdk.types.ElicitRequestFormParams
 import io.modelcontextprotocol.kotlin.sdk.types.ElicitResult
+import io.modelcontextprotocol.kotlin.sdk.types.McpException
+import io.modelcontextprotocol.kotlin.sdk.types.RPCError
 import io.modelcontextprotocol.kotlin.sdk.types.TitledSingleSelectEnumSchema
 import kotlin.test.Test
 import kotlin.test.assertEquals
@@ -205,7 +207,33 @@ class VersionElicitationTest {
         val connection = answering(ElicitResult.Action.Accept, "../../etc/passwd")
 
         // The value reaches a Maven URL path, so only our own oneOf list is trusted.
+        //
+        // This drives our *second* gate in isolation: FakeConnection returns the responder's
+        // ElicitResult verbatim, whereas the real ClientConnection.createElicitation has rejected
+        // an unoffered value since SDK 0.15.0 and never returns one. The gate below covers that
+        // path; this one covers ours, which survives an SDK that stops checking.
         assertEquals("3.5.1", connection.resolveCoordinate(true, service(), group, artifact, null).version)
+    }
+
+    @Test
+    fun theSdkRejectingAnUnofferedValueAlsoFallsBackRatherThanFailingTheFetch() = runTest {
+        // What the real connection does with "../../etc/passwd" as of SDK 0.15.0: accepted
+        // form-mode content is validated against the requested schema inside createElicitation,
+        // and a value outside our oneOf consts throws INVALID_PARAMS *at the caller* instead of
+        // coming back as a result. That exception must degrade to the default, not surface as a
+        // failed fetch_library — the user picked nothing unusable, the client sent something bad.
+        val connection = FakeConnection().apply {
+            elicitationResponder = {
+                throw McpException(
+                    code = RPCError.ErrorCode.INVALID_PARAMS,
+                    message = "Elicitation response content does not match requested schema: " +
+                        "'version' must be equal to one of the allowed values",
+                )
+            }
+        }
+
+        assertEquals("3.5.1", connection.resolveCoordinate(true, service(), group, artifact, null).version)
+        assertEquals(1, connection.elicitations.size)
     }
 
     @Test
