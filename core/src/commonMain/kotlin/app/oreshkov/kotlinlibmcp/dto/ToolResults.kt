@@ -35,12 +35,17 @@ public data class FetchSummary(
     val extractedDir: String? = null,
 )
 
-/** `list_packages`. */
+/**
+ * `list_packages`. [packages] is a bounded page; [totalCount] is how many the library has and
+ * [truncated] is `true` when more existed than the page returned (advance `offset` for the rest).
+ */
 @Serializable
 @SerialName("PackageList")
 public data class PackageList(
     val coordinate: LibraryCoordinate,
     val packages: List<PackageInfo> = emptyList(),
+    val totalCount: Int = 0,
+    val truncated: Boolean = false,
 )
 
 /**
@@ -107,20 +112,35 @@ public data class SearchResults(
     val truncated: Boolean = false,
 )
 
-/** `get_dependencies`. */
+/**
+ * `get_dependencies`.
+ *
+ * [root] is a bounded view of the tree: `depth` limits how far resolution walks, and a node budget
+ * limits how much of the result is returned. [totalNodes] counts the tree that was resolved, so
+ * [truncated] (more nodes existed than were returned) is legible against it. Pruning is
+ * breadth-first, so direct dependencies survive and the deepest transitives are dropped first.
+ */
 @Serializable
 @SerialName("DependencyResult")
 public data class DependencyResult(
     val root: DependencyNode,
+    val totalNodes: Int = 0,
+    val truncated: Boolean = false,
 )
 
-/** `list_versions`. */
+/**
+ * `list_versions`, newest first. [versions] is a bounded page; [totalCount] is how many the
+ * repository publishes and [truncated] is `true` when more existed than the page returned (advance
+ * `offset` for older ones).
+ */
 @Serializable
 @SerialName("VersionList")
 public data class VersionList(
     val group: String,
     val artifact: String,
     val versions: List<String> = emptyList(),
+    val totalCount: Int = 0,
+    val truncated: Boolean = false,
 )
 
 /** How one file differs between two versions. */

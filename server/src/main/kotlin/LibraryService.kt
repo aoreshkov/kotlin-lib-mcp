@@ -19,6 +19,7 @@ import app.oreshkov.kotlinlibmcp.dto.SourceResult
 import app.oreshkov.kotlinlibmcp.dto.VersionDiff
 import app.oreshkov.kotlinlibmcp.dto.VersionList
 import app.oreshkov.kotlinlibmcp.model.ApiSymbol
+import app.oreshkov.kotlinlibmcp.model.DependencyNode
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.model.LibraryIndex
 import app.oreshkov.kotlinlibmcp.model.Visibility
@@ -26,6 +27,7 @@ import app.oreshkov.kotlinlibmcp.server.diff.LineDiff
 import app.oreshkov.kotlinlibmcp.util.MavenVersions
 import co.touchlab.kermit.Logger
 import java.nio.file.Path
+import java.util.IdentityHashMap
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.io.path.exists
 import kotlin.io.path.readText
@@ -168,8 +170,30 @@ class LibraryService(
         return index.summary(fromCache = false)
     }
 
-    suspend fun listPackages(coordinate: LibraryCoordinate): PackageList =
-        PackageList(coordinate, index(coordinate).packages)
+    /**
+     * Packages of a fetched library, as a bounded page.
+     *
+     * Paged for the same reason `list_declarations` is: the size is a function of the library, not
+     * the arguments. `kotlin-compiler-embeddable` has 610 packages — around 55 KB, doubled on the
+     * wire because every result is emitted as text *and* `structuredContent`. The default page is
+     * larger than `list_declarations`' because a package entry is a fraction of a declaration's
+     * size, which keeps the two roughly comparable in bytes rather than in rows.
+     */
+    suspend fun listPackages(
+        coordinate: LibraryCoordinate,
+        maxResults: Int = DEFAULT_PACKAGE_RESULTS,
+        offset: Int = 0,
+    ): PackageList {
+        val all = index(coordinate).packages
+        val start = offset.coerceAtLeast(0)
+        val page = all.drop(start).take(maxResults.coerceIn(1, MAX_PACKAGE_RESULTS))
+        return PackageList(
+            coordinate = coordinate,
+            packages = page,
+            totalCount = all.size,
+            truncated = start + page.size < all.size,
+        )
+    }
 
     suspend fun listDeclarations(
         coordinate: LibraryCoordinate,
@@ -414,6 +438,39 @@ class LibraryService(
             }
             .mapValues { (_, paths) -> paths.min() }
 
+    /** Nodes in this subtree, including itself. */
+    private fun DependencyNode.nodeCount(): Int = 1 + children.sumOf { it.nodeCount() }
+
+    /**
+     * This tree cut down to [budget] nodes, breadth-first.
+     *
+     * Keyed on **identity**, not equality: two distinct nodes with the same coordinate, scope and
+     * target are equal as data classes, and a value-keyed map would fold one diamond dependency's
+     * two occurrences into a single entry and drop a whole branch.
+     */
+    private fun DependencyNode.prunedTo(budget: Int): DependencyNode {
+        val keptChildren = IdentityHashMap<DependencyNode, MutableList<DependencyNode>>()
+        val queue = ArrayDeque<DependencyNode>()
+        keptChildren[this] = mutableListOf()
+        queue += this
+        var kept = 1
+        while (queue.isNotEmpty() && kept < budget) {
+            val node = queue.removeFirst()
+            for (child in node.children) {
+                if (kept >= budget) break
+                keptChildren.getValue(node) += child
+                keptChildren[child] = mutableListOf()
+                queue += child
+                kept++
+            }
+        }
+        // A node enqueued but never dequeued keeps its (empty) entry, so its children are dropped
+        // rather than carried over the budget.
+        fun rebuild(node: DependencyNode): DependencyNode =
+            node.copy(children = keptChildren[node].orEmpty().map(::rebuild))
+        return rebuild(this)
+    }
+
     /** Drops the leading target directory (`common/`, `jvm/`, …); paths without one are unchanged. */
     private fun String.withoutTargetSegment(): String =
         if ('/' in this) substringAfter('/') else this
@@ -472,11 +529,51 @@ class LibraryService(
         }
     }
 
-    suspend fun getDependencies(coordinate: LibraryCoordinate, depth: Int): DependencyResult =
-        DependencyResult(fetcher.resolveDependencies(coordinate, repos, depth.coerceIn(1, MAX_DEPENDENCY_DEPTH)))
+    /**
+     * The dependency tree, bounded twice over.
+     *
+     * `depth` already bounds how far *resolution* walks, which is what costs network requests. It
+     * does not bound the result: breadth is unbounded, so a depth-5 tree of a well-connected
+     * artifact can carry thousands of nodes. [maxNodes] bounds what is *returned*, breadth-first so
+     * direct dependencies survive and the deepest transitives are dropped first — the opposite
+     * order would answer "what does this drag in" with its least relevant half.
+     */
+    suspend fun getDependencies(
+        coordinate: LibraryCoordinate,
+        depth: Int,
+        maxNodes: Int = DEFAULT_DEPENDENCY_NODES,
+    ): DependencyResult {
+        val root = fetcher.resolveDependencies(coordinate, repos, depth.coerceIn(1, MAX_DEPENDENCY_DEPTH))
+        val total = root.nodeCount()
+        val budget = maxNodes.coerceIn(1, MAX_DEPENDENCY_NODES)
+        return DependencyResult(
+            root = if (total <= budget) root else root.prunedTo(budget),
+            totalNodes = total,
+            truncated = total > budget,
+        )
+    }
 
-    suspend fun listVersions(group: String, artifact: String): VersionList =
-        VersionList(group, artifact, fetcher.listVersions(group, artifact, repos))
+    /**
+     * Published versions, newest first, as a bounded page. Long-lived artifacts publish hundreds;
+     * newest-first ordering means the first page is the one almost every caller wants.
+     */
+    suspend fun listVersions(
+        group: String,
+        artifact: String,
+        maxResults: Int = DEFAULT_VERSION_RESULTS,
+        offset: Int = 0,
+    ): VersionList {
+        val all = fetcher.listVersions(group, artifact, repos)
+        val start = offset.coerceAtLeast(0)
+        val page = all.drop(start).take(maxResults.coerceIn(1, MAX_VERSION_RESULTS))
+        return VersionList(
+            group = group,
+            artifact = artifact,
+            versions = page,
+            totalCount = all.size,
+            truncated = start + page.size < all.size,
+        )
+    }
 
     /**
      * Latest version(s) of an artifact from `maven-metadata.xml`. Prefers the canonical
@@ -708,6 +805,19 @@ class LibraryService(
         const val MAX_SOURCE_CHARS = 100_000
         const val MAX_DECLARATION_RESULTS = 500
         const val DEFAULT_DECLARATION_RESULTS = 100
+        /**
+         * Packages per `list_packages` page. Larger than the declaration page because a package
+         * entry is a fraction of a declaration.s size — comparable in bytes, not in rows.
+         */
+        const val DEFAULT_PACKAGE_RESULTS = 200
+        const val MAX_PACKAGE_RESULTS = 1_000
+
+        const val DEFAULT_VERSION_RESULTS = 100
+        const val MAX_VERSION_RESULTS = 500
+
+        /** Nodes returned by `get_dependencies`; `depth` bounds resolution, this bounds output. */
+        const val DEFAULT_DEPENDENCY_NODES = 200
+        const val MAX_DEPENDENCY_NODES = 1_000
         const val MAX_DEPENDENCY_DEPTH = 5
         const val LATEST = "latest"
 
