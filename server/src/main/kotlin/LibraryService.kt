@@ -96,6 +96,15 @@ class LibraryService(
     private val analyzer: SourceAnalyzer,
     private val cache: LibraryCache,
     private val repos: List<String> = emptyList(),
+    /**
+     * Whether `fetch_library` may report the on-disk source root (`FetchSummary.extractedDir`).
+     *
+     * True only for stdio, where the client launched this process and shares its filesystem, so the
+     * path is both usable and already within the caller's reach. Over HTTP the caller may be on
+     * another machine: the path would be useless to it and would disclose the server's layout for
+     * no benefit, so it stays `null`.
+     */
+    private val exposeLocalPaths: Boolean = false,
 ) {
     private val log = Logger.withTag("LibraryService")
 
@@ -430,13 +439,24 @@ class LibraryService(
     private suspend fun readSource(coordinate: LibraryCoordinate, relativePath: String): String =
         readSourceUnder(sourceRoot(coordinate), relativePath)
 
-    private fun LibraryIndex.summary(fromCache: Boolean): FetchSummary = FetchSummary(
+    private suspend fun LibraryIndex.summary(fromCache: Boolean): FetchSummary = FetchSummary(
         coordinate = coordinate,
         resolvedTargets = targets,
         sourceFileCount = files.size,
         packageCount = packages.size,
         fromCache = fromCache,
+        extractedDir = localSourceRoot(coordinate),
     )
+
+    /**
+     * The extracted source root to report to the client, or `null` when [exposeLocalPaths] is off.
+     *
+     * Resolution failure is swallowed on purpose: this is a convenience field on an otherwise
+     * successful fetch, and a library that is cached and analyzed is still perfectly usable through
+     * every other tool if its on-disk root cannot be named right now.
+     */
+    private suspend fun localSourceRoot(coordinate: LibraryCoordinate): String? =
+        if (!exposeLocalPaths) null else runCatching { sourceRoot(coordinate).toString() }.getOrNull()
 
     private companion object {
         const val MAX_SEARCH_RESULTS = 200

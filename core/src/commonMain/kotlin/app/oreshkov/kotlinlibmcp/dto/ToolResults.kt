@@ -15,7 +15,15 @@ import kotlinx.serialization.Serializable
  * so the wire/cache format stays forward-compatible as fields are added.
  */
 
-/** `fetch_library` — summary of a warmed coordinate. */
+/**
+ * `fetch_library` — summary of a warmed coordinate.
+ *
+ * [extractedDir] is the absolute on-disk root of the extracted sources, and is present **only when
+ * the client shares the server's filesystem** (a stdio server is launched by its client, on the
+ * same machine). A client with its own file tools can then read and diff the sources directly,
+ * which is far cheaper than paging them through `get_source`. It is `null` over HTTP, where a
+ * server-side path is useless to the caller and would disclose the server's layout for nothing.
+ */
 @Serializable
 @SerialName("FetchSummary")
 public data class FetchSummary(
@@ -24,6 +32,7 @@ public data class FetchSummary(
     val sourceFileCount: Int = 0,
     val packageCount: Int = 0,
     val fromCache: Boolean = false,
+    val extractedDir: String? = null,
 )
 
 /** `list_packages`. */
