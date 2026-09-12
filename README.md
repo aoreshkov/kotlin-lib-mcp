@@ -138,15 +138,15 @@ index. `fetch_library`, `list_versions` and `get_latest_version` also accept `gr
 | Tool | Purpose |
 |---|---|
 | `fetch_library` | Download + analyze + cache; returns a summary. Idempotent. Version may be omitted or `latest` |
-| `list_packages` | Packages with declaration counts and KMP targets |
-| `list_declarations` | Declarations with signatures; filter by `package` and `visibility` |
+| `list_packages` | Packages with declaration counts and KMP targets; paged |
+| `list_declarations` | Declarations with signatures; filter by `package` and `visibility`; paged |
 | `get_api_signature` | Resolved signature of one declaration by FQ name |
 | `get_kdoc` | KDoc (summary, description, tags) of one declaration |
-| `get_source` | Raw source of a file (`path`) or one declaration (`fqName`) |
+| `get_source` | Raw source of a file (`path`) or one declaration (`fqName`); paged by line |
 | `search_source` | Substring/regex search; bounded, returns `file:line` snippets |
 | `diff_versions` | Unified diff between two fetched versions; summary-first, paged, `path`-filtered |
-| `get_dependencies` | Dependency tree from `.pom`/`.module`; bounded `depth` |
-| `list_versions` | Published versions from `maven-metadata.xml`, newest-first |
+| `get_dependencies` | Dependency tree from `.pom`/`.module`; bounded `depth` and `maxNodes` |
+| `list_versions` | Published versions from `maven-metadata.xml`, newest-first; paged |
 | `get_latest_version` | Latest stable release (and newest overall) from `maven-metadata.xml` |
 
 Every tool ships the metadata the MCP spec encourages clients to use: a display `title`,

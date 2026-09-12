@@ -13,11 +13,15 @@ fun Server.registerListVersionsTool(service: LibraryService) {
         name = "list_versions",
         description = "List the published versions of an artifact from the repository's " +
             "maven-metadata.xml. Accepts 'group:artifact' or a full 'group:artifact:version' " +
-            "coordinate (the version part is ignored). Works without fetch_library.",
+            "coordinate (the version part is ignored). Works without fetch_library. Newest first " +
+            "and paged ('truncated: true' with a 'totalCount' when the artifact has more than the " +
+            "returned page; advance 'offset' for older versions).",
         inputSchema = ToolSchema(
             schema = JSON_SCHEMA_DIALECT,
             properties = buildJsonObject {
                 put("coordinate", stringProp("Maven coordinate 'group:artifact' or 'group:artifact:version'"))
+                put("maxResults", intProp("Page size, 1-500 (default 100)"))
+                put("offset", intProp("Number of versions to skip for paging (default 0)"))
             },
             required = listOf("coordinate"),
         ),
@@ -27,11 +31,19 @@ fun Server.registerListVersionsTool(service: LibraryService) {
         icon = Glyph.Versions,
     ) { request ->
         guarded(request) {
-            val parts = request.args().requireStringArg("coordinate").split(':')
+            val args = request.args()
+            val parts = args.requireStringArg("coordinate").split(':')
             require(parts.size in 2..3 && parts.take(2).none(String::isBlank)) {
                 "Invalid coordinate '${parts.joinToString(":")}': expected 'group:artifact[:version]'"
             }
-            toolResult(service.listVersions(group = parts[0].trim(), artifact = parts[1].trim()))
+            toolResult(
+                service.listVersions(
+                    group = parts[0].trim(),
+                    artifact = parts[1].trim(),
+                    maxResults = args.intArg("maxResults") ?: 100,
+                    offset = args.intArg("offset") ?: 0,
+                )
+            )
         }
     }
 }

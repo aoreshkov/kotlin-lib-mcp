@@ -13,6 +13,21 @@ matching `structuredContent`. When adding a tool, pass all four to `addTool` —
 `LOCAL_READ_ONLY`/`REPOSITORY_READ_ONLY` annotation constants in `ToolSupport.kt`, and add a new
 `Glyph` entry (plus its PNG, via `./gradlew :tools:generateIcons`) in `server/.../icons/Icons.kt`.
 
+**Every tool result must be bounded.** The rule: if a result's size is a function of the *library*
+rather than of the *arguments*, it needs a cap — and the cap has to be the tool's own, because
+nothing downstream will impose one. This was learned three times: `list_declarations` shipped
+unpaged and overflowed at 272 KB; `get_source` returned whole files, and the sources this server
+fetches include a single generated file of 1.7 MB; `list_packages`, `list_versions` and
+`get_dependencies` were then capped together. Remember that `toolResult` emits the payload **twice**
+— as text and as `structuredContent` — so the wire cost is double whatever the page measures.
+
+Follow the established shape rather than inventing one: `maxResults` + `offset` arguments, both
+clamped, and `totalCount` + `truncated` in the result so the caller can see what it did not get and
+page for the rest. Where rows are the wrong unit, bound the real one instead and say so —
+`get_source` pages by line *and* clips by characters (a line cap is not a size cap when a generated
+line runs to thousands of characters), and `get_dependencies` prunes by node count breadth-first
+(`depth` bounds resolution cost, not result size).
+
 **Icons gotcha:** `icons` exists only on the `Tool`/`Prompt`/`Resource`/`ResourceTemplate` types,
 never on the SDK's `addTool(name, …)`/`addPrompt(name, …)`/`addResource(uri, …)` convenience
 overloads — and there is no `addResource(Resource, handler)` at all, so a resource with icons has

@@ -134,12 +134,17 @@ public final class app/oreshkov/kotlinlibmcp/dto/DeclarationList$Companion {
 
 public final class app/oreshkov/kotlinlibmcp/dto/DependencyResult {
 	public static final field Companion Lapp/oreshkov/kotlinlibmcp/dto/DependencyResult$Companion;
-	public fun <init> (Lapp/oreshkov/kotlinlibmcp/model/DependencyNode;)V
+	public fun <init> (Lapp/oreshkov/kotlinlibmcp/model/DependencyNode;IZ)V
+	public synthetic fun <init> (Lapp/oreshkov/kotlinlibmcp/model/DependencyNode;IZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lapp/oreshkov/kotlinlibmcp/model/DependencyNode;
-	public final fun copy (Lapp/oreshkov/kotlinlibmcp/model/DependencyNode;)Lapp/oreshkov/kotlinlibmcp/dto/DependencyResult;
-	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/dto/DependencyResult;Lapp/oreshkov/kotlinlibmcp/model/DependencyNode;ILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/dto/DependencyResult;
+	public final fun component2 ()I
+	public final fun component3 ()Z
+	public final fun copy (Lapp/oreshkov/kotlinlibmcp/model/DependencyNode;IZ)Lapp/oreshkov/kotlinlibmcp/dto/DependencyResult;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/dto/DependencyResult;Lapp/oreshkov/kotlinlibmcp/model/DependencyNode;IZILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/dto/DependencyResult;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getRoot ()Lapp/oreshkov/kotlinlibmcp/model/DependencyNode;
+	public final fun getTotalNodes ()I
+	public final fun getTruncated ()Z
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -319,15 +324,19 @@ public final class app/oreshkov/kotlinlibmcp/dto/LatestVersion$Companion {
 
 public final class app/oreshkov/kotlinlibmcp/dto/PackageList {
 	public static final field Companion Lapp/oreshkov/kotlinlibmcp/dto/PackageList$Companion;
-	public fun <init> (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;)V
-	public synthetic fun <init> (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;IZ)V
+	public synthetic fun <init> (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;IZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;
 	public final fun component2 ()Ljava/util/List;
-	public final fun copy (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;)Lapp/oreshkov/kotlinlibmcp/dto/PackageList;
-	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/dto/PackageList;Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;ILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/dto/PackageList;
+	public final fun component3 ()I
+	public final fun component4 ()Z
+	public final fun copy (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;IZ)Lapp/oreshkov/kotlinlibmcp/dto/PackageList;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/dto/PackageList;Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;IZILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/dto/PackageList;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getCoordinate ()Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;
 	public final fun getPackages ()Ljava/util/List;
+	public final fun getTotalCount ()I
+	public final fun getTruncated ()Z
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
 }
@@ -519,16 +528,20 @@ public final class app/oreshkov/kotlinlibmcp/dto/VersionDiff$Companion {
 
 public final class app/oreshkov/kotlinlibmcp/dto/VersionList {
 	public static final field Companion Lapp/oreshkov/kotlinlibmcp/dto/VersionList$Companion;
-	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)V
-	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;IZ)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;IZILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public final fun component1 ()Ljava/lang/String;
 	public final fun component2 ()Ljava/lang/String;
 	public final fun component3 ()Ljava/util/List;
-	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;)Lapp/oreshkov/kotlinlibmcp/dto/VersionList;
-	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/dto/VersionList;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;ILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/dto/VersionList;
+	public final fun component4 ()I
+	public final fun component5 ()Z
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;IZ)Lapp/oreshkov/kotlinlibmcp/dto/VersionList;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/dto/VersionList;Ljava/lang/String;Ljava/lang/String;Ljava/util/List;IZILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/dto/VersionList;
 	public fun equals (Ljava/lang/Object;)Z
 	public final fun getArtifact ()Ljava/lang/String;
 	public final fun getGroup ()Ljava/lang/String;
+	public final fun getTotalCount ()I
+	public final fun getTruncated ()Z
 	public final fun getVersions ()Ljava/util/List;
 	public fun hashCode ()I
 	public fun toString ()Ljava/lang/String;
