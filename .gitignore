@@ -22,6 +22,9 @@ docs/
 .claude/plans/
 CLAUDE.local.md
 
+# Eval run output — timestamped reports from real model calls; the suite ships, its results do not
+plugin/evals/results/
+
 # Logs & OS noise
 *.log
 .DS_Store

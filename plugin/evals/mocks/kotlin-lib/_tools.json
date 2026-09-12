@@ -1,0 +1,1289 @@
+{
+  "tools": [
+    {
+      "name": "fetch_library",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "coordinate": {
+            "type": "string",
+            "description": "Maven coordinate 'group:artifact:version', e.g. 'io.ktor:ktor-client-core:3.5.1'. The version may be omitted or 'latest' to resolve the latest stable release."
+          }
+        },
+        "required": [
+          "coordinate"
+        ],
+        "type": "object"
+      },
+      "description": "Download, extract and analyze the sources of a Maven-published Kotlin/Java library, warming the local cache. Idempotent — call this once per coordinate before using the other tools. The version may be omitted or set to 'latest' (e.g. 'io.ktor:ktor-client-core' or 'io.ktor:ktor-client-core:latest') to fetch the latest stable release — clients that support elicitation may ask the user to pick a version in that case. Returns a summary (resolved coordinate, KMP targets, file and package counts). Over stdio it also returns 'extractedDir', the local root of the extracted sources: if you have file tools of your own, reading or diffing files under it directly is much cheaper than paging them through get_source.",
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "coordinate": {
+            "$ref": "#/$defs/LibraryCoordinate"
+          },
+          "resolvedTargets": {
+            "type": "array",
+            "items": {
+              "type": "string",
+              "enum": [
+                "common",
+                "jvm",
+                "js",
+                "native",
+                "wasm",
+                "unknown"
+              ]
+            }
+          },
+          "sourceFileCount": {
+            "type": "integer"
+          },
+          "packageCount": {
+            "type": "integer"
+          },
+          "fromCache": {
+            "type": "boolean"
+          },
+          "extractedDir": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "coordinate"
+        ],
+        "$defs": {
+          "LibraryCoordinate": {
+            "type": "object",
+            "properties": {
+              "group": {
+                "type": "string"
+              },
+              "artifact": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "group",
+              "artifact",
+              "version"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "title": "Fetch library sources",
+      "annotations": {
+        "readOnlyHint": false,
+        "destructiveHint": false,
+        "idempotentHint": true,
+        "openWorldHint": true
+      },
+      "execution": {
+        "taskSupport": "optional"
+      }
+    },
+    {
+      "name": "list_packages",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "coordinate": {
+            "type": "string",
+            "description": "Maven coordinate 'group:artifact:version', e.g. 'io.ktor:ktor-client-core:3.5.1'"
+          },
+          "maxResults": {
+            "type": "integer",
+            "description": "Page size, 1-1000 (default 200)"
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Number of packages to skip for paging (default 0)"
+          }
+        },
+        "required": [
+          "coordinate"
+        ],
+        "type": "object"
+      },
+      "description": "List the packages discovered in a fetched library's sources, with declaration counts and the KMP targets each package appears in. Results are paged ('truncated: true' with a 'totalCount' when the library has more than the returned page; advance 'offset' to fetch the rest).",
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "coordinate": {
+            "$ref": "#/$defs/LibraryCoordinate"
+          },
+          "packages": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/PackageInfo"
+            }
+          },
+          "totalCount": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "coordinate"
+        ],
+        "$defs": {
+          "LibraryCoordinate": {
+            "type": "object",
+            "properties": {
+              "group": {
+                "type": "string"
+              },
+              "artifact": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "group",
+              "artifact",
+              "version"
+            ]
+          },
+          "PackageInfo": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "declarationCount": {
+                "type": "integer"
+              },
+              "targets": {
+                "type": "array",
+                "items": {
+                  "type": "string",
+                  "enum": [
+                    "common",
+                    "jvm",
+                    "js",
+                    "native",
+                    "wasm",
+                    "unknown"
+                  ]
+                }
+              }
+            },
+            "required": [
+              "name",
+              "declarationCount"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "title": "List packages",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "list_declarations",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "coordinate": {
+            "type": "string",
+            "description": "Maven coordinate 'group:artifact:version', e.g. 'io.ktor:ktor-client-core:3.5.1'"
+          },
+          "package": {
+            "type": "string",
+            "description": "Only declarations in this package, e.g. 'io.ktor.client'"
+          },
+          "visibility": {
+            "type": "string",
+            "description": "Visibility filter: 'public' (default), 'internal', or 'all'"
+          },
+          "maxResults": {
+            "type": "integer",
+            "description": "Page size, 1-500 (default 100)"
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Number of matching declarations to skip for paging (default 0)"
+          }
+        },
+        "required": [
+          "coordinate"
+        ],
+        "type": "object"
+      },
+      "description": "List classes/interfaces/objects/functions/properties of a fetched library with signatures and visibility. Optionally filter by package and visibility (public [default], internal, or all). Results are paged ('truncated: true' with a 'totalCount' when more matched than the returned page; advance 'offset' to fetch the rest).",
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "coordinate": {
+            "$ref": "#/$defs/LibraryCoordinate"
+          },
+          "packageName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "declarations": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/ApiSymbol"
+            }
+          },
+          "totalCount": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "coordinate"
+        ],
+        "$defs": {
+          "LibraryCoordinate": {
+            "type": "object",
+            "properties": {
+              "group": {
+                "type": "string"
+              },
+              "artifact": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "group",
+              "artifact",
+              "version"
+            ]
+          },
+          "KDocTag": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "value"
+            ]
+          },
+          "KDoc": {
+            "type": "object",
+            "properties": {
+              "summary": {
+                "type": "string"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/KDocTag"
+                }
+              }
+            },
+            "required": [
+              "summary"
+            ]
+          },
+          "SourceFileRef": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "packageName": {
+                "type": "string"
+              },
+              "target": {
+                "type": "string",
+                "enum": [
+                  "common",
+                  "jvm",
+                  "js",
+                  "native",
+                  "wasm",
+                  "unknown"
+                ]
+              }
+            },
+            "required": [
+              "path",
+              "packageName"
+            ]
+          },
+          "SourceLocation": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "$ref": "#/$defs/SourceFileRef"
+              },
+              "line": {
+                "type": "integer"
+              },
+              "offset": {
+                "type": "integer"
+              },
+              "endOffset": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "file",
+              "line",
+              "offset"
+            ]
+          },
+          "ApiSymbol": {
+            "type": "object",
+            "properties": {
+              "fqName": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "class",
+                  "interface",
+                  "object",
+                  "enum",
+                  "annotation",
+                  "function",
+                  "property",
+                  "constructor",
+                  "typealias"
+                ]
+              },
+              "visibility": {
+                "type": "string",
+                "enum": [
+                  "public",
+                  "internal",
+                  "protected",
+                  "private"
+                ]
+              },
+              "signature": {
+                "type": "string"
+              },
+              "typeParameters": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "supertypes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "modifiers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "kdoc": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/KDoc"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "sourceRef": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/SourceLocation"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "bestEffort": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "fqName",
+              "kind",
+              "visibility",
+              "signature"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "title": "List declarations",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "get_api_signature",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "coordinate": {
+            "type": "string",
+            "description": "Maven coordinate 'group:artifact:version', e.g. 'io.ktor:ktor-client-core:3.5.1'"
+          },
+          "fqName": {
+            "type": "string",
+            "description": "Fully-qualified declaration name, e.g. 'io.ktor.client.HttpClient'"
+          }
+        },
+        "required": [
+          "coordinate",
+          "fqName"
+        ],
+        "type": "object"
+      },
+      "description": "Full resolved signature of one declaration by fully-qualified name: type parameters, parameters, return type, supertypes, modifiers. 'bestEffort: true' marks signatures recovered from raw source when type resolution was incomplete.",
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "symbol": {
+            "$ref": "#/$defs/ApiSymbol"
+          }
+        },
+        "required": [
+          "symbol"
+        ],
+        "$defs": {
+          "KDocTag": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "value"
+            ]
+          },
+          "KDoc": {
+            "type": "object",
+            "properties": {
+              "summary": {
+                "type": "string"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/KDocTag"
+                }
+              }
+            },
+            "required": [
+              "summary"
+            ]
+          },
+          "SourceFileRef": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "packageName": {
+                "type": "string"
+              },
+              "target": {
+                "type": "string",
+                "enum": [
+                  "common",
+                  "jvm",
+                  "js",
+                  "native",
+                  "wasm",
+                  "unknown"
+                ]
+              }
+            },
+            "required": [
+              "path",
+              "packageName"
+            ]
+          },
+          "SourceLocation": {
+            "type": "object",
+            "properties": {
+              "file": {
+                "$ref": "#/$defs/SourceFileRef"
+              },
+              "line": {
+                "type": "integer"
+              },
+              "offset": {
+                "type": "integer"
+              },
+              "endOffset": {
+                "anyOf": [
+                  {
+                    "type": "integer"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              }
+            },
+            "required": [
+              "file",
+              "line",
+              "offset"
+            ]
+          },
+          "ApiSymbol": {
+            "type": "object",
+            "properties": {
+              "fqName": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "class",
+                  "interface",
+                  "object",
+                  "enum",
+                  "annotation",
+                  "function",
+                  "property",
+                  "constructor",
+                  "typealias"
+                ]
+              },
+              "visibility": {
+                "type": "string",
+                "enum": [
+                  "public",
+                  "internal",
+                  "protected",
+                  "private"
+                ]
+              },
+              "signature": {
+                "type": "string"
+              },
+              "typeParameters": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "supertypes": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "modifiers": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "kdoc": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/KDoc"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "sourceRef": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/SourceLocation"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "bestEffort": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "fqName",
+              "kind",
+              "visibility",
+              "signature"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "title": "Get API signature",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "get_kdoc",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "coordinate": {
+            "type": "string",
+            "description": "Maven coordinate 'group:artifact:version', e.g. 'io.ktor:ktor-client-core:3.5.1'"
+          },
+          "fqName": {
+            "type": "string",
+            "description": "Fully-qualified declaration name, e.g. 'io.ktor.client.HttpClient'"
+          }
+        },
+        "required": [
+          "coordinate",
+          "fqName"
+        ],
+        "type": "object"
+      },
+      "description": "KDoc of one declaration by fully-qualified name: summary, description, and structured tags (@param, @return, @throws, @sample, …). 'kdoc: null' means the declaration is undocumented.",
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "fqName": {
+            "type": "string"
+          },
+          "kdoc": {
+            "anyOf": [
+              {
+                "$ref": "#/$defs/KDoc"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          }
+        },
+        "required": [
+          "fqName"
+        ],
+        "$defs": {
+          "KDocTag": {
+            "type": "object",
+            "properties": {
+              "name": {
+                "type": "string"
+              },
+              "value": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "name",
+              "value"
+            ]
+          },
+          "KDoc": {
+            "type": "object",
+            "properties": {
+              "summary": {
+                "type": "string"
+              },
+              "description": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "tags": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/KDocTag"
+                }
+              }
+            },
+            "required": [
+              "summary"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "title": "Get KDoc",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "get_source",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "coordinate": {
+            "type": "string",
+            "description": "Maven coordinate 'group:artifact:version', e.g. 'io.ktor:ktor-client-core:3.5.1'"
+          },
+          "path": {
+            "type": "string",
+            "description": "Source file path relative to the extracted sources root"
+          },
+          "fqName": {
+            "type": "string",
+            "description": "Fully-qualified declaration name to slice out of its file"
+          },
+          "maxLines": {
+            "type": "integer",
+            "description": "Page size in lines, 1-5000 (default 500)"
+          },
+          "startLine": {
+            "type": "integer",
+            "description": "1-based line to start at, absolute in the file (default: line 1, or the declaration's first line when using 'fqName')"
+          }
+        },
+        "required": [
+          "coordinate"
+        ],
+        "type": "object"
+      },
+      "description": "Raw source of a whole file (by 'path', as returned by other tools, e.g. 'jvm/io/ktor/client/HttpClient.kt') or of a single declaration (by 'fqName'). Provide exactly one of the two. Results are paged ('truncated: true' with a 'totalLines' when the file or declaration is longer than the returned page; advance 'startLine' to read on).",
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "path": {
+            "type": "string"
+          },
+          "content": {
+            "type": "string"
+          },
+          "startLine": {
+            "type": "integer"
+          },
+          "totalLines": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "path",
+          "content"
+        ],
+        "type": "object"
+      },
+      "title": "Get source",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "search_source",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "coordinate": {
+            "type": "string",
+            "description": "Maven coordinate 'group:artifact:version', e.g. 'io.ktor:ktor-client-core:3.5.1'"
+          },
+          "query": {
+            "type": "string",
+            "description": "Substring (default) or regex to search for"
+          },
+          "regex": {
+            "type": "boolean",
+            "description": "Treat 'query' as a regular expression (default false)"
+          },
+          "maxResults": {
+            "type": "integer",
+            "description": "Result cap, 1-200 (default 50)"
+          }
+        },
+        "required": [
+          "coordinate",
+          "query"
+        ],
+        "type": "object"
+      },
+      "description": "Search a fetched library's sources line by line and return file:line hits with a snippet. Substring match by default; set 'regex' for Kotlin regex syntax. Results are capped ('truncated: true' when more existed).",
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "query": {
+            "type": "string"
+          },
+          "hits": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/SearchHit"
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "query"
+        ],
+        "$defs": {
+          "SearchHit": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "line": {
+                "type": "integer"
+              },
+              "snippet": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "path",
+              "line",
+              "snippet"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "title": "Search sources",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "diff_versions",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "group": {
+            "type": "string",
+            "description": "Maven group id, e.g. 'io.ktor'"
+          },
+          "artifact": {
+            "type": "string",
+            "description": "Maven artifact id, e.g. 'ktor-client-core'"
+          },
+          "fromVersion": {
+            "type": "string",
+            "description": "Baseline version, e.g. '3.4.0'"
+          },
+          "toVersion": {
+            "type": "string",
+            "description": "Version to compare against the baseline, e.g. '3.5.1'"
+          },
+          "path": {
+            "type": "string",
+            "description": "Only files whose path contains this, e.g. 'io/ktor/client/engine'. Paths have their KMP target directory stripped, so they read like 'commonMain/io/ktor/client/HttpClient.kt'."
+          },
+          "maxResults": {
+            "type": "integer",
+            "description": "Files per page, 1-50 (default 20)"
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Number of changed files to skip for paging (default 0)"
+          },
+          "contextLines": {
+            "type": "integer",
+            "description": "Unchanged lines of context around each hunk, 0-10 (default 3)"
+          }
+        },
+        "required": [
+          "group",
+          "artifact",
+          "fromVersion",
+          "toVersion"
+        ],
+        "type": "object"
+      },
+      "description": "Compare the sources of two already-fetched versions of one artifact and report what changed, as unified diff hunks. Call fetch_library for BOTH versions first. Summary counts (filesAdded/filesRemoved/filesModified) describe the whole comparison; 'files' is a bounded page of it ('truncated: true' when more matched — advance 'offset'). Added and removed files report line counts but no hunks; read them with get_source. Narrow a large library with 'path' before paging through it.",
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "group": {
+            "type": "string"
+          },
+          "artifact": {
+            "type": "string"
+          },
+          "fromVersion": {
+            "type": "string"
+          },
+          "toVersion": {
+            "type": "string"
+          },
+          "filesAdded": {
+            "type": "integer"
+          },
+          "filesRemoved": {
+            "type": "integer"
+          },
+          "filesModified": {
+            "type": "integer"
+          },
+          "files": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/FileDiff"
+            }
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "group",
+          "artifact",
+          "fromVersion",
+          "toVersion"
+        ],
+        "$defs": {
+          "FileDiff": {
+            "type": "object",
+            "properties": {
+              "path": {
+                "type": "string"
+              },
+              "change": {
+                "type": "string",
+                "enum": [
+                  "added",
+                  "removed",
+                  "modified"
+                ]
+              },
+              "addedLines": {
+                "type": "integer"
+              },
+              "removedLines": {
+                "type": "integer"
+              },
+              "hunks": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              },
+              "diffOmitted": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "path",
+              "change"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "title": "Diff versions",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "get_dependencies",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "coordinate": {
+            "type": "string",
+            "description": "Maven coordinate 'group:artifact:version', e.g. 'io.ktor:ktor-client-core:3.5.1'"
+          },
+          "depth": {
+            "type": "integer",
+            "description": "Transitive resolution depth, 1-5 (default 1 = direct only)"
+          },
+          "maxNodes": {
+            "type": "integer",
+            "description": "Nodes to return, 1-1000 (default 200)"
+          }
+        },
+        "required": [
+          "coordinate"
+        ],
+        "type": "object"
+      },
+      "description": "Dependency tree of a library parsed from its .pom/.module metadata: direct dependencies with scopes, optionally transitive to a bounded depth. Works without fetch_library (reads repository metadata, not sources). The returned tree is bounded by 'maxNodes' as well as by 'depth': when 'truncated' is true the tree was pruned breadth-first (direct dependencies kept, deepest transitives dropped) and 'totalNodes' says how large it really is.",
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "root": {
+            "$ref": "#/$defs/DependencyNode"
+          },
+          "totalNodes": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "root"
+        ],
+        "$defs": {
+          "LibraryCoordinate": {
+            "type": "object",
+            "properties": {
+              "group": {
+                "type": "string"
+              },
+              "artifact": {
+                "type": "string"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "group",
+              "artifact",
+              "version"
+            ]
+          },
+          "DependencyNode": {
+            "type": "object",
+            "properties": {
+              "coordinate": {
+                "$ref": "#/$defs/LibraryCoordinate"
+              },
+              "scope": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "target": {
+                "type": "string",
+                "enum": [
+                  "common",
+                  "jvm",
+                  "js",
+                  "native",
+                  "wasm",
+                  "unknown"
+                ]
+              },
+              "children": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/$defs/DependencyNode"
+                }
+              }
+            },
+            "required": [
+              "coordinate"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "title": "Get dependency tree",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "list_versions",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "coordinate": {
+            "type": "string",
+            "description": "Maven coordinate 'group:artifact' or 'group:artifact:version'"
+          },
+          "maxResults": {
+            "type": "integer",
+            "description": "Page size, 1-500 (default 100)"
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Number of versions to skip for paging (default 0)"
+          }
+        },
+        "required": [
+          "coordinate"
+        ],
+        "type": "object"
+      },
+      "description": "List the published versions of an artifact from the repository's maven-metadata.xml. Accepts 'group:artifact' or a full 'group:artifact:version' coordinate (the version part is ignored). Works without fetch_library. Newest first and paged ('truncated: true' with a 'totalCount' when the artifact has more than the returned page; advance 'offset' for older versions).",
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "group": {
+            "type": "string"
+          },
+          "artifact": {
+            "type": "string"
+          },
+          "versions": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "totalCount": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "group",
+          "artifact"
+        ],
+        "type": "object"
+      },
+      "title": "List versions",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    },
+    {
+      "name": "get_latest_version",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "coordinate": {
+            "type": "string",
+            "description": "Maven coordinate 'group:artifact' or 'group:artifact:version'"
+          },
+          "includePreReleases": {
+            "type": "boolean",
+            "description": "Treat the newest pre-release as 'the latest' (default false)"
+          }
+        },
+        "required": [
+          "coordinate"
+        ],
+        "type": "object"
+      },
+      "description": "Resolve the latest version of an artifact from the repository's maven-metadata.xml. Accepts 'group:artifact' or a full 'group:artifact:version' coordinate (the version part is ignored). Returns the latest stable release plus the newest version overall (including pre-releases) and the total version count. Works without fetch_library.",
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "group": {
+            "type": "string"
+          },
+          "artifact": {
+            "type": "string"
+          },
+          "latestStable": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "latest": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "includedPreReleases": {
+            "type": "boolean"
+          },
+          "totalVersions": {
+            "type": "integer"
+          }
+        },
+        "required": [
+          "group",
+          "artifact"
+        ],
+        "type": "object"
+      },
+      "title": "Get latest version",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": true
+      }
+    }
+  ]
+}
