@@ -194,14 +194,35 @@ class LibraryService(
     suspend fun getKDoc(coordinate: LibraryCoordinate, fqName: String): KDocResult =
         KDocResult(fqName, symbol(coordinate, fqName).kdoc)
 
-    /** Raw source of a whole file (by index-relative [path]) or a single declaration (by [fqName]). */
-    suspend fun getSource(coordinate: LibraryCoordinate, path: String?, fqName: String?): SourceResult {
+    /**
+     * Raw source of a whole file (by index-relative [path]) or a single declaration (by [fqName]),
+     * as a bounded page of at most [maxLines] lines beginning at [startLine].
+     *
+     * **Why this is paged at all.** A result whose size is a function of the *library* rather than
+     * the *arguments* will eventually be handed a library that blows the caller's context: the
+     * whole-file branch used to return the file entire, and the sources this server fetches include
+     * single generated files of 1.7 MB (`JsAstProtoBuf.java` in `kotlin-compiler-embeddable`) —
+     * roughly six times the 272 KB overflow that the unpaged `list_declarations` produced before
+     * paging was added to it. Every tool result is also emitted twice, as text *and* as
+     * `structuredContent`, so the wire cost is double what the page itself measures.
+     *
+     * [startLine] is 1-based and absolute within the file, so it matches the `startLine` in the
+     * result and the line numbers `search_source` reports. For a declaration it defaults to the
+     * declaration's own first line rather than the file's.
+     */
+    suspend fun getSource(
+        coordinate: LibraryCoordinate,
+        path: String?,
+        fqName: String?,
+        maxLines: Int = DEFAULT_SOURCE_LINES,
+        startLine: Int? = null,
+    ): SourceResult {
         val index = index(coordinate)
         return when {
             path != null -> {
                 val file = index.files.find { it.path == path }
                     ?: throw IllegalArgumentException("No source file '$path' in $coordinate (see fetch_library/list_packages)")
-                SourceResult(path = file.path, content = readSource(coordinate, file.path))
+                page(file.path, readSource(coordinate, file.path), firstLine = 1, startLine, maxLines)
             }
             fqName != null -> {
                 val symbol = symbol(coordinate, fqName)
@@ -209,14 +230,47 @@ class LibraryService(
                     ?: throw IllegalArgumentException("Declaration '$fqName' has no recorded source location")
                 val text = readSource(coordinate, ref.file.path)
                 val end = ref.endOffset?.coerceAtMost(text.length) ?: text.length
-                SourceResult(
+                // The slice starts at the declaration, so its first line *is* `ref.line`.
+                page(
                     path = ref.file.path,
-                    content = text.substring(ref.offset.coerceIn(0, end), end),
-                    startLine = ref.line,
+                    text = text.substring(ref.offset.coerceIn(0, end), end),
+                    firstLine = ref.line,
+                    startLine = startLine,
+                    maxLines = maxLines,
                 )
             }
             else -> throw IllegalArgumentException("Provide either 'path' or 'fqName'")
         }
+    }
+
+    /**
+     * Cuts [text] — whose first line is numbered [firstLine] — down to at most [maxLines] lines
+     * from [startLine].
+     *
+     * [MAX_SOURCE_CHARS] is a second, independent bound. Lines are the right unit for source, but
+     * a line cap alone is not a size cap: generated and minified sources reach thousands of
+     * characters per line, so a page within the line budget can still be enormous. Hitting either
+     * bound sets `truncated`.
+     */
+    private fun page(
+        path: String,
+        text: String,
+        firstLine: Int,
+        startLine: Int?,
+        maxLines: Int,
+    ): SourceResult {
+        val lines = text.lines()
+        val skip = ((startLine ?: firstLine) - firstLine).coerceIn(0, maxOf(lines.size - 1, 0))
+        val taken = lines.drop(skip).take(maxLines.coerceIn(1, MAX_SOURCE_LINES))
+        val content = taken.joinToString("\n")
+        val clipped = content.take(MAX_SOURCE_CHARS)
+        return SourceResult(
+            path = path,
+            content = clipped,
+            startLine = firstLine + skip,
+            totalLines = lines.size,
+            truncated = skip + taken.size < lines.size || clipped.length < content.length,
+        )
     }
 
     suspend fun searchSource(
@@ -450,6 +504,16 @@ class LibraryService(
          * in microseconds. See [BoundedCharSequence].
          */
         const val MATCH_BUDGET_PER_LINE = 1_000_000
+        /**
+         * A default page of source: comfortably more than a typical declaration, and roughly
+         * 20 KB of ordinary Kotlin — small enough that an unprefixed `get_source` is never the
+         * call that blows a context window.
+         */
+        const val DEFAULT_SOURCE_LINES = 500
+        const val MAX_SOURCE_LINES = 5_000
+
+        /** Hard ceiling on a page regardless of its line count; see `page`. */
+        const val MAX_SOURCE_CHARS = 100_000
         const val MAX_DECLARATION_RESULTS = 500
         const val DEFAULT_DECLARATION_RESULTS = 100
         const val MAX_DEPENDENCY_DEPTH = 5

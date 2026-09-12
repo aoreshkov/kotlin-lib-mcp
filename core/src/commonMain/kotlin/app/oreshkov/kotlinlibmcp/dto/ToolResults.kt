@@ -64,13 +64,20 @@ public data class KDocResult(
     val kdoc: KDoc? = null,
 )
 
-/** `get_source` — raw source of a file or a single declaration. */
+/**
+ * `get_source` — a bounded page of the raw source of a file or a single declaration. [content]
+ * begins at [startLine] (1-based, absolute in the file); [totalLines] is the length of the whole
+ * file or declaration, and [truncated] is `true` when it did not all fit (advance `startLine` to
+ * read on).
+ */
 @Serializable
 @SerialName("SourceResult")
 public data class SourceResult(
     val path: String,
     val content: String,
     val startLine: Int = 1,
+    val totalLines: Int = 0,
+    val truncated: Boolean = false,
 )
 
 /** One hit from `search_source`. */
