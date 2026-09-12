@@ -16,9 +16,9 @@ dependencies/metadata, raw source + search — to MCP clients: Claude Code, Clau
 IntelliJ IDEA (AI Assistant / Junie), VS Code and GitHub Copilot. An optional Compose Desktop
 dashboard runs the same server in-process.
 
-**[Ten tools](#tools)** — `fetch_library` · `list_packages` · `list_declarations` ·
-`get_api_signature` · `get_kdoc` · `get_source` · `search_source` · `get_dependencies` ·
-`list_versions` · `get_latest_version` — plus MCP resources and a prompt.
+**[Eleven tools](#tools)** — `fetch_library` · `list_packages` · `list_declarations` ·
+`get_api_signature` · `get_kdoc` · `get_source` · `search_source` · `diff_versions` ·
+`get_dependencies` · `list_versions` · `get_latest_version` — plus MCP resources and a prompt.
 
 [<img src="https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square" alt="Install in VS Code">](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522kotlin-lib%2522%252C%2522command%2522%253A%2522docker%2522%252C%2522args%2522%253A%255B%2522run%2522%252C%2522-i%2522%252C%2522--rm%2522%252C%2522-v%2522%252C%2522kotlin-lib-mcp-cache%253A%252Fhome%252Fmcp%252F.cache%2522%252C%2522ghcr.io%252Faoreshkov%252Fkotlin-lib-mcp%2522%255D%257D)
 [<img src="https://img.shields.io/badge/VS_Code_Insiders-Install_Server-24bfa5?style=flat-square" alt="Install in VS Code Insiders">](https://insiders.vscode.dev/redirect?url=vscode-insiders%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522kotlin-lib%2522%252C%2522command%2522%253A%2522docker%2522%252C%2522args%2522%253A%255B%2522run%2522%252C%2522-i%2522%252C%2522--rm%2522%252C%2522-v%2522%252C%2522kotlin-lib-mcp-cache%253A%252Fhome%252Fmcp%252F.cache%2522%252C%2522ghcr.io%252Faoreshkov%252Fkotlin-lib-mcp%2522%255D%257D)
@@ -144,6 +144,7 @@ index. `fetch_library`, `list_versions` and `get_latest_version` also accept `gr
 | `get_kdoc` | KDoc (summary, description, tags) of one declaration |
 | `get_source` | Raw source of a file (`path`) or one declaration (`fqName`) |
 | `search_source` | Substring/regex search; bounded, returns `file:line` snippets |
+| `diff_versions` | Unified diff between two fetched versions; summary-first, paged, `path`-filtered |
 | `get_dependencies` | Dependency tree from `.pom`/`.module`; bounded `depth` |
 | `list_versions` | Published versions from `maven-metadata.xml`, newest-first |
 | `get_latest_version` | Latest stable release (and newest overall) from `maven-metadata.xml` |

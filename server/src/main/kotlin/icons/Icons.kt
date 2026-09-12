@@ -40,6 +40,7 @@ internal enum class Glyph(private val sizes: List<Int> = listOf(48)) {
     Source,
     Search,
     Dependencies,
+    Diff,
     Versions,
     Latest,
     Prompt,

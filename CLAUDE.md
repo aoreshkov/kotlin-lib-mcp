@@ -74,7 +74,8 @@ compile automatically when Kotlin sources changed (`.claude/hooks/stop-verify.sh
 ## MCP tools
 
 `fetch_library` · `list_packages` · `list_declarations` · `get_api_signature` · `get_kdoc` ·
-`get_source` · `search_source` · `get_dependencies` · `list_versions` · `get_latest_version`
+`get_source` · `search_source` · `diff_versions` · `get_dependencies` · `list_versions` ·
+`get_latest_version`
 
 `fetch_library` also accepts a version-less `group:artifact` or `group:artifact:latest` and
 resolves the latest stable release (canonical `<release>`/`<latest>` from `maven-metadata.xml`,

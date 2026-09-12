@@ -106,6 +106,14 @@ internal val GLYPHS: List<Glyph> = listOf(
         fill(circle(36, 96, 11))
         fill(circle(92, 96, 11))
     },
+    // diff_versions: a removed line above an added one — the one diff mark that survives 48px.
+    // Both bars are 64 wide and the plus is centred under the minus, so the pair reads as a unit;
+    // the composition spans y 27..101, centred on the grid like every other glyph here.
+    Glyph("diff") {
+        stroke(10, line(32, 32, 96, 32))
+        stroke(10, line(32, 76, 96, 76))
+        stroke(10, line(64, 56, 64, 96))
+    },
     // list_versions: a stack of releases.
     Glyph("versions") {
         fill(rrect(28, 32, 72, 18, 8))

@@ -7,6 +7,8 @@ import app.oreshkov.kotlinlibmcp.core.VersionCatalog
 import app.oreshkov.kotlinlibmcp.dto.DeclarationList
 import app.oreshkov.kotlinlibmcp.dto.DependencyResult
 import app.oreshkov.kotlinlibmcp.dto.FetchSummary
+import app.oreshkov.kotlinlibmcp.dto.FileChange
+import app.oreshkov.kotlinlibmcp.dto.FileDiff
 import app.oreshkov.kotlinlibmcp.dto.KDocResult
 import app.oreshkov.kotlinlibmcp.dto.LatestVersion
 import app.oreshkov.kotlinlibmcp.dto.PackageList
@@ -14,11 +16,13 @@ import app.oreshkov.kotlinlibmcp.dto.SearchHit
 import app.oreshkov.kotlinlibmcp.dto.SearchResults
 import app.oreshkov.kotlinlibmcp.dto.SignatureResult
 import app.oreshkov.kotlinlibmcp.dto.SourceResult
+import app.oreshkov.kotlinlibmcp.dto.VersionDiff
 import app.oreshkov.kotlinlibmcp.dto.VersionList
 import app.oreshkov.kotlinlibmcp.model.ApiSymbol
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.model.LibraryIndex
 import app.oreshkov.kotlinlibmcp.model.Visibility
+import app.oreshkov.kotlinlibmcp.server.diff.LineDiff
 import app.oreshkov.kotlinlibmcp.util.MavenVersions
 import co.touchlab.kermit.Logger
 import java.nio.file.Path
@@ -316,6 +320,158 @@ class LibraryService(
         return SearchResults(query = query, hits = hits, truncated = truncated)
     }
 
+    /**
+     * What changed in the sources between two versions of one artifact. Both must already be
+     * fetched; neither is downloaded here.
+     *
+     * **Target duplication is collapsed first, and that is not cosmetic.** A KMP library's index
+     * lists the same source once per target tree — `common/commonMain/X.kt` and
+     * `jvm/commonMain/X.kt` are the same file — so `ktor-client-core` records 1214 `common/` paths
+     * beside 1233 `jvm/` ones. Diffing those verbatim reports every change twice. Files are keyed
+     * on the path with its target segment removed, which leaves genuinely per-target sources
+     * (`jvmMain/…` against `commonMain/…`) distinct while folding the copies together.
+     *
+     * **Cost.** Deciding which shared files changed means reading both copies of each: the index
+     * records no hash or size to shortcut it. That is bounded by [MAX_DIFF_SCAN_FILES] — past it
+     * the caller is asked to narrow with [pathFilter] rather than being served a slow answer — and
+     * hunks are then computed only for the page actually returned.
+     *
+     * Added and removed files carry their line counts but no hunks: emitting a whole new file is
+     * the unbounded thing this tool exists to avoid, and `get_source` already serves it.
+     */
+    suspend fun diffVersions(
+        group: String,
+        artifact: String,
+        fromVersion: String,
+        toVersion: String,
+        pathFilter: String? = null,
+        maxResults: Int = DEFAULT_DIFF_FILES,
+        offset: Int = 0,
+        contextLines: Int = DEFAULT_DIFF_CONTEXT,
+    ): VersionDiff {
+        val from = LibraryCoordinate(group, artifact, fromVersion)
+        val to = LibraryCoordinate(group, artifact, toVersion)
+        val fromFiles = comparableFiles(index(from), pathFilter)
+        val toFiles = comparableFiles(index(to), pathFilter)
+
+        val added = toFiles.keys - fromFiles.keys
+        val removed = fromFiles.keys - toFiles.keys
+        val shared = fromFiles.keys intersect toFiles.keys
+        require(shared.size <= MAX_DIFF_SCAN_FILES) {
+            "Comparing $group:$artifact $fromVersion..$toVersion would scan ${shared.size} files " +
+                "(limit $MAX_DIFF_SCAN_FILES). Narrow it with 'path', e.g. a package directory."
+        }
+
+        val fromRoot = sourceRoot(from)
+        val toRoot = sourceRoot(to)
+        // One hop to the IO dispatcher for the whole scan, not one per file.
+        val modified = withContext(Dispatchers.IO) {
+            shared.filter { path ->
+                readSourceUnder(fromRoot, fromFiles.getValue(path)) !=
+                    readSourceUnder(toRoot, toFiles.getValue(path))
+            }
+        }
+
+        val changes = buildList {
+            added.forEach { add(it to FileChange.ADDED) }
+            removed.forEach { add(it to FileChange.REMOVED) }
+            modified.forEach { add(it to FileChange.MODIFIED) }
+        }.sortedBy { it.first }
+
+        val start = offset.coerceAtLeast(0)
+        val page = changes.drop(start).take(maxResults.coerceIn(1, MAX_DIFF_FILES))
+        val context = contextLines.coerceIn(0, MAX_DIFF_CONTEXT)
+        return VersionDiff(
+            group = group,
+            artifact = artifact,
+            fromVersion = fromVersion,
+            toVersion = toVersion,
+            filesAdded = added.size,
+            filesRemoved = removed.size,
+            filesModified = modified.size,
+            files = page.map { (path, change) ->
+                fileDiff(path, change, fromRoot, toRoot, fromFiles[path], toFiles[path], context)
+            },
+            truncated = start + page.size < changes.size,
+        )
+    }
+
+    /**
+     * Source files of [index] keyed by target-independent path, each mapped to one real path to
+     * read. Sorting picks `common/…` over `jvm/…` deterministically, so a re-run compares the same
+     * copies.
+     */
+    private fun comparableFiles(index: LibraryIndex, pathFilter: String?): Map<String, String> =
+        index.files.asSequence()
+            .map { it.path }
+            .distinct()
+            .groupBy { it.withoutTargetSegment() }
+            .let { grouped ->
+                when (pathFilter) {
+                    null -> grouped
+                    else -> grouped.filterKeys { it.contains(pathFilter, ignoreCase = true) }
+                }
+            }
+            .mapValues { (_, paths) -> paths.min() }
+
+    /** Drops the leading target directory (`common/`, `jvm/`, …); paths without one are unchanged. */
+    private fun String.withoutTargetSegment(): String =
+        if ('/' in this) substringAfter('/') else this
+
+    private suspend fun fileDiff(
+        path: String,
+        change: FileChange,
+        fromRoot: Path,
+        toRoot: Path,
+        fromPath: String?,
+        toPath: String?,
+        contextLines: Int,
+    ): FileDiff = when (change) {
+        FileChange.ADDED -> FileDiff(
+            path = path,
+            change = change,
+            addedLines = readSourceUnder(toRoot, toPath!!).lines().size,
+        )
+        FileChange.REMOVED -> FileDiff(
+            path = path,
+            change = change,
+            removedLines = readSourceUnder(fromRoot, fromPath!!).lines().size,
+        )
+        FileChange.MODIFIED -> {
+            val before = readSourceUnder(fromRoot, fromPath!!).lines()
+            val after = readSourceUnder(toRoot, toPath!!).lines()
+            when (val diff = LineDiff.diff(before, after, contextLines)) {
+                // Too large, or rewritten past the point a diff would help. The counts below are
+                // still honest, and get_source serves the file itself.
+                null -> FileDiff(
+                    path = path,
+                    change = change,
+                    addedLines = maxOf(0, after.size - before.size),
+                    removedLines = maxOf(0, before.size - after.size),
+                    diffOmitted = true,
+                )
+                else -> {
+                    // Per-file budget: one pathological file must not consume the whole page.
+                    val kept = mutableListOf<String>()
+                    var lines = 0
+                    for (hunk in diff.hunks) {
+                        if (lines + hunk.lines.size > MAX_DIFF_LINES_PER_FILE) break
+                        kept += (listOf(hunk.header) + hunk.lines).joinToString("\n")
+                        lines += hunk.lines.size
+                    }
+                    FileDiff(
+                        path = path,
+                        change = change,
+                        addedLines = diff.added,
+                        removedLines = diff.removed,
+                        hunks = kept,
+                        diffOmitted = kept.size < diff.hunks.size,
+                    )
+                }
+            }
+        }
+    }
+
     suspend fun getDependencies(coordinate: LibraryCoordinate, depth: Int): DependencyResult =
         DependencyResult(fetcher.resolveDependencies(coordinate, repos, depth.coerceIn(1, MAX_DEPENDENCY_DEPTH)))
 
@@ -529,6 +685,22 @@ class LibraryService(
          * 20 KB of ordinary Kotlin — small enough that an unprefixed `get_source` is never the
          * call that blows a context window.
          */
+        /** Files compared per `diff_versions` page, and the ceiling a caller may raise it to. */
+        const val DEFAULT_DIFF_FILES = 20
+        const val MAX_DIFF_FILES = 50
+
+        /**
+         * How many shared files `diff_versions` will read to decide what changed. The index
+         * records no hash or size, so this is real IO: two reads per file. Past this the caller
+         * is asked to narrow with `path` rather than served a slow answer.
+         */
+        const val MAX_DIFF_SCAN_FILES = 5_000
+        const val DEFAULT_DIFF_CONTEXT = 3
+        const val MAX_DIFF_CONTEXT = 10
+
+        /** Per-file hunk budget, so one heavily-rewritten file cannot consume the whole page. */
+        const val MAX_DIFF_LINES_PER_FILE = 400
+
         const val DEFAULT_SOURCE_LINES = 500
         const val MAX_SOURCE_LINES = 5_000
 

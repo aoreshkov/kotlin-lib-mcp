@@ -197,6 +197,58 @@ public final class app/oreshkov/kotlinlibmcp/dto/FetchSummary$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
+public final class app/oreshkov/kotlinlibmcp/dto/FileChange : java/lang/Enum {
+	public static final field ADDED Lapp/oreshkov/kotlinlibmcp/dto/FileChange;
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/dto/FileChange$Companion;
+	public static final field MODIFIED Lapp/oreshkov/kotlinlibmcp/dto/FileChange;
+	public static final field REMOVED Lapp/oreshkov/kotlinlibmcp/dto/FileChange;
+	public static fun getEntries ()Lkotlin/enums/EnumEntries;
+	public static fun valueOf (Ljava/lang/String;)Lapp/oreshkov/kotlinlibmcp/dto/FileChange;
+	public static fun values ()[Lapp/oreshkov/kotlinlibmcp/dto/FileChange;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/FileChange$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/FileDiff {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/dto/FileDiff$Companion;
+	public fun <init> (Ljava/lang/String;Lapp/oreshkov/kotlinlibmcp/dto/FileChange;IILjava/util/List;Z)V
+	public synthetic fun <init> (Ljava/lang/String;Lapp/oreshkov/kotlinlibmcp/dto/FileChange;IILjava/util/List;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Lapp/oreshkov/kotlinlibmcp/dto/FileChange;
+	public final fun component3 ()I
+	public final fun component4 ()I
+	public final fun component5 ()Ljava/util/List;
+	public final fun component6 ()Z
+	public final fun copy (Ljava/lang/String;Lapp/oreshkov/kotlinlibmcp/dto/FileChange;IILjava/util/List;Z)Lapp/oreshkov/kotlinlibmcp/dto/FileDiff;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/dto/FileDiff;Ljava/lang/String;Lapp/oreshkov/kotlinlibmcp/dto/FileChange;IILjava/util/List;ZILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/dto/FileDiff;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getAddedLines ()I
+	public final fun getChange ()Lapp/oreshkov/kotlinlibmcp/dto/FileChange;
+	public final fun getDiffOmitted ()Z
+	public final fun getHunks ()Ljava/util/List;
+	public final fun getPath ()Ljava/lang/String;
+	public final fun getRemovedLines ()I
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class app/oreshkov/kotlinlibmcp/dto/FileDiff$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/dto/FileDiff$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lapp/oreshkov/kotlinlibmcp/dto/FileDiff;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lapp/oreshkov/kotlinlibmcp/dto/FileDiff;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/FileDiff$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
 public final class app/oreshkov/kotlinlibmcp/dto/KDocResult {
 	public static final field Companion Lapp/oreshkov/kotlinlibmcp/dto/KDocResult$Companion;
 	public fun <init> (Ljava/lang/String;Lapp/oreshkov/kotlinlibmcp/model/KDoc;)V
@@ -418,6 +470,50 @@ public final synthetic class app/oreshkov/kotlinlibmcp/dto/SourceResult$$seriali
 }
 
 public final class app/oreshkov/kotlinlibmcp/dto/SourceResult$Companion {
+	public final fun serializer ()Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/VersionDiff {
+	public static final field Companion Lapp/oreshkov/kotlinlibmcp/dto/VersionDiff$Companion;
+	public fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IIILjava/util/List;Z)V
+	public synthetic fun <init> (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IIILjava/util/List;ZILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public final fun component1 ()Ljava/lang/String;
+	public final fun component2 ()Ljava/lang/String;
+	public final fun component3 ()Ljava/lang/String;
+	public final fun component4 ()Ljava/lang/String;
+	public final fun component5 ()I
+	public final fun component6 ()I
+	public final fun component7 ()I
+	public final fun component8 ()Ljava/util/List;
+	public final fun component9 ()Z
+	public final fun copy (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IIILjava/util/List;Z)Lapp/oreshkov/kotlinlibmcp/dto/VersionDiff;
+	public static synthetic fun copy$default (Lapp/oreshkov/kotlinlibmcp/dto/VersionDiff;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;IIILjava/util/List;ZILjava/lang/Object;)Lapp/oreshkov/kotlinlibmcp/dto/VersionDiff;
+	public fun equals (Ljava/lang/Object;)Z
+	public final fun getArtifact ()Ljava/lang/String;
+	public final fun getFiles ()Ljava/util/List;
+	public final fun getFilesAdded ()I
+	public final fun getFilesModified ()I
+	public final fun getFilesRemoved ()I
+	public final fun getFromVersion ()Ljava/lang/String;
+	public final fun getGroup ()Ljava/lang/String;
+	public final fun getToVersion ()Ljava/lang/String;
+	public final fun getTruncated ()Z
+	public fun hashCode ()I
+	public fun toString ()Ljava/lang/String;
+}
+
+public final synthetic class app/oreshkov/kotlinlibmcp/dto/VersionDiff$$serializer : kotlinx/serialization/internal/GeneratedSerializer {
+	public static final field INSTANCE Lapp/oreshkov/kotlinlibmcp/dto/VersionDiff$$serializer;
+	public final fun childSerializers ()[Lkotlinx/serialization/KSerializer;
+	public final fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Lapp/oreshkov/kotlinlibmcp/dto/VersionDiff;
+	public synthetic fun deserialize (Lkotlinx/serialization/encoding/Decoder;)Ljava/lang/Object;
+	public final fun getDescriptor ()Lkotlinx/serialization/descriptors/SerialDescriptor;
+	public final fun serialize (Lkotlinx/serialization/encoding/Encoder;Lapp/oreshkov/kotlinlibmcp/dto/VersionDiff;)V
+	public synthetic fun serialize (Lkotlinx/serialization/encoding/Encoder;Ljava/lang/Object;)V
+	public fun typeParametersSerializers ()[Lkotlinx/serialization/KSerializer;
+}
+
+public final class app/oreshkov/kotlinlibmcp/dto/VersionDiff$Companion {
 	public final fun serializer ()Lkotlinx/serialization/KSerializer;
 }
 
