@@ -7,7 +7,7 @@ import app.oreshkov.kotlinlibmcp.fetch.MavenSourceFetcherImpl
 import app.oreshkov.kotlinlibmcp.server.completions.registerLibraryCompletions
 import app.oreshkov.kotlinlibmcp.server.icons.Glyph
 import app.oreshkov.kotlinlibmcp.server.prompts.registerExplainPublicApiPrompt
-import app.oreshkov.kotlinlibmcp.server.resources.addLibraryIndexResource
+import app.oreshkov.kotlinlibmcp.server.resources.LibraryIndexResources
 import app.oreshkov.kotlinlibmcp.server.resources.registerLibraryIndexTemplate
 import app.oreshkov.kotlinlibmcp.server.resources.segmentTemplateMatcherFactory
 import app.oreshkov.kotlinlibmcp.server.tasks.TaskRecordStore
@@ -189,10 +189,15 @@ object McpServerFactory {
                 "then read the cached index (packages, declarations, signatures, KDoc, raw source, " +
                 "search, dependencies, versions). Use get_latest_version to look up the newest " +
                 "version of an artifact without fetching it.",
-        ) {
+        )
+        // Built after the Server so the registrar can hold it, and applied in the same order the
+        // builder block used: `fetch_library` still leads, which ToolRegistrationTest pins as the
+        // wire order of tools/list.
+        val indexResources = LibraryIndexResources(server, service)
+        with(server) {
             registerFetchLibraryTool(service) { coordinate ->
                 // Newly fetched libraries appear in resources/list without a restart.
-                addLibraryIndexResource(service, coordinate)
+                indexResources.register(coordinate)
             }
             registerListPackagesTool(service)
             registerListDeclarationsTool(service)
@@ -212,7 +217,7 @@ object McpServerFactory {
             registerLibraryCompletions(cache)
         }
         // One index resource per already-cached library (startup snapshot).
-        runBlocking { cache.list() }.forEach { server.addLibraryIndexResource(service, it) }
+        runBlocking { cache.list() }.forEach { indexResources.register(it) }
 
         // Only mirror logs to clients when opted in; otherwise stderr is the sole channel.
         val logForwarderScope = if (config.forwardLogsToClient) {
