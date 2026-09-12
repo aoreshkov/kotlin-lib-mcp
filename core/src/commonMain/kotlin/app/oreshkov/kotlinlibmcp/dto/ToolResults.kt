@@ -123,6 +123,62 @@ public data class VersionList(
     val versions: List<String> = emptyList(),
 )
 
+/** How one file differs between two versions. */
+@Serializable
+public enum class FileChange {
+    @SerialName("added")
+    ADDED,
+
+    @SerialName("removed")
+    REMOVED,
+
+    @SerialName("modified")
+    MODIFIED,
+}
+
+/**
+ * One file's diff between two versions of a library.
+ *
+ * [hunks] is unified-diff text, each entry beginning with its own `@@ -a,b +c,d @@` header, so a
+ * client can render or re-apply it. It is empty when nothing needs showing — an added or removed
+ * file, or [diffOmitted] — while [addedLines] and [removedLines] stay meaningful either way.
+ *
+ * [diffOmitted] means the file changed but is too large or too wholly rewritten to diff within the
+ * server's bounds; read it with `get_source` if the detail matters.
+ */
+@Serializable
+@SerialName("FileDiff")
+public data class FileDiff(
+    val path: String,
+    val change: FileChange,
+    val addedLines: Int = 0,
+    val removedLines: Int = 0,
+    val hunks: List<String> = emptyList(),
+    val diffOmitted: Boolean = false,
+)
+
+/**
+ * `diff_versions` — what changed in the sources between two versions of one artifact.
+ *
+ * Summary first: [filesAdded], [filesRemoved] and [filesModified] count the whole comparison (after
+ * any `path` filter), so the shape of a release is one number each, before any diff text is read.
+ * [files] is a bounded page of that set; [truncated] is `true` when more matched than the page
+ * returned, and `offset` advances through the rest.
+ */
+@Serializable
+@SerialName("VersionDiff")
+public data class VersionDiff(
+    val group: String,
+    val artifact: String,
+    val fromVersion: String,
+    val toVersion: String,
+    val filesAdded: Int = 0,
+    val filesRemoved: Int = 0,
+    val filesModified: Int = 0,
+    val files: List<FileDiff> = emptyList(),
+    val truncated: Boolean = false,
+)
+
 /**
  * `get_latest_version`. [latestStable] is the newest non-pre-release (the repository `<release>`
  * tag, or the semantically-highest stable version); [latest] is the newest overall including

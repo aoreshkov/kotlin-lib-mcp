@@ -1,6 +1,7 @@
 package app.oreshkov.kotlinlibmcp.server
 
 import app.oreshkov.kotlinlibmcp.server.tools.JSON_SCHEMA_DIALECT
+import app.oreshkov.kotlinlibmcp.server.tools.registerDiffVersionsTool
 import app.oreshkov.kotlinlibmcp.server.tools.registerFetchLibraryTool
 import app.oreshkov.kotlinlibmcp.server.tools.registerGetApiSignatureTool
 import app.oreshkov.kotlinlibmcp.server.tools.registerGetDependenciesTool
@@ -29,7 +30,10 @@ import kotlin.test.assertNull
 class ToolRegistrationTest {
 
     private val readOnlyLocal =
-        setOf("list_packages", "list_declarations", "get_api_signature", "get_kdoc", "get_source", "search_source")
+        setOf(
+            "list_packages", "list_declarations", "get_api_signature", "get_kdoc", "get_source",
+            "search_source", "diff_versions",
+        )
     private val readOnlyRepository = setOf("get_dependencies", "list_versions", "get_latest_version")
 
     private fun serverWithAllTools(): Server {
@@ -47,6 +51,7 @@ class ToolRegistrationTest {
             registerGetKDocTool(service)
             registerGetSourceTool(service)
             registerSearchSourceTool(service)
+            registerDiffVersionsTool(service)
             registerGetDependenciesTool(service)
             registerListVersionsTool(service)
             registerGetLatestVersionTool(service)
@@ -56,7 +61,7 @@ class ToolRegistrationTest {
     private fun tools(): Map<String, Tool> = serverWithAllTools().tools.mapValues { it.value.tool }
 
     @Test
-    fun allTenToolsAreRegistered() {
+    fun allElevenToolsAreRegistered() {
         assertEquals(readOnlyLocal + readOnlyRepository + "fetch_library", tools().keys)
     }
 
@@ -74,6 +79,7 @@ class ToolRegistrationTest {
             "get_kdoc",
             "get_source",
             "search_source",
+            "diff_versions",
             "get_dependencies",
             "list_versions",
             "get_latest_version",
