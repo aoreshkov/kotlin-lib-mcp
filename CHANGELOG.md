@@ -7,6 +7,100 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-09-12
+
+The output of every tool is now bounded by its arguments rather than by the size of the library
+being inspected, and the one question the surface could not answer — "what changed between these
+two versions?" — has a tool. Both came out of an end-to-end review of using this server for real
+work, which kept hitting the same two walls: a result that overflows the context window, and a
+workflow that has to reach around MCP into the cache directory.
+
+### Added
+- **`diff_versions`** — a bounded unified diff of the sources of two already-fetched versions of
+  one artifact. A summary (`filesAdded`/`filesRemoved`/`filesModified`) describes the shape of a
+  release in three numbers before any diff text is read; a `path` filter narrows the comparison
+  itself rather than just the page; `maxResults`/`offset` page the file list and hunks are computed
+  only for the page returned; a per-file hunk budget keeps one rewritten file from eating the page;
+  added and removed files report line counts but no hunks, since `get_source` already serves those.
+  KMP target duplication is collapsed before diffing — a KMP index lists each source once per
+  target tree (`ktor-client-core`: 1214 `common/` paths beside 1233 `jvm/` ones for the same files),
+  so a verbatim diff would report every change twice and name paths after target trees rather than
+  sources. The underlying `LineDiff` trims the common prefix and suffix before building its LCS
+  table, which makes a one-line change in a 10,000-line file cheap, and refuses a wholesale rewrite
+  (surfaced as `diffOmitted`, with the line counts still filled in) rather than quietly paying
+  O(n·m).
+- **`fetch_library` returns `extractedDir`** — the root of the extracted sources on disk — **over
+  stdio only.** A stdio server is launched by its client as a child process on the same machine, so
+  the path is both usable and already within the caller's reach; reading the tree directly with
+  ordinary file tools is far cheaper than paging it through `get_source`. That workflow previously
+  depended on the cache's private layout, which nothing documented and nothing promised. Over HTTP
+  the field stays `null`: the caller may be on another machine, where the string is useless and
+  merely discloses the server's layout. The decision treats *any* unrecognized transport as
+  potentially remote, so adding a transport cannot start leaking paths merely by existing. The
+  warm-cache path resolves the root too, at one extra cache-marker read — otherwise the field would
+  appear on a session's first fetch of a coordinate and vanish on every one after it.
+
+### Changed
+- **`get_source` returns a page, not a whole file.** Its whole-file branch made the result size a
+  function of the library rather than of the arguments — the same shape as the unpaged
+  `list_declarations` that overflowed at 272 KB in 0.2.0. It is reachable and worse here: the
+  sources this server fetches include single generated files of 1.7 MB (`JsAstProtoBuf.java` in
+  `kotlin-compiler-embeddable`), and every result is emitted twice, as text and as
+  `structuredContent`. New `maxLines` (default 500, clamped to 5000) and a 1-based absolute
+  `startLine` that lines up with the line numbers `search_source` reports, defaulting to a
+  declaration's own first line when one is named; `totalLines` and `truncated` come back with it. A
+  line cap alone is not a size cap — generated and minified sources reach thousands of characters
+  per line — so a second, independent character bound applies, and hitting either sets `truncated`.
+- **`list_packages`, `list_versions` and `get_dependencies` are capped**, closing the audit rather
+  than leaving three survivable exceptions to its rule. The first two page like `list_declarations`
+  (`maxResults` + `offset`, clamped, with `totalCount` and `truncated`); the package page defaults
+  higher, at 200, because a package entry is a fraction of a declaration's size, so the common case
+  still comes back whole (`ktor-client-core` has 71 packages, `kotlin-stdlib` 96) and
+  `kotlin-compiler-embeddable`'s 610 is what pages. `get_dependencies` is a tree, so rows are the
+  wrong unit: it prunes breadth-first to `maxNodes`. `depth` already bounds how far resolution walks
+  — that is what costs network requests — but breadth was unbounded, and a depth-5 tree can carry
+  thousands of nodes. Breadth-first because answering "what does this drag in" with the deepest
+  transitives and none of the direct dependencies would be worse than not answering. The README
+  table now states each tool's bound.
+- **Kermit 2.1.0 → 2.2.0**, **slf4j-api 2.0.18 → 2.0.19**, **Compose Multiplatform 1.11.1 →
+  1.12.0**, a Temurin 25 JRE base-image digest re-pin, and seven GitHub Actions bumps.
+
+### Fixed
+- **Concurrent `fetch_library` calls for one coordinate no longer download and analyze it twice.**
+  Each caller missed the cache and then each ran the whole download, extract and Analysis API pass
+  over the same sources — the analysis being the expensive half. Since kotlin-sdk 0.15.0 dispatches
+  inbound requests concurrently, a model issuing two `fetch_library` calls in one parallel tool
+  block genuinely runs both handlers at once, so this was reachable rather than theoretical. The
+  miss path is now gated per coordinate, with a cache re-check inside the gate; unrelated
+  coordinates never wait on each other. Deliberately a gate rather than a shared `Deferred` of the
+  in-flight fetch: 0.15.0 also made `notifications/cancelled` actually cancel a `tools/call`
+  handler, and sharing a `Deferred` would tie both callers to the first one's fate. The gate map is
+  reference-counted and pruned by the last leaver, since `coordinate` is caller-supplied and a
+  permanent entry per coordinate would be a slow leak driven by untrusted input.
+- **A concurrent re-fetch no longer turns a successful `fetch_library` into an error.** Index
+  resource registration was check-then-act, and two kotlin-sdk 0.15.0 changes compose into a live
+  defect: `FeatureRegistry.add` now *rejects* an already-registered key where 0.14.0 silently
+  replaced it, and requests dispatch concurrently. Both callers observed the URI as absent and the
+  loser threw — inside `guarded`, turning a fetch that had downloaded, parsed and cached
+  successfully into an `isError` result that prompts the model to redo the work. Registration now
+  claims the URI in one atomic step, which also preserves the "don't re-notify `listChanged` on a
+  warm re-fetch" behaviour for free.
+
+### Documentation
+- **The 2026-07-28 horizon is recorded** in `CLAUDE.md`, verified rather than inherited: the Kotlin
+  SDK has shipped none of that revision (newest release still 0.15.0, upstream tracking issue #842
+  open and untouched), so 2025-11-25 remains the right target, and adopting early would mean
+  inventing wire surface ahead of the SDK. The note carries its verification date on purpose. It
+  also records the three decisions the eventual migration depends on — `VersionElicitation.kt` stays
+  one file, `--tasks` stays opt-in, `logging` stays opt-in with stderr primary — and names session
+  identity as the first exposure to look at when a beta lands.
+- Corrected the elicitation-validation claim in `selectedVersion`'s KDoc: since kotlin-sdk 0.15.0
+  the SDK validates accepted form-mode content against the requested schema itself, so our `oneOf`
+  membership check is the second gate, not the whole of it. The local check stays — the value
+  reaches a Maven URL path, the upstream check is `internal` and applied on one call path only, and
+  the 2026-07-28 MRTR migration moves the answer onto a retried request where nothing guarantees
+  the same validation runs.
+
 ## [0.5.0] - 2026-08-20
 
 A discoverability and hardening release. The server is now installable as a **Claude Code
@@ -295,7 +389,8 @@ Initial public release.
 - On-disk cache keyed by `group/artifact/version` under the OS cache directory.
 - Optional **Compose Desktop dashboard** embedding the server (control, logs, cache browser).
 
-[Unreleased]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.5.0...HEAD
+[Unreleased]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.6.0...HEAD
+[0.6.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.2.0...v0.3.0
