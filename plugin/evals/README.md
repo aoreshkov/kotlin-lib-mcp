@@ -50,6 +50,23 @@ report pass/fail as indicators; they just don't score.
 What's left scoring in both arms is the content of the answer. That makes Δ mean the honest thing:
 *did the plugin make the answer right*, not *did the plugin cause its own tools to be called*.
 
+### The grader that actually separates the arms
+
+`commits-to-an-answer` is an `llm` grader, scored in both arms, and it asks one thing: does the
+reply state a declaration as fact, or does it disclaim its own accuracy and ask the user to go and
+find the source? Nothing about whether the signature is right — the regexes do that.
+
+It earns its judge calls because it is the only grader whose verdict is stable. Across nine
+baseline runs the without-arm hedged **every single time**, including runs where it recalled the
+declaration perfectly: *"But I am not confident this matches 3.5.1 exactly... If you can point me
+to the jar/sources locally, I can grep the real source instead of guessing."* The regexes score
+that reply the same as a verified one. So the model's recall of a popular API is not really the
+problem — its unwillingness to commit to that recall is, and that is the thing the plugin removes.
+
+The rubric deliberately does **not** require the reply to name the version it consulted: this
+case's prompt says "signature only, no prose", and a bare fenced code block is total commitment,
+not an omission. A rubric that asked for provenance would fail the with-arm for obeying the prompt.
+
 In `must-not-fire` the opposite applies: the "must not invoke" graders carry `arm: both`, because
 "didn't call it" is something the without-arm can and should satisfy too.
 
