@@ -16,6 +16,7 @@ claude plugin eval .                       # all cases, both arms
 claude plugin eval . --ablation none       # with-arm only; half the cost, no Δ
 claude plugin eval . --case recall-vs-lookup
 claude plugin eval . --tag anti-trigger
+claude plugin eval . --case lookup-vs-web --allow-tools WebFetch   # needs the network
 ```
 
 Results land in `evals/results/<timestamp>/` (`aggregate-result.json` + `report.html`).
@@ -35,6 +36,7 @@ graders, and keep the two-arm run for `recall-vs-lookup`, where Δ *is* the resu
 | `recall-vs-lookup` | exact `HttpClient { }` signature in ktor-client-core 3.5.1 | the plugin beats recall — the answer carries `public`, `expect`, the `HttpClientConfig<*>` receiver and the `= {}` default, the last two being what a model guessing from memory reliably drops |
 | `no-version-given` | "anything newer than 3.5.1?" | the version-resolution path is used rather than a recalled version number |
 | `must-not-fire` | a TypeScript question | `library-ground-truth`'s deliberately broad description doesn't over-trigger |
+| `lookup-vs-web` | the same question as the flagship, with `WebFetch` granted | what the plugin is worth against a competitor that can actually look it up — the comparison a user installing it faces |
 
 Each case pairs a grader on **the result** (regex or `llm` over the final message) with one on
 **how Claude got there** (`tool_order` / `tool_used`), which is the pairing the docs recommend.
@@ -69,6 +71,48 @@ not an omission. A rubric that asked for provenance would fail the with-arm for 
 
 In `must-not-fire` the opposite applies: the "must not invoke" graders carry `arm: both`, because
 "didn't call it" is something the without-arm can and should satisfy too.
+
+### `lookup-vs-web`, and the Δ 0.00 you should read carefully
+
+This case asks the flagship's question with `WebFetch` granted, so the without-arm is not working
+from memory — it can go and read the source. It needs the grant on the command line, because a
+case's `allowed_tools` cannot widen a gated tool:
+
+```bash
+claude plugin eval . --case lookup-vs-web --allow-tools WebFetch
+```
+
+Granting `WebFetch` does **not** put the run under the OS sandbox — only granting `Bash` or
+`PowerShell` does — so unlike a shell-granting case this one runs fine on native Windows. It does
+hit the real network in the without-arm, so it carries the `network` tag: keep it out of the fast
+suite with `--tag core`, and expect it to fail when GitHub is unreachable rather than when the
+plugin regressed.
+
+**Result, first run: WITH 1.00, W/OUT 1.00, Δ 0.00** — and that is the honest answer, not a broken
+case. Given a way to verify, the baseline found the exact declaration all three times *and*
+committed to it: `commits-to-an-answer` voted unanimous PASS in the without-arm here, where the
+same rubric votes unanimous FAIL nine times out of nine in `recall-vs-lookup`. The hedging that
+case measures is a symptom of having no verification path, not a trait of the model.
+
+What the plugin still buys, from the same six runs:
+
+| | turns | wall clock | cost |
+| :--- | :--- | :--- | :--- |
+| with plugin | 6–7 | 16–19 s | $0.12 |
+| WebFetch baseline | 7–9 | 39–65 s | $0.14–0.18 |
+
+Roughly three times the wall clock and a third more money, because the web path guesses first: every
+baseline run opened `HttpClientJvm.kt` (wrong), then browsed the tree or GitHub code search, and
+only then read `HttpClient.kt` at the `3.5.1` tag. The with-arm never called `WebFetch` at all —
+`did-not-browse` passed in all three runs — so the plugin does cleanly displace browsing rather
+than adding a step before it.
+
+**The scope limit is the interesting part.** The baseline wins here because ktor is public, its git
+tag matches the Maven version, and its source layout is guessable from the coordinate. None of that
+holds for an internal artifact in a company repository, a library whose repo layout doesn't mirror
+its coordinates, a version that was never tagged, or a machine with no internet. That is where the
+plugin's value is differentiated, and this suite does not yet measure any of it — a case built on
+an artifact whose sources jar exists but whose web trail doesn't is the obvious next one.
 
 ## Mocks
 
