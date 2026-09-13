@@ -12,7 +12,7 @@
 # The job still knows how to skip: `schedule` and `workflow_dispatch` runs without the secret
 # report "skipped" and succeed, rather than failing a fork that has no credentials.
 #
-# To turn the gate on once the secret exists, restore the PR trigger and the offline-only step:
+# To turn the gate on once the secret exists, restore the PR trigger:
 #
 #   on:
 #     pull_request:
@@ -21,18 +21,10 @@
 #         - 'server/src/main/kotlin/tools/**'
 #         - '.github/workflows/plugin-evals.yml'
 #
-#   - name: Run offline cases
-#     if: steps.gate.outputs.ok == 'true' && github.event_name == 'pull_request'
-#     working-directory: plugin
-#     env:
-#       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-#     run: |
-#       claude plugin eval . --tag core --tag anti-trigger --trust-plugin --threshold 0.8 \
-#         --model "$AGENT_MODEL" --judge-model "$JUDGE_MODEL" --no-publish --max-cost-usd 8 \
-#         --json "$GITHUB_WORKSPACE/eval-results.json"
-#
-# and add `&& github.event_name != 'pull_request'` back to the "Run the suite" step below, so a PR
-# doesn't pay for `lookup-vs-web`, which reads GitHub and fails on a network hiccup.
+# and add `&& github.event_name != 'pull_request'` to the "Run the WebFetch baseline case" step
+# below, so a PR does not pay for `lookup-vs-web` — it reads GitHub, so it fails on a network
+# hiccup and tells you nothing about the diff. The offline step already runs the right cases, and
+# must keep running with no --allow-tools grant of its own; the comment on it says why.
 name: Plugin evals
 
 on:
@@ -84,53 +76,84 @@ jobs:
         if: steps.gate.outputs.ok == 'true'
         run: npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
 
-      # Everything, including `lookup-vs-web`, which grants WebFetch and reads GitHub.
-      - name: Run the suite
+      # TWO invocations, and they must stay two. `--allow-tools` applies to every case in the run,
+      # not just the cases that list the tool in `allowed_tools` — so running the whole suite with
+      # `--allow-tools WebFetch` hands WebFetch to `recall-vs-lookup`'s baseline arm as well, which
+      # is precisely the arm that is supposed to be working from memory. Measured 2026-09-13:
+      # granted suite-wide the flagship reads W/OUT 1.00, Δ 0.00 with `commits-to-an-answer`
+      # passing 3/3; run without the grant the same case reads W/OUT 0.53, Δ +0.47 with that
+      # grader failing 3/3. One flag silently turns the flagship into a second copy of
+      # `lookup-vs-web` and reports the plugin as worthless.
+      - name: Run the offline cases
         if: steps.gate.outputs.ok == 'true'
         working-directory: plugin
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
         run: |
           claude plugin eval . \
+            --tag core --tag anti-trigger \
             --trust-plugin \
             --threshold 0.8 \
             --model "$AGENT_MODEL" \
             --judge-model "$JUDGE_MODEL" \
-            --allow-tools WebFetch \
             --no-publish \
-            --max-cost-usd 15 \
-            --json "$GITHUB_WORKSPACE/eval-results.json"
+            --max-cost-usd 10 \
+            --json "$GITHUB_WORKSPACE/eval-results-offline.json"
 
-      # Cosmetic: the exit code above is the gate, so a jq slip must never fail the job.
+      # The network case, alone, with the grant it needs. Runs even if the offline cases failed:
+      # both numbers are wanted, and a red suite is not a reason to skip half the evidence.
+      - name: Run the WebFetch baseline case
+        if: always() && steps.gate.outputs.ok == 'true'
+        working-directory: plugin
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          claude plugin eval . \
+            --tag network \
+            --allow-tools WebFetch \
+            --trust-plugin \
+            --threshold 0.8 \
+            --model "$AGENT_MODEL" \
+            --judge-model "$JUDGE_MODEL" \
+            --no-publish \
+            --max-cost-usd 6 \
+            --json "$GITHUB_WORKSPACE/eval-results-web.json"
+
+      # Cosmetic: the exit codes above are the gate, so a jq slip must never fail the job.
       - name: Summarise
-        if: always() && steps.gate.outputs.ok == 'true' && hashFiles('eval-results.json') != ''
+        if: always() && steps.gate.outputs.ok == 'true'
         continue-on-error: true
         run: |
-          jq -r '
-            def r: if . == null then "—" else (((. * 100) | round) / 100 | tostring) end;
-            "### Plugin evals",
-            "",
-            "Suite \(.aggregates.overallScore | r) · mean Δ \(.aggregates.meanDelta | r) · \(.aggregates.casesPassed)/\(.aggregates.casesTotal) cases at threshold · $\(.costUsd | r)",
-            "",
-            "| Case | WITH | W/OUT | Δ |",
-            "| :--- | ---: | ---: | ---: |",
-            (.cases[] | "| \(.name) | \(.aggregates.score | r) | \(.aggregates.scoreWithout | r) | \(.aggregates.delta | r) |"),
-            "",
-            # Watch this grader on its own: a regression in it can hide inside a Δ that stays positive.
-            "**commits-to-an-answer** (with-arm): " + (
-              [.cases[].arms.with[]?.graders[]? | select(.name == "commits-to-an-answer")]
-              | if length == 0 then "not run"
-                else "\([.[] | select(.passed)] | length)/\(length) runs passed" end
-            )
-          ' eval-results.json >> "$GITHUB_STEP_SUMMARY"
+          for f in eval-results-offline.json eval-results-web.json; do
+            [ -f "$f" ] || continue
+            jq -r --arg f "$f" '
+              def r: if . == null then "—" else (((. * 100) | round) / 100 | tostring) end;
+              "### Plugin evals — \($f | ltrimstr("eval-results-") | rtrimstr(".json"))",
+              "",
+              "Suite \(.aggregates.overallScore | r) · mean Δ \(.aggregates.meanDelta | r) · \(.aggregates.casesPassed)/\(.aggregates.casesTotal) cases at threshold · $\(.costUsd | r)",
+              "",
+              "| Case | WITH | W/OUT | Δ |",
+              "| :--- | ---: | ---: | ---: |",
+              (.cases[] | "| \(.name) | \(.aggregates.score | r) | \(.aggregates.scoreWithout | r) | \(.aggregates.delta | r) |"),
+              "",
+              # Watch this grader on its own: a regression in it can hide inside a Δ that stays positive.
+              "**commits-to-an-answer** (with-arm): " + (
+                [.cases[].arms.with[]?.graders[]? | select(.name == "commits-to-an-answer")]
+                | if length == 0 then "not run"
+                  else "\([.[] | select(.passed)] | length)/\(length) runs passed" end
+              ),
+              ""
+            ' "$f" >> "$GITHUB_STEP_SUMMARY"
+          done
 
       - name: Upload results
-        if: always() && steps.gate.outputs.ok == 'true' && hashFiles('eval-results.json') != ''
+        if: always() && steps.gate.outputs.ok == 'true'
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
         with:
           name: eval-results
           path: |
-            eval-results.json
+            eval-results-offline.json
+            eval-results-web.json
             plugin/evals/results/**/report.html
           retention-days: 30
           if-no-files-found: warn

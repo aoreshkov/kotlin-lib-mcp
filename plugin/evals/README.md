@@ -10,13 +10,35 @@ No unit test can fail on any of that.
 
 ## Run it
 
+The suite takes **two commands, and they must stay two**:
+
 ```bash
 cd plugin
-claude plugin eval .                       # all cases, both arms
-claude plugin eval . --ablation none       # with-arm only; half the cost, no Δ
-claude plugin eval . --case recall-vs-lookup
-claude plugin eval . --tag anti-trigger
-claude plugin eval . --case lookup-vs-web --allow-tools WebFetch   # needs the network
+claude plugin eval . --tag core --tag anti-trigger          # the offline cases, no grant
+claude plugin eval . --tag network --allow-tools WebFetch   # lookup-vs-web, needs the network
+```
+
+> **Never run the whole suite with `--allow-tools WebFetch`.** The grant applies to *every case in
+> the run*, not only to cases that list the tool in their own `allowed_tools` — so one flag hands
+> `WebFetch` to `recall-vs-lookup`'s **baseline** arm, which is the arm that is supposed to be
+> working from memory, and quietly turns the flagship into a second copy of `lookup-vs-web`.
+> Measured on 2026-09-13, same suite, same models, minutes apart:
+>
+> | `recall-vs-lookup` | baseline | `commits-to-an-answer` | Δ |
+> | :--- | ---: | :--- | ---: |
+> | granted suite-wide | 1.00 | PASS 3/3 | **0.00** |
+> | no grant | 0.53 | FAIL 3/3 | **+0.47** |
+>
+> Both runs are green at `--threshold 0.8`, so nothing warns you: the suite just reports that the
+> plugin adds nothing. A grant that a case's baseline must not have is a grant that case must not
+> share a run with.
+
+Other useful shapes:
+
+```bash
+claude plugin eval . --ablation none --tag core   # with-arm only; half the cost, no Δ
+claude plugin eval . --case recall-vs-lookup      # one case
+claude plugin eval . --case recall-vs-lookup --keep-temp   # keep transcripts (out/trace.jsonl)
 ```
 
 Results land in `evals/results/<timestamp>/` (`aggregate-result.json` + `report.html`).
@@ -79,8 +101,12 @@ from memory — it can go and read the source. It needs the grant on the command
 case's `allowed_tools` cannot widen a gated tool:
 
 ```bash
-claude plugin eval . --case lookup-vs-web --allow-tools WebFetch
+claude plugin eval . --tag network --allow-tools WebFetch
 ```
+
+On its own, always — never folded into a whole-suite run. See the warning under **Run it**: the
+grant reaches every case in the run, and `recall-vs-lookup`'s baseline is supposed to have no way
+to verify anything.
 
 Granting `WebFetch` does **not** put the run under the OS sandbox — only granting `Bash` or
 `PowerShell` does — so unlike a shell-granting case this one runs fine on native Windows. It does
@@ -233,8 +259,9 @@ description or a schema, and after any model upgrade — and CI stays quiet rath
 
 What still fires:
 
-- **Mondays 06:00 UTC**, and **`workflow_dispatch`** — the whole suite, `--allow-tools WebFetch`
-  included. The weekly run is the one that earns its keep: the thing under test is a model, and
+- **Mondays 06:00 UTC**, and **`workflow_dispatch`** — the whole suite, as **two separate
+  invocations**: the offline cases with no grant, then `--tag network --allow-tools WebFetch` on
+  its own. The weekly run is the one that earns its keep: the thing under test is a model, and
   model behaviour drifts under a suite that hasn't changed at all.
 - Without the secret those runs report "skipped" in the job summary and succeed, so a fork with no
   credentials never goes red.
