@@ -1,0 +1,133 @@
+# Behavioural evals for the Claude Code plugin (plugin/evals/).
+#
+# These are not unit tests: every run makes real model calls and costs real money, so this
+# workflow is deliberately NOT part of CI. It fires only when the files that steer the model
+# change — the plugin, and the tool descriptions and schemas the server advertises — plus once a
+# week, because the thing under test is a model and model behaviour drifts underneath a suite that
+# hasn't changed at all.
+#
+# It needs an ANTHROPIC_API_KEY secret. Without one the job reports "skipped" and succeeds, so a
+# fork or a repo that hasn't set the secret doesn't get a permanently red required check.
+name: Plugin evals
+
+on:
+  pull_request:
+    paths:
+      - 'plugin/**'
+      - 'server/src/main/kotlin/tools/**'
+      - '.github/workflows/plugin-evals.yml'
+  schedule:
+    # Mondays 06:00 UTC — catches model drift, not code drift.
+    - cron: '0 6 * * 1'
+  workflow_dispatch:
+
+concurrency:
+  group: evals-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+env:
+  # Pinned so a score moving means behaviour moved, not that a default changed under us.
+  CLAUDE_CODE_VERSION: '2.1.269'
+  AGENT_MODEL: claude-sonnet-5
+  JUDGE_MODEL: claude-haiku-4-5
+
+jobs:
+  evals:
+    name: plugin evals
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      # `secrets` is not available in a job-level `if`, so gate on an output instead.
+      - name: Check for credentials
+        id: gate
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -n "$ANTHROPIC_API_KEY" ]; then
+            echo "ok=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ok=false" >> "$GITHUB_OUTPUT"
+            echo "### Plugin evals skipped" >> "$GITHUB_STEP_SUMMARY"
+            echo "No \`ANTHROPIC_API_KEY\` secret is set, so the suite did not run." >> "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # ubuntu-latest ships Node, so no setup-node step is needed.
+      - name: Install Claude Code
+        if: steps.gate.outputs.ok == 'true'
+        run: npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+
+      # On a PR: the offline cases only. `lookup-vs-web` grants WebFetch and reads GitHub, so it
+      # would fail on a network hiccup and tell you nothing about the change under review.
+      - name: Run offline cases
+        if: steps.gate.outputs.ok == 'true' && github.event_name == 'pull_request'
+        working-directory: plugin
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          claude plugin eval . \
+            --tag core --tag anti-trigger \
+            --trust-plugin \
+            --threshold 0.8 \
+            --model "$AGENT_MODEL" \
+            --judge-model "$JUDGE_MODEL" \
+            --no-publish \
+            --max-cost-usd 8 \
+            --json "$GITHUB_WORKSPACE/eval-results.json"
+
+      # Weekly and on demand: everything, including the WebFetch baseline.
+      - name: Run the whole suite
+        if: steps.gate.outputs.ok == 'true' && github.event_name != 'pull_request'
+        working-directory: plugin
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          claude plugin eval . \
+            --trust-plugin \
+            --threshold 0.8 \
+            --model "$AGENT_MODEL" \
+            --judge-model "$JUDGE_MODEL" \
+            --allow-tools WebFetch \
+            --no-publish \
+            --max-cost-usd 15 \
+            --json "$GITHUB_WORKSPACE/eval-results.json"
+
+      # Cosmetic: the exit code above is the gate, so a jq slip must never fail the job.
+      - name: Summarise
+        if: always() && steps.gate.outputs.ok == 'true' && hashFiles('eval-results.json') != ''
+        continue-on-error: true
+        run: |
+          jq -r '
+            def r: if . == null then "—" else (((. * 100) | round) / 100 | tostring) end;
+            "### Plugin evals",
+            "",
+            "Suite \(.aggregates.overallScore | r) · mean Δ \(.aggregates.meanDelta | r) · \(.aggregates.casesPassed)/\(.aggregates.casesTotal) cases at threshold · $\(.costUsd | r)",
+            "",
+            "| Case | WITH | W/OUT | Δ |",
+            "| :--- | ---: | ---: | ---: |",
+            (.cases[] | "| \(.name) | \(.aggregates.score | r) | \(.aggregates.scoreWithout | r) | \(.aggregates.delta | r) |"),
+            "",
+            # Watch this grader on its own: a regression in it can hide inside a Δ that stays positive.
+            "**commits-to-an-answer** (with-arm): " + (
+              [.cases[].arms.with[]?.graders[]? | select(.name == "commits-to-an-answer")]
+              | if length == 0 then "not run"
+                else "\([.[] | select(.passed)] | length)/\(length) runs passed" end
+            )
+          ' eval-results.json >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload results
+        if: always() && steps.gate.outputs.ok == 'true' && hashFiles('eval-results.json') != ''
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: eval-results
+          path: |
+            eval-results.json
+            plugin/evals/results/**/report.html
+          retention-days: 30
+          if-no-files-found: warn
