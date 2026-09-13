@@ -219,27 +219,38 @@ plus the mocked MCP tools, so the question doesn't arise. If a future case needs
 suite under WSL2.
 
 
-## In CI
+## In CI — and why there is no PR check
 
-`.github/workflows/plugin-evals.yml` runs the suite. It is deliberately **not** part of `ci.yml`:
-every run makes real model calls and costs real money, so it fires only when the files that steer
-the model change — `plugin/**` and the tool descriptions and schemas under
-`server/src/main/kotlin/tools/**` — plus weekly, because the thing under test is a model and
-model behaviour drifts under a suite that hasn't changed at all.
+`.github/workflows/plugin-evals.yml` runs the suite, deliberately **outside `ci.yml`**: every run
+makes real model calls and costs real money.
 
-- **On a PR:** the offline cases only (`--tag core --tag anti-trigger`). `lookup-vs-web` reads
-  GitHub, so on a PR it would fail on a network hiccup and tell you nothing about the change under
-  review.
-- **Weekly and on `workflow_dispatch`:** everything, `--allow-tools WebFetch` included.
+**It needs an `ANTHROPIC_API_KEY` secret and this repository has none, so today the workflow has no
+`pull_request` trigger at all.** That is the deliberate part. A check that appears on every plugin
+PR and goes green without running anything is worse than no check: months later a green
+"plugin evals" reads as evidence to whoever wasn't there to watch it skip. So while the gate is
+off, **the suite is a local step** — run it before you ship a change to a skill description, a tool
+description or a schema, and after any model upgrade — and CI stays quiet rather than reassuring.
+
+What still fires:
+
+- **Mondays 06:00 UTC**, and **`workflow_dispatch`** — the whole suite, `--allow-tools WebFetch`
+  included. The weekly run is the one that earns its keep: the thing under test is a model, and
+  model behaviour drifts under a suite that hasn't changed at all.
+- Without the secret those runs report "skipped" in the job summary and succeed, so a fork with no
+  credentials never goes red.
+
+How it is set up when it does run:
+
 - **Gate:** the exit code. `--threshold 0.8`, so exit 1 means a case scored below it; exit 2 means
   the `--max-cost-usd` ceiling stopped the run, and such a result carries `partial: true` and
   belongs in no trend chart.
-- Both models are pinned in the workflow's `env`, so a score moving means behaviour moved rather
-  than a default changing underneath. The Claude Code version is pinned for the same reason.
+- Agent model, judge model and the Claude Code version are pinned in the workflow's `env`, so a
+  score moving means behaviour moved rather than a default changing underneath.
 - The job summary prints the per-case Δ table and, separately, how many with-arm runs
   `commits-to-an-answer` passed. Watch that line on its own: a regression that stops Claude calling
   the tools shows up there immediately and can hide inside a Δ that happens to stay positive.
 
-**It needs an `ANTHROPIC_API_KEY` secret, and the repository does not have one yet.** Until it is
-set the job reports "skipped" in its summary and succeeds, so plugin PRs don't carry a permanently
-red check. Add the secret to turn the gate on.
+**Turning the gate on.** Add the secret, then restore the `pull_request` trigger and the
+offline-only run step — both are kept verbatim in the workflow's header comment, including why a PR
+run should skip `lookup-vs-web`. Trigger it by hand once first (`workflow_dispatch`): everything
+past the credentials check is unexercised, since no run has ever had a key.
