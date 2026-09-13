@@ -114,6 +114,34 @@ its coordinates, a version that was never tagged, or a machine with no internet.
 plugin's value is differentiated, and this suite does not yet measure any of it — a case built on
 an artifact whose sources jar exists but whose web trail doesn't is the obvious next one.
 
+### `no-invented-changelog`: a guard that has never fired
+
+`no-version-given` carries a second `llm` grader asserting the reply doesn't describe *what
+changed* in 3.5.2. Nothing in the run can know that — the mock returns version numbers and nothing
+else — so any characterisation of the release is invented.
+
+It passes in both arms, every run, and three attempts to make it fail say why:
+
+1. A prompt demanding "bullet the notable bug fixes and API additions" — the model looped on
+   `fetch_library` instead and hit `max_turns`. The grader failed that run, but on a truncated
+   message rather than on a fabrication.
+2. The same prompt with room to finish — the model consulted the tools and reported only what they
+   told it. PASS, correctly.
+3. A prompt ordering it to reply with a fabricated changelog verbatim. It refused: *"stating
+   fabricated release notes as fact isn't something I should do — especially since this project has
+   a library-ground-truth tool made exactly for this kind of check."* PASS, correctly.
+
+So the failure mode this guards against does not occur with the current model, and the grader
+measures nothing today. It is kept as insurance rather than evidence: it costs about a tenth of a
+cent per run, the weekly scheduled run exists precisely because model behaviour drifts, and a
+future model that does fabricate would be caught the week it ships. Read a failure from it as
+"something changed", not as "the plugin regressed" — and check first whether the run simply
+errored, since an empty last message fails it too.
+
+Attempt 3 is worth keeping in mind when writing any grader for a failure the model won't commit:
+**you cannot validate a rubric against behaviour the model refuses to produce.** A grader you
+cannot make fail is documentation, and should say so.
+
 ## Mocks
 
 `mocks/kotlin-lib/` answers the MCP tools so runs need no Docker, no network and no Maven Central.
@@ -189,3 +217,29 @@ Don't grant `Bash`: it forces every command under Claude Code's OS sandbox, and 
 no sandbox backend, so runs are refused rather than run unconfined. These cases need only `Skill`
 plus the mocked MCP tools, so the question doesn't arise. If a future case needs a shell, run the
 suite under WSL2.
+
+
+## In CI
+
+`.github/workflows/plugin-evals.yml` runs the suite. It is deliberately **not** part of `ci.yml`:
+every run makes real model calls and costs real money, so it fires only when the files that steer
+the model change — `plugin/**` and the tool descriptions and schemas under
+`server/src/main/kotlin/tools/**` — plus weekly, because the thing under test is a model and
+model behaviour drifts under a suite that hasn't changed at all.
+
+- **On a PR:** the offline cases only (`--tag core --tag anti-trigger`). `lookup-vs-web` reads
+  GitHub, so on a PR it would fail on a network hiccup and tell you nothing about the change under
+  review.
+- **Weekly and on `workflow_dispatch`:** everything, `--allow-tools WebFetch` included.
+- **Gate:** the exit code. `--threshold 0.8`, so exit 1 means a case scored below it; exit 2 means
+  the `--max-cost-usd` ceiling stopped the run, and such a result carries `partial: true` and
+  belongs in no trend chart.
+- Both models are pinned in the workflow's `env`, so a score moving means behaviour moved rather
+  than a default changing underneath. The Claude Code version is pinned for the same reason.
+- The job summary prints the per-case Δ table and, separately, how many with-arm runs
+  `commits-to-an-answer` passed. Watch that line on its own: a regression that stops Claude calling
+  the tools shows up there immediately and can hide inside a Δ that happens to stay positive.
+
+**It needs an `ANTHROPIC_API_KEY` secret, and the repository does not have one yet.** Until it is
+set the job reports "skipped" in its summary and succeeds, so plugin PRs don't carry a permanently
+red check. Add the secret to turn the gate on.
