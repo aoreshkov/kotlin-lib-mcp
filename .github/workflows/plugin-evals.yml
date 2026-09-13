@@ -1,23 +1,44 @@
 # Behavioural evals for the Claude Code plugin (plugin/evals/).
 #
 # These are not unit tests: every run makes real model calls and costs real money, so this
-# workflow is deliberately NOT part of CI. It fires only when the files that steer the model
-# change — the plugin, and the tool descriptions and schemas the server advertises — plus once a
-# week, because the thing under test is a model and model behaviour drifts underneath a suite that
-# hasn't changed at all.
+# workflow is deliberately NOT part of CI.
 #
-# It needs an ANTHROPIC_API_KEY secret. Without one the job reports "skipped" and succeeds, so a
-# fork or a repo that hasn't set the secret doesn't get a permanently red required check.
+# It needs an ANTHROPIC_API_KEY secret, and this repository does not have one. Until it does there
+# is **no pull_request trigger**, on purpose: a check that appears on every plugin PR and passes
+# without running anything is worse than no check at all — six months from now a green
+# "plugin evals" reads as evidence to whoever didn't watch it skip. So while the gate is off, the
+# suite runs from a developer's machine (see plugin/evals/README.md) and CI stays quiet.
+#
+# The job still knows how to skip: `schedule` and `workflow_dispatch` runs without the secret
+# report "skipped" and succeed, rather than failing a fork that has no credentials.
+#
+# To turn the gate on once the secret exists, restore the PR trigger and the offline-only step:
+#
+#   on:
+#     pull_request:
+#       paths:
+#         - 'plugin/**'
+#         - 'server/src/main/kotlin/tools/**'
+#         - '.github/workflows/plugin-evals.yml'
+#
+#   - name: Run offline cases
+#     if: steps.gate.outputs.ok == 'true' && github.event_name == 'pull_request'
+#     working-directory: plugin
+#     env:
+#       ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+#     run: |
+#       claude plugin eval . --tag core --tag anti-trigger --trust-plugin --threshold 0.8 \
+#         --model "$AGENT_MODEL" --judge-model "$JUDGE_MODEL" --no-publish --max-cost-usd 8 \
+#         --json "$GITHUB_WORKSPACE/eval-results.json"
+#
+# and add `&& github.event_name != 'pull_request'` back to the "Run the suite" step below, so a PR
+# doesn't pay for `lookup-vs-web`, which reads GitHub and fails on a network hiccup.
 name: Plugin evals
 
 on:
-  pull_request:
-    paths:
-      - 'plugin/**'
-      - 'server/src/main/kotlin/tools/**'
-      - '.github/workflows/plugin-evals.yml'
   schedule:
-    # Mondays 06:00 UTC — catches model drift, not code drift.
+    # Mondays 06:00 UTC — the thing under test is a model, and model behaviour drifts under a
+    # suite that hasn't changed at all. This is the trigger that earns its keep.
     - cron: '0 6 * * 1'
   workflow_dispatch:
 
@@ -63,27 +84,9 @@ jobs:
         if: steps.gate.outputs.ok == 'true'
         run: npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
 
-      # On a PR: the offline cases only. `lookup-vs-web` grants WebFetch and reads GitHub, so it
-      # would fail on a network hiccup and tell you nothing about the change under review.
-      - name: Run offline cases
-        if: steps.gate.outputs.ok == 'true' && github.event_name == 'pull_request'
-        working-directory: plugin
-        env:
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
-        run: |
-          claude plugin eval . \
-            --tag core --tag anti-trigger \
-            --trust-plugin \
-            --threshold 0.8 \
-            --model "$AGENT_MODEL" \
-            --judge-model "$JUDGE_MODEL" \
-            --no-publish \
-            --max-cost-usd 8 \
-            --json "$GITHUB_WORKSPACE/eval-results.json"
-
-      # Weekly and on demand: everything, including the WebFetch baseline.
-      - name: Run the whole suite
-        if: steps.gate.outputs.ok == 'true' && github.event_name != 'pull_request'
+      # Everything, including `lookup-vs-web`, which grants WebFetch and reads GitHub.
+      - name: Run the suite
+        if: steps.gate.outputs.ok == 'true'
         working-directory: plugin
         env:
           ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
