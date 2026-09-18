@@ -15,7 +15,7 @@ intellijCoroutines = "1.10.2-intellij-1"  # JetBrains coroutines fork the bundle
 slf4j = "2.0.19"
 kotlinLogging = "8.0.4"        # matches the MCP SDK's transitive facade; needed to silence its stdout banner
 logback = "1.6.3"
-opentelemetry = "1.65.0"       # BOM governs every io.opentelemetry artifact below
+opentelemetry = "1.66.0"       # BOM governs every io.opentelemetry artifact below
 
 [libraries]
 # Build (gradle-plugin classpath for build-logic convention plugins)
