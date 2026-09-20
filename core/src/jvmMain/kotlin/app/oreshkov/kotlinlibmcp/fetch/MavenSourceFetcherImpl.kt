@@ -14,6 +14,7 @@ import co.touchlab.kermit.Logger
 import io.ktor.client.HttpClient
 import io.ktor.client.engine.HttpClientEngine
 import io.ktor.client.engine.cio.CIO
+import io.ktor.client.engine.cio.JvmDnsResolver
 import io.ktor.client.plugins.HttpRequestRetry
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.UserAgent
@@ -24,7 +25,7 @@ import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentLength
 import io.ktor.http.isSuccess
-import io.ktor.utils.io.readRemaining
+import io.ktor.utils.io.readBuffer
 import java.io.ByteArrayOutputStream
 import java.nio.file.Path
 import java.security.MessageDigest
@@ -64,7 +65,13 @@ public class DownloadTooLargeException(message: String) : FetchException(message
  */
 public class MavenSourceFetcherImpl(
     private val cacheDir: Path,
-    engine: HttpClientEngine = CIO.create(),
+    // `dnsResolver` belongs on the engine, not in an `HttpClient(engine) { engine { … } }` block:
+    // that block is typed to the engine, which is injectable here. CIO's default resolver is the
+    // blocking, *uninterruptible* platform name service, so a hung lookup outlives the
+    // `connectTimeoutMillis` below; `JvmDnsResolver` runs the same OS lookup (so /etc/hosts,
+    // search domains and corporate DNS keep working — unlike `CioDnsResolver`) under
+    // `runInterruptible`, which makes the timeout enforceable. Needs Ktor >= 3.6.0.
+    engine: HttpClientEngine = CIO.create { dnsResolver = JvmDnsResolver() },
     private val json: Json = Json { ignoreUnknownKeys = true },
     private val extractor: ZipExtractor = ZipExtractor(),
     private val maxDownloadBytes: Long = DEFAULT_MAX_DOWNLOAD_BYTES,
@@ -394,9 +401,9 @@ public class MavenSourceFetcherImpl(
             val out = ByteArrayOutputStream()
             var total = 0L
             while (!channel.isClosedForRead) {
-                val packet = channel.readRemaining(READ_CHUNK_BYTES)
-                while (!packet.exhausted()) {
-                    val chunk = packet.readByteArray()
+                val buffer = channel.readBuffer(READ_CHUNK_BYTES)
+                while (!buffer.exhausted()) {
+                    val chunk = buffer.readByteArray()
                     total += chunk.size
                     if (total > maxDownloadBytes) {
                         throw DownloadTooLargeException(

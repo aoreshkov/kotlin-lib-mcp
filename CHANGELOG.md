@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Ktor 3.5.2 → 3.6.0.** For the client that fetches from Maven repositories this is mostly CIO
+  robustness. Two of its fixes land on paths we actually run: `Failed to parse HTTP response:
+  unexpected EOF` when pipelining is on — pipelining *is* on (`pipelineMaxSize` defaults to 20) and
+  a dependency-tree walk is exactly the long run of keep-alive GETs that triggers it — and a
+  `Connection: close` response being cancelled too early, which surfaces as a spurious mid-fetch
+  failure that the retry policy, scoped to server errors, would not have retried. The release also
+  deprecates `ByteReadChannel.readRemaining` in favour of `readBuffer`; the capped download path
+  moved over, which is a rename with no behavioural change. Four Ktor modules that only the MCP SDK
+  pulls in deliberately stay at its own 3.5.1 — the reasoning is in `gradle/libs.versions.toml`.
+
+### Fixed
+- **A hung DNS lookup no longer outlives `fetch_library`'s timeout.** CIO resolves hostnames through
+  the platform name service, which blocks *uninterruptibly*, so a stuck lookup sat underneath
+  `connectTimeoutMillis` where no Ktor timeout could reach it and a fetch could hang well past 15
+  seconds. Ktor 3.6.0 adds a `dnsResolver` hook to the engine config; the client now passes
+  `JvmDnsResolver`, which performs the same OS lookup — `/etc/hosts`, search domains and corporate
+  or mirrored DNS all keep working — but under `runInterruptible`, so cancellation and timeouts
+  actually unblock it.
+
 ## [0.6.0] - 2026-09-12
 
 The output of every tool is now bounded by its arguments rather than by the size of the library
