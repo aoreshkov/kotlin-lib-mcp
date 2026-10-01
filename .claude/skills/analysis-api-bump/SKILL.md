@@ -62,9 +62,12 @@ In `gradle/libs.versions.toml` **only** (never inline versions):
 A green compile is **not** sufficient — the Analysis API fails at runtime, not compile time.
 
 - `./gradlew :core:build` — compiles and runs `core` tests, including `SourceAnalyzer` tests.
-- Run the analyzer end-to-end on a real library so type resolution is exercised, e.g. fetch a
-  known library via the MCP tools (`fetch_library` then `get_api_signature` / `get_kdoc`) and
-  confirm signatures resolve types (not just PSI text fallback).
+- Run the analyzer end-to-end on a real library so type resolution is exercised:
+  `./gradlew :server:installDist` then
+  `python3 .github/scripts/analyze-smoke.py server/build/install/server/bin/server`. It fetches
+  `ktor-client-core`, requires a signature resolved to `kotlin.Boolean` rather than the PSI text
+  fallback, and requires a clean exit. CI's `Docker image smoke` job runs the same script on the
+  shipped image, so a bump PR is checked even where the `-for-ide` jars cannot be downloaded.
 - Watch for `NoSuchMethodError` / `NoClassDefFoundError` / immutable-collections shadowing —
   those signal a coupled-pin mismatch, not a code bug. Revisit step 2.
 

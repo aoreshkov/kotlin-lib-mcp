@@ -178,6 +178,14 @@ jobs:
           grep -q '"fetch_library"' <<< "$out" || { echo "tools/list did not list fetch_library"; exit 1; }
           echo "OK: MCP handshake and tools/list answered on the image's JDK"
 
+      # The Analysis API fails at runtime, never at compile time — a coupled pin out of step shows up
+      # as NoSuchMethodError or as silently lost type resolution — and the unit tests only analyze
+      # fixtures. So: fetch and analyze a real library on the shipped JDK, require a signature that
+      # was resolved rather than rendered from text, and require the server to exit by itself once
+      # the client closes stdin (the Analysis API's non-daemon threads used to keep it alive).
+      - name: Server analyzes a real library and exits when the client disconnects
+        run: python3 .github/scripts/analyze-smoke.py docker run --rm -i kotlin-lib-mcp:smoke
+
   # The official MCP conformance suite, run against the shipped distribution over Streamable HTTP.
   # Unit tests pin individual behaviours; this checks the wire against the spec as an independent
   # client sees it (initialize, ping, completion, tools/resources/prompts listing, SSE streams,
