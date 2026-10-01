@@ -107,8 +107,18 @@ class FetchLibraryServiceTest {
         override suspend fun size(): Long = indexes.size.toLong()
     }
 
-    private fun service(fetcher: MavenSourceFetcher, analyzer: SourceAnalyzer) =
-        LibraryService(fetcher = fetcher, analyzer = analyzer, cache = InMemoryCache())
+    private fun service(
+        fetcher: MavenSourceFetcher,
+        analyzer: SourceAnalyzer,
+        maxConcurrentFetches: Int = LibraryService.DEFAULT_MAX_CONCURRENT_FETCHES,
+    ) = LibraryService(
+        fetcher = fetcher,
+        analyzer = analyzer,
+        cache = InMemoryCache(),
+        maxConcurrentFetches = maxConcurrentFetches,
+    )
+
+    private val third = LibraryCoordinate("io.ktor", "ktor-client-okhttp", "3.5.1")
 
     // --- the de-duplication itself ---
 
@@ -149,8 +159,8 @@ class FetchLibraryServiceTest {
         val first = async { service.fetchLibrary(coordinate) }
         val second = async { service.fetchLibrary(other) }
 
-        // Both must be inside `fetch` at once. A single global lock (or a gate keyed on anything
-        // coarser than the coordinate) would hold the second one out and this would read 1.
+        // Both must be inside `fetch` at once — the default allows two. A single global lock (or a
+        // gate keyed on anything coarser than the coordinate) would hold the second one out.
         advanceUntilIdle()
         assertEquals(2, fetcher.fetchCount.get(), "unrelated coordinates must download concurrently")
 
@@ -158,6 +168,73 @@ class FetchLibraryServiceTest {
         fetcher.releaseSignal(other).complete(Unit)
         assertEquals(coordinate, first.await().coordinate)
         assertEquals(other, second.await().coordinate)
+    }
+
+    // --- the concurrency limit ---
+
+    @Test
+    fun fetchesBeyondTheLimitQueueAndSaySo() = runTest {
+        val fetcher = GatedFetcher()
+        val service = service(fetcher, CountingAnalyzer(), maxConcurrentFetches = 1)
+
+        val first = async { service.fetchLibrary(coordinate) }
+        fetcher.started.await()
+        val progress = mutableListOf<FetchProgress>()
+        val second = async { service.fetchLibrary(other) { progress += it } }
+        advanceUntilIdle()
+
+        assertEquals(1, fetcher.fetchCount.get(), "the second library must wait for the only slot")
+        // A queued fetch would otherwise look exactly like a hung one.
+        assertEquals(0, progress.single().step)
+        assertTrue(progress.single().message.startsWith("Queued"), progress.single().message)
+
+        fetcher.releaseSignal(coordinate).complete(Unit)
+        first.await()
+        fetcher.releaseSignal(other).complete(Unit)
+        assertEquals(other, second.await().coordinate)
+        assertEquals(2, fetcher.fetchCount.get())
+        assertEquals(listOf(0, 1, 2, 3), progress.map { it.step }, "progress still only increases")
+    }
+
+    @Test
+    fun aCallerWaitingOnTheGateHoldsNoSlot() = runTest {
+        // A duplicate of an in-flight fetch waits on its coordinate's gate, not in the slot queue,
+        // so it cannot keep a different library from starting.
+        val fetcher = GatedFetcher()
+        val service = service(fetcher, CountingAnalyzer(), maxConcurrentFetches = 2)
+
+        val first = async { service.fetchLibrary(coordinate) }
+        fetcher.started.await()
+        val duplicate = async { service.fetchLibrary(coordinate) }
+        val unrelated = async { service.fetchLibrary(other) }
+        advanceUntilIdle()
+
+        assertEquals(2, fetcher.fetchCount.get(), "the unrelated library got the second slot")
+        fetcher.releaseSignal(coordinate).complete(Unit)
+        fetcher.releaseSignal(other).complete(Unit)
+        first.await()
+        assertTrue(duplicate.await().fromCache)
+        unrelated.await()
+    }
+
+    @Test
+    fun cancellingAQueuedFetchLeavesTheQueueWithoutLeakingASlot() = runTest {
+        val fetcher = GatedFetcher()
+        val service = service(fetcher, CountingAnalyzer(), maxConcurrentFetches = 1)
+
+        val first = async { service.fetchLibrary(coordinate) }
+        fetcher.started.await()
+        val queued = async { service.fetchLibrary(other) }
+        advanceUntilIdle()
+        queued.cancel() // the client withdrew the queued tools/call
+        advanceUntilIdle()
+
+        fetcher.releaseSignal(coordinate).complete(Unit)
+        first.await()
+        // With the slot leaked, or still claimed by the cancelled waiter, this would never start.
+        fetcher.releaseSignal(third).complete(Unit)
+        assertEquals(third, service.fetchLibrary(third).coordinate)
+        assertEquals(2, fetcher.fetchCount.get(), "the cancelled fetch never downloaded")
     }
 
     // --- lifetimes stay independent ---
@@ -228,7 +305,8 @@ class FetchLibraryServiceTest {
                 maxDepth: Int,
             ): DependencyNode = throw UnsupportedOperationException("not used")
         }
-        val service = service(failing, CountingAnalyzer())
+        // One slot: if a throwing fetch kept it, the retry would queue forever.
+        val service = service(failing, CountingAnalyzer(), maxConcurrentFetches = 1)
 
         repeat(2) {
             runCatching { service.fetchLibrary(coordinate) }
@@ -236,6 +314,6 @@ class FetchLibraryServiceTest {
 
         // A transient failure must not be cached as "already tried": the retry really retries.
         assertEquals(2, failing.calls.get(), "a failed fetch is retryable")
-        assertEquals(0, service.inFlightFetchCount, "a throwing fetch still releases its gate")
+        assertEquals(0, service.inFlightFetchCount, "a throwing fetch still releases its gate and slot")
     }
 }

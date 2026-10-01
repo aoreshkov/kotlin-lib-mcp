@@ -104,11 +104,16 @@
           },
           "maxResults": {
             "type": "integer",
-            "description": "Page size, 1-1000 (default 200)"
+            "description": "Page size, 1-1000 (default 200)",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 200
           },
           "offset": {
             "type": "integer",
-            "description": "Number of packages to skip for paging (default 0)"
+            "description": "Number of packages to skip for paging (default 0)",
+            "minimum": 0,
+            "default": 0
           }
         },
         "required": [
@@ -212,15 +217,26 @@
           },
           "visibility": {
             "type": "string",
-            "description": "Visibility filter: 'public' (default), 'internal', or 'all'"
+            "description": "Visibility filter: 'public' (default), 'internal', or 'all'",
+            "enum": [
+              "public",
+              "internal",
+              "all"
+            ],
+            "default": "public"
           },
           "maxResults": {
             "type": "integer",
-            "description": "Page size, 1-500 (default 100)"
+            "description": "Page size, 1-500 (default 100)",
+            "minimum": 1,
+            "maximum": 500,
+            "default": 100
           },
           "offset": {
             "type": "integer",
-            "description": "Number of matching declarations to skip for paging (default 0)"
+            "description": "Number of matching declarations to skip for paging (default 0)",
+            "minimum": 0,
+            "default": 0
           }
         },
         "required": [
@@ -799,11 +815,15 @@
           },
           "maxLines": {
             "type": "integer",
-            "description": "Page size in lines, 1-5000 (default 500)"
+            "description": "Page size in lines, 1-5000 (default 500)",
+            "minimum": 1,
+            "maximum": 5000,
+            "default": 500
           },
           "startLine": {
             "type": "integer",
-            "description": "1-based line to start at, absolute in the file (default: line 1, or the declaration's first line when using 'fqName')"
+            "description": "1-based line to start at, absolute in the file (default: line 1, or the declaration's first line when using 'fqName')",
+            "minimum": 1
           }
         },
         "required": [
@@ -858,11 +878,15 @@
           },
           "regex": {
             "type": "boolean",
-            "description": "Treat 'query' as a regular expression (default false)"
+            "description": "Treat 'query' as a regular expression (default false)",
+            "default": false
           },
           "maxResults": {
             "type": "integer",
-            "description": "Result cap, 1-200 (default 50)"
+            "description": "Result cap, 1-200 (default 50)",
+            "minimum": 1,
+            "maximum": 200,
+            "default": 50
           }
         },
         "required": [
@@ -947,15 +971,23 @@
           },
           "maxResults": {
             "type": "integer",
-            "description": "Files per page, 1-50 (default 20)"
+            "description": "Files per page, 1-50 (default 20)",
+            "minimum": 1,
+            "maximum": 50,
+            "default": 20
           },
           "offset": {
             "type": "integer",
-            "description": "Number of changed files to skip for paging (default 0)"
+            "description": "Number of changed files to skip for paging (default 0)",
+            "minimum": 0,
+            "default": 0
           },
           "contextLines": {
             "type": "integer",
-            "description": "Unchanged lines of context around each hunk, 0-10 (default 3)"
+            "description": "Unchanged lines of context around each hunk, 0-10 (default 3)",
+            "minimum": 0,
+            "maximum": 10,
+            "default": 3
           }
         },
         "required": [
@@ -1063,11 +1095,17 @@
           },
           "depth": {
             "type": "integer",
-            "description": "Transitive resolution depth, 1-5 (default 1 = direct only)"
+            "description": "Transitive resolution depth, 1-5 (default 1 = direct only)",
+            "minimum": 1,
+            "maximum": 5,
+            "default": 1
           },
           "maxNodes": {
             "type": "integer",
-            "description": "Nodes to return, 1-1000 (default 200)"
+            "description": "Nodes to return, 1-1000 (default 200)",
+            "minimum": 1,
+            "maximum": 1000,
+            "default": 200
           }
         },
         "required": [
@@ -1170,11 +1208,16 @@
           },
           "maxResults": {
             "type": "integer",
-            "description": "Page size, 1-500 (default 100)"
+            "description": "Page size, 1-500 (default 100)",
+            "minimum": 1,
+            "maximum": 500,
+            "default": 100
           },
           "offset": {
             "type": "integer",
-            "description": "Number of versions to skip for paging (default 0)"
+            "description": "Number of versions to skip for paging (default 0)",
+            "minimum": 0,
+            "default": 0
           }
         },
         "required": [
@@ -1228,7 +1271,8 @@
           },
           "includePreReleases": {
             "type": "boolean",
-            "description": "Treat the newest pre-release as 'the latest' (default false)"
+            "description": "Treat the newest pre-release as 'the latest' (default false)",
+            "default": false
           }
         },
         "required": [

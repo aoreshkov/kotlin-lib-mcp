@@ -14,8 +14,13 @@ fun Server.registerListPackagesTool(service: LibraryService) {
             "page; advance 'offset' to fetch the rest).",
         inputSchema = coordinateSchema(
             extraProps = mapOf(
-                "maxResults" to intProp("Page size, 1-1000 (default 200)"),
-                "offset" to intProp("Number of packages to skip for paging (default 0)"),
+                "maxResults" to intProp(
+                    "Page size, 1-1000 (default 200)",
+                    minimum = 1,
+                    maximum = LibraryService.MAX_PACKAGE_RESULTS,
+                    default = LibraryService.DEFAULT_PACKAGE_RESULTS,
+                ),
+                "offset" to intProp("Number of packages to skip for paging (default 0)", minimum = 0, default = 0),
             ),
         ),
         title = "List packages",
@@ -23,12 +28,12 @@ fun Server.registerListPackagesTool(service: LibraryService) {
         toolAnnotations = LOCAL_READ_ONLY,
         icon = Glyph.Packages,
     ) { request ->
-        guarded(request) {
+        guarded(request, revealInternalErrors = service.exposeLocalPaths) {
             val args = request.args()
             toolResult(
                 service.listPackages(
                     coordinate = args.coordinateArg(),
-                    maxResults = args.intArg("maxResults") ?: 200,
+                    maxResults = args.intArg("maxResults") ?: LibraryService.DEFAULT_PACKAGE_RESULTS,
                     offset = args.intArg("offset") ?: 0,
                 )
             )

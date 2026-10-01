@@ -138,7 +138,9 @@ docker run --rm -p 127.0.0.1:3000:3000 -v kotlin-lib-mcp-cache:/home/mcp/.cache 
 CLI flags: `--transport stdio|http`, `--port <int>` (default 3000), `--host <addr>` (http bind
 address; default `127.0.0.1`), `--allowed-host <host>` / `--allowed-origin <url>` (repeatable;
 extend the http transport's localhost-only defaults), `--cache-dir <path>`, `--repo <url>`
-(repeatable; Maven Central is the default), `--forward-logs-to-client` (opt into mirroring logs to
+(repeatable; Maven Central is the default), `--max-concurrent-fetches <int>` (libraries that may
+download and analyze at once, default 2; further `fetch_library` calls queue and say so in their
+progress), `--forward-logs-to-client` (opt into mirroring logs to
 the client; off by default, stderr-only), `--otel` (opt into OTLP/HTTP trace export; off by
 default — see [Telemetry](#telemetry)), `--tasks` (opt into task-augmented `fetch_library`; off by
 default — see [Tasks](#tasks)), `--help`.

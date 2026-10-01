@@ -33,6 +33,7 @@ import kotlin.io.path.exists
 import kotlin.io.path.readText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.Semaphore
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
@@ -109,10 +110,32 @@ class LibraryService(
      * path is both usable and already within the caller's reach. Over HTTP the caller may be on
      * another machine: the path would be useless to it and would disclose the server's layout for
      * no benefit, so it stays `null`.
+     *
+     * The same reasoning decides how much of an *unexpected* tool failure the client is shown (see
+     * `guarded`): everything over stdio, only the exception type otherwise.
      */
-    private val exposeLocalPaths: Boolean = false,
+    internal val exposeLocalPaths: Boolean = false,
+    /**
+     * How many fetches of *different* coordinates may download and analyze at once; the rest queue.
+     *
+     * The gate below already stops two callers fetching the same coordinate twice, but nothing else
+     * bounded the work: since SDK 0.15.0 dispatches requests concurrently, an agent issuing parallel
+     * `fetch_library` calls for N libraries ran N Analysis API sessions at once, each holding a whole
+     * library's sources in memory. The spec makes rate-limiting tool invocations the server's job;
+     * this bounds the one invocation that is expensive.
+     */
+    maxConcurrentFetches: Int = DEFAULT_MAX_CONCURRENT_FETCHES,
 ) {
+    init {
+        require(maxConcurrentFetches >= 1) {
+            "maxConcurrentFetches must be at least 1, got $maxConcurrentFetches"
+        }
+    }
+
     private val log = Logger.withTag("LibraryService")
+
+    /** Taken after the per-coordinate gate, so a duplicate caller waiting on the gate holds no slot. */
+    private val fetchSlots = Semaphore(maxConcurrentFetches)
 
     /** One in-flight fetch of one coordinate at a time; see [withFetchGate]. */
     private class FetchGate {
@@ -135,8 +158,9 @@ class LibraryService(
      * [withFetchGate] and then finds the index the first one cached, so it reports `fromCache`
      * (truthfully — by the time it returned, that is where the index came from) without repeating
      * the download or the Analysis API pass, which is the expensive half. Different coordinates
-     * never wait on each other. See [withFetchGate] for why this is a gate rather than a shared
-     * `Deferred` of the in-flight result.
+     * never wait on each other's gate, but at most `maxConcurrentFetches` of them run at once; a
+     * caller beyond that is told it is queued (progress step 0) and waits for a slot. See
+     * [withFetchGate] for why this is a gate rather than a shared `Deferred` of the in-flight result.
      */
     suspend fun fetchLibrary(
         coordinate: LibraryCoordinate,
@@ -149,7 +173,34 @@ class LibraryService(
             // we were about to compute; without this the gate would serialize the duplicates
             // instead of eliminating them.
             cache.get(coordinate)?.let { return@withFetchGate it.summary(fromCache = true) }
-            fetchUncached(coordinate, onProgress)
+            withFetchSlot(coordinate, onProgress) { fetchUncached(coordinate, onProgress) }
+        }
+    }
+
+    /**
+     * Runs [body] holding one of the `maxConcurrentFetches` slots. A caller that has to wait says so
+     * first, as progress step 0 — a fetch that is queued looks exactly like one that hung, otherwise.
+     * Waiting is cancellable and takes no slot, so a withdrawn `fetch_library` simply leaves the queue.
+     */
+    private suspend fun <T> withFetchSlot(
+        coordinate: LibraryCoordinate,
+        onProgress: suspend (FetchProgress) -> Unit,
+        body: suspend () -> T,
+    ): T {
+        if (!fetchSlots.tryAcquire()) {
+            onProgress(
+                FetchProgress(
+                    0,
+                    FETCH_STEPS,
+                    "Queued: other fetches are running; $coordinate starts when one finishes",
+                ),
+            )
+            fetchSlots.acquire()
+        }
+        try {
+            return body()
+        } finally {
+            fetchSlots.release()
         }
     }
 
@@ -765,7 +816,13 @@ class LibraryService(
     private suspend fun localSourceRoot(coordinate: LibraryCoordinate): String? =
         if (!exposeLocalPaths) null else runCatching { sourceRoot(coordinate).toString() }.getOrNull()
 
-    private companion object {
+    /**
+     * Limits and defaults. `internal` rather than private because the tools declare the same numbers
+     * as `minimum`/`maximum`/`default` in their input schemas; reading them from here keeps the
+     * advertised bounds and the enforced ones from drifting apart.
+     */
+    internal companion object {
+        const val DEFAULT_SEARCH_RESULTS = 50
         const val MAX_SEARCH_RESULTS = 200
 
         /** Upper bound on a caller-supplied regex; far above any pattern a search needs. */
@@ -818,6 +875,7 @@ class LibraryService(
         /** Nodes returned by `get_dependencies`; `depth` bounds resolution, this bounds output. */
         const val DEFAULT_DEPENDENCY_NODES = 200
         const val MAX_DEPENDENCY_NODES = 1_000
+        const val DEFAULT_DEPENDENCY_DEPTH = 1
         const val MAX_DEPENDENCY_DEPTH = 5
         const val LATEST = "latest"
 
@@ -827,5 +885,12 @@ class LibraryService(
          */
         const val DEFAULT_VERSION_OPTIONS = 12
         const val FETCH_STEPS = 3
+
+        /**
+         * Two keeps one library analyzing while another downloads, without letting a burst of
+         * parallel calls hold a dozen libraries' sources in memory at once. Raise it with
+         * `--max-concurrent-fetches` on a machine with memory to spare.
+         */
+        const val DEFAULT_MAX_CONCURRENT_FETCHES = 2
     }
 }

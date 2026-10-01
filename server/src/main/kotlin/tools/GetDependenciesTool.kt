@@ -16,8 +16,18 @@ fun Server.registerGetDependenciesTool(service: LibraryService) {
             "'totalNodes' says how large it really is.",
         inputSchema = coordinateSchema(
             extraProps = mapOf(
-                "depth" to intProp("Transitive resolution depth, 1-5 (default 1 = direct only)"),
-                "maxNodes" to intProp("Nodes to return, 1-1000 (default 200)"),
+                "depth" to intProp(
+                    "Transitive resolution depth, 1-5 (default 1 = direct only)",
+                    minimum = 1,
+                    maximum = LibraryService.MAX_DEPENDENCY_DEPTH,
+                    default = LibraryService.DEFAULT_DEPENDENCY_DEPTH,
+                ),
+                "maxNodes" to intProp(
+                    "Nodes to return, 1-1000 (default 200)",
+                    minimum = 1,
+                    maximum = LibraryService.MAX_DEPENDENCY_NODES,
+                    default = LibraryService.DEFAULT_DEPENDENCY_NODES,
+                ),
             ),
         ),
         title = "Get dependency tree",
@@ -26,13 +36,13 @@ fun Server.registerGetDependenciesTool(service: LibraryService) {
         toolAnnotations = REPOSITORY_READ_ONLY,
         icon = Glyph.Dependencies,
     ) { request ->
-        guarded(request) {
+        guarded(request, revealInternalErrors = service.exposeLocalPaths) {
             val args = request.args()
             toolResult(
                 service.getDependencies(
                     coordinate = args.coordinateArg(),
-                    depth = args.intArg("depth") ?: 1,
-                    maxNodes = args.intArg("maxNodes") ?: 200,
+                    depth = args.intArg("depth") ?: LibraryService.DEFAULT_DEPENDENCY_DEPTH,
+                    maxNodes = args.intArg("maxNodes") ?: LibraryService.DEFAULT_DEPENDENCY_NODES,
                 )
             )
         }

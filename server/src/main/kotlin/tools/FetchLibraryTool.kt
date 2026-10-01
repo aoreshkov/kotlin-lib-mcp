@@ -66,7 +66,7 @@ fun Server.registerFetchLibraryTool(
         // actually honors a task-augmented call depends on `--tasks`; see `tasks/TaskHandlers.kt`.
         execution = ToolExecution(taskSupport = TaskSupport.Optional),
     ) { request ->
-        guarded(request) {
+        guarded(request, revealInternalErrors = service.exposeLocalPaths) {
             val spec = request.args().requireStringArg("coordinate").parseCoordinateSpec()
             // Asks the user which version they meant when the coordinate left it open and the
             // client supports elicitation; otherwise resolves latest stable silently, as before.

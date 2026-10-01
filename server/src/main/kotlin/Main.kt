@@ -24,6 +24,9 @@ private val USAGE = """
       --allowed-origin <url>   Extra Origin the http transport accepts; repeatable
       --cache-dir <path>       Cache directory (default: OS cache dir + /kotlin-lib-mcp)
       --repo <url>             Extra Maven repository; repeatable (default: Maven Central)
+      --max-concurrent-fetches <int>
+                               Libraries that may download and analyze at once; further
+                               fetch_library calls queue (default: ${LibraryService.DEFAULT_MAX_CONCURRENT_FETCHES})
       --forward-logs-to-client Mirror logs to MCP clients via the (deprecated) `logging` capability.
                                Off by default: logs go to stderr only, which the spec blesses for all
                                stdio logging.
@@ -66,7 +69,7 @@ private data class CliOptions(
     val config: ServerConfig = ServerConfig(),
 )
 
-/** Tiny hand-rolled parser — seven flags don't warrant a dependency. [fail]s on anything unknown. */
+/** Tiny hand-rolled parser — a dozen flags don't warrant a dependency. [fail]s on anything unknown. */
 private fun parseArgs(args: Array<String>): CliOptions {
     var options = CliOptions()
     var i = 0
@@ -101,6 +104,11 @@ private fun parseArgs(args: Array<String>): CliOptions {
                 options.copy(config = options.config.copy(cacheDir = Path.of(value(arg))))
             "--repo" -> options =
                 options.copy(config = options.config.copy(repos = options.config.repos + value(arg)))
+            "--max-concurrent-fetches" -> {
+                val limit = value(arg).toIntOrNull()?.takeIf { it >= 1 }
+                    ?: fail("Invalid --max-concurrent-fetches (expected a whole number, at least 1)")
+                options = options.copy(config = options.config.copy(maxConcurrentFetches = limit))
+            }
             "--forward-logs-to-client" -> options =
                 options.copy(config = options.config.copy(forwardLogsToClient = true))
             "--otel" -> options = options.copy(config = options.config.copy(otel = true))

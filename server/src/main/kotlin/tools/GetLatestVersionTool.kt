@@ -20,7 +20,10 @@ fun Server.registerGetLatestVersionTool(service: LibraryService) {
             schema = JSON_SCHEMA_DIALECT,
             properties = buildJsonObject {
                 put("coordinate", stringProp("Maven coordinate 'group:artifact' or 'group:artifact:version'"))
-                put("includePreReleases", boolProp("Treat the newest pre-release as 'the latest' (default false)"))
+                put(
+                    "includePreReleases",
+                    boolProp("Treat the newest pre-release as 'the latest' (default false)", default = false),
+                )
             },
             required = listOf("coordinate"),
         ),
@@ -29,7 +32,7 @@ fun Server.registerGetLatestVersionTool(service: LibraryService) {
         toolAnnotations = REPOSITORY_READ_ONLY,
         icon = Glyph.Latest,
     ) { request ->
-        guarded(request) {
+        guarded(request, revealInternalErrors = service.exposeLocalPaths) {
             val args = request.args()
             val spec = args.requireStringArg("coordinate").parseCoordinateSpec()
             val includePreReleases = args.booleanArg("includePreReleases") ?: false

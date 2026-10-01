@@ -7,7 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **At most two libraries download and analyze at once** (`--max-concurrent-fetches <int>` to
+  change it). Concurrent calls for the *same* coordinate were already collapsed into one, but
+  nothing bounded calls for different ones: since SDK 0.15.0 runs requests concurrently, an agent
+  issuing a parallel batch of `fetch_library` calls started one Analysis API session per library,
+  each holding that library's sources in memory. Calls beyond the limit now queue, and say so with
+  a progress step 0 (`Queued: …`) so that a waiting fetch does not look like a hung one. A queued
+  call that the client cancels leaves the queue without ever downloading. Fetches that only wait on
+  an in-flight fetch of the same coordinate do not occupy a slot.
+
 ### Changed
+- **Tool arguments are validated.** A misspelt argument (`max_results` for `maxResults`) or a value
+  of the wrong type (`"maxResults": "lots"`, `"regex": "yes"`) used to be ignored, so the call ran on
+  the default while the model believed it had asked for something else. Both are now `isError`
+  results naming the problem — and, for an unknown argument, the ones the tool does accept — which is
+  what the MCP spec prescribes for invalid input. Unambiguous encodings still work: `"10"` or `10.0`
+  for an integer, `"true"` for a boolean.
+- **Input schemas declare their bounds.** Every integer argument carries `minimum`, `maximum` (except
+  offsets and line numbers) and `default`; `visibility` is an `enum`; optional booleans declare
+  `default: false`. The numbers come from the same constants the server enforces, so the advertised
+  and the applied limits cannot drift. Out-of-range values are still clamped, as before.
+- **Unexpected tool failures no longer expose server internals over HTTP.** Every exception's
+  message used to be returned to the client as is, and an IO failure or an Analysis API crash can
+  carry absolute paths in the server's cache — the layout `extractedDir` already withholds from HTTP
+  clients. Messages this server writes for the caller (bad arguments, a library not fetched yet,
+  missing sources, a checksum mismatch, …) are still returned verbatim on every transport; anything
+  else now reaches an HTTP client as `<tool> failed with an internal error (<ExceptionType>)`, while
+  stdio clients still see the full message. The detail is logged to stderr in both cases, and is
+  still recorded on the trace span under `--otel`.
 - **Tool results and resource reads are compact JSON.** The text block was pretty-printed, and
   indentation alone was 22–41% of its characters on the captured responses the plugin evals mock
   (`list_declarations` at the top of that range) — paid on every call, since the text block is what a

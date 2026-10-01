@@ -23,6 +23,12 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
+import kotlin.test.assertTrue
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 
 /**
  * Every registered tool must carry the metadata the MCP spec encourages: a display title,
@@ -196,5 +202,42 @@ class ToolRegistrationTest {
         // aimed at the model reading it. A new tool of that kind belongs in this set.
         val labelled = tools().filterValues { it.description.orEmpty().endsWith(THIRD_PARTY_TEXT_NOTE) }.keys
         assertEquals(setOf("get_kdoc", "get_source", "search_source", "diff_versions"), labelled)
+    }
+
+    @Test
+    fun everyIntegerArgumentDeclaresItsBoundsAndItsDescriptionAgrees() {
+        // Values with no meaningful ceiling; everything else is a page size or depth with a cap.
+        val unbounded = setOf("offset", "startLine")
+        var checked = 0
+        tools().forEach { (name, tool) ->
+            tool.inputSchema.properties.orEmpty().forEach property@{ (arg, element) ->
+                val property = element.jsonObject
+                if (property["type"]?.jsonPrimitive?.content != "integer") return@property
+                checked++
+                val where = "$name.$arg"
+                val description = property.getValue("description").jsonPrimitive.content
+                val minimum = assertNotNull(property["minimum"], "$where must declare a minimum").jsonPrimitive.int
+                when (val maximum = property["maximum"]?.jsonPrimitive?.int) {
+                    null -> assertTrue(arg in unbounded, "$where must declare a maximum")
+                    // Clients that drop schema keywords still read the prose, so it must not drift.
+                    else -> assertTrue(
+                        "$minimum-$maximum" in description,
+                        "$where: '$description' vs $minimum-$maximum",
+                    )
+                }
+                property["default"]?.jsonPrimitive?.int?.let { default ->
+                    assertTrue("default $default" in description, "$where: '$description' vs default $default")
+                }
+            }
+        }
+        assertTrue(checked >= 14, "expected every paged tool's integers, saw $checked")
+    }
+
+    @Test
+    fun visibilityIsAnEnumWithItsDefault() {
+        val visibility = tools().getValue("list_declarations").inputSchema.properties!!
+            .getValue("visibility").jsonObject
+        assertEquals(JsonArray(listOf("public", "internal", "all").map(::JsonPrimitive)), visibility["enum"])
+        assertEquals(JsonPrimitive("public"), visibility["default"])
     }
 }

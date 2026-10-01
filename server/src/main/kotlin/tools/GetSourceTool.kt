@@ -17,10 +17,17 @@ fun Server.registerGetSourceTool(service: LibraryService) {
             extraProps = mapOf(
                 "path" to stringProp("Source file path relative to the extracted sources root"),
                 "fqName" to stringProp("Fully-qualified declaration name to slice out of its file"),
-                "maxLines" to intProp("Page size in lines, 1-5000 (default 500)"),
+                "maxLines" to intProp(
+                    "Page size in lines, 1-5000 (default 500)",
+                    minimum = 1,
+                    maximum = LibraryService.MAX_SOURCE_LINES,
+                    default = LibraryService.DEFAULT_SOURCE_LINES,
+                ),
                 "startLine" to intProp(
                     "1-based line to start at, absolute in the file (default: line 1, or the " +
-                        "declaration's first line when using 'fqName')"
+                        "declaration's first line when using 'fqName')",
+                    // No schema default: it depends on whether 'path' or 'fqName' was given.
+                    minimum = 1,
                 ),
             ),
         ),
@@ -29,14 +36,14 @@ fun Server.registerGetSourceTool(service: LibraryService) {
         toolAnnotations = LOCAL_READ_ONLY,
         icon = Glyph.Source,
     ) { request ->
-        guarded(request) {
+        guarded(request, revealInternalErrors = service.exposeLocalPaths) {
             val args = request.args()
             toolResult(
                 service.getSource(
                     coordinate = args.coordinateArg(),
                     path = args.stringArg("path"),
                     fqName = args.stringArg("fqName"),
-                    maxLines = args.intArg("maxLines") ?: 500,
+                    maxLines = args.intArg("maxLines") ?: LibraryService.DEFAULT_SOURCE_LINES,
                     startLine = args.intArg("startLine"),
                 )
             )
