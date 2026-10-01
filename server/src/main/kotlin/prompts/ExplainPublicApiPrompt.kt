@@ -49,19 +49,26 @@ fun Server.registerExplainPublicApiPrompt(service: LibraryService) {
             )
             val packageName = request.arguments?.get("package")?.takeIf { it.isNotBlank() }
 
-            val declarations = service
-                .listDeclarations(coordinate, packageName, visibility = "public")
-                .declarations
+            // The page size has to be asked for: `listDeclarations` is paged with a default smaller
+            // than this cap, and its page alone cannot say what was left out — `totalCount` can.
+            val page = service.listDeclarations(
+                coordinate,
+                packageName,
+                visibility = "public",
+                maxResults = MAX_DECLARATIONS,
+            )
+            val declarations = page.declarations
             val scope = packageName?.let { "package $it of $coordinate" } ?: "$coordinate"
-            val apiContext = declarations.take(MAX_DECLARATIONS).joinToString("\n") { symbol ->
+            val apiContext = declarations.joinToString("\n") { symbol ->
                 buildString {
                     append("- ").append(symbol.signature)
                     symbol.kdoc?.summary?.let { append("  // ").append(it) }
                 }
             }
+            val omitted = page.totalCount - declarations.size
             val truncationNote =
-                if (declarations.size > MAX_DECLARATIONS) {
-                    "\n(${declarations.size - MAX_DECLARATIONS} more declarations omitted — " +
+                if (omitted > 0) {
+                    "\n($omitted more declarations omitted — " +
                         "use the list_declarations tool for the full list.)"
                 } else ""
 

@@ -19,6 +19,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pulls in deliberately stay at its own 3.5.1 — the reasoning is in `gradle/libs.versions.toml`.
 
 ### Fixed
+- **`explain_public_api` no longer drops declarations without saying so.** The prompt meant to
+  embed up to 150 public declarations and note how many it left out, but it took them from
+  `list_declarations`' default page of 100 — so a library with more than 100 public declarations got
+  an incomplete list, the "N more omitted" note could never fire, and the model was still told to
+  base its explanation strictly on what it was given. It now asks for its own cap and counts the
+  omission from `totalCount`.
 - **A hung DNS lookup no longer outlives `fetch_library`'s timeout.** CIO resolves hostnames through
   the platform name service, which blocks *uninterruptibly*, so a stuck lookup sat underneath
   `connectTimeoutMillis` where no Ktor timeout could reach it and a fetch could hang well past 15
