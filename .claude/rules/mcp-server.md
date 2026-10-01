@@ -15,8 +15,9 @@ matching `structuredContent`. When adding a tool, pass all four to `addTool` —
 
 **Arguments are validated, never quietly defaulted.** The SDK checks nothing against `inputSchema`,
 so the server does: `addTool` (the `ToolSupport.kt` extension) rejects any argument the schema does
-not declare — its `ToolSchema` cannot say `additionalProperties: false`, so this is the only place
-that check can live, and it means a new argument must be in the schema to be accepted at all. Read
+not declare — its `ToolSchema` cannot say `additionalProperties: false` (tracked upstream as
+`kotlin-sdk#300`, milestone 0.24.0), so this is the only place that check can live, and it means a
+new argument must be in the schema to be accepted at all. Read
 arguments with the typed readers (`stringArg`/`intArg`/`booleanArg`), which throw on a wrong type
 rather than returning null into a `?: default`. Declare integers with `intProp(description,
 minimum, maximum, default)` fed from `LibraryService`'s limit constants, so the advertised bounds are

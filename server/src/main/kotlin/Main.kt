@@ -130,19 +130,30 @@ private fun fail(message: String): Nothing {
 
 fun main(args: Array<String>) {
     val options = parseArgs(args)
-    runBlocking {
-        McpServerFactory.create(options.config).use { handle ->
-            when (options.transport) {
-                TransportKind.STDIO -> runStdioServer(handle.server, handle.taskStore)
-                TransportKind.HTTP -> runHttpServer(
-                    server = handle.server,
-                    port = options.port,
-                    host = options.host,
-                    allowedHosts = options.allowedHosts,
-                    allowedOrigins = options.allowedOrigins,
-                    taskStore = handle.taskStore,
-                )
+    try {
+        runBlocking {
+            McpServerFactory.create(options.config).use { handle ->
+                when (options.transport) {
+                    TransportKind.STDIO -> runStdioServer(handle.server, handle.taskStore)
+                    TransportKind.HTTP -> runHttpServer(
+                        server = handle.server,
+                        port = options.port,
+                        host = options.host,
+                        allowedHosts = options.allowedHosts,
+                        allowedOrigins = options.allowedOrigins,
+                        taskStore = handle.taskStore,
+                    )
+                }
             }
         }
+    } catch (e: Throwable) {
+        e.printStackTrace() // stderr: stdout is the protocol channel
+        exitProcess(1)
     }
+    // Exit explicitly rather than by returning. The transport has closed and `close()` has already
+    // flushed telemetry, persisted tasks and released the HTTP client — but the Analysis API leaves an
+    // IntelliJ pooled thread behind, and it is not a daemon. Returning would keep the JVM (and a
+    // `docker run --rm` container) alive indefinitely after the first library analyzed, while MCP's
+    // stdio shutdown expects the server to exit once the client closes its stdin.
+    exitProcess(0)
 }

@@ -22,6 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an in-flight fetch of the same coordinate do not occupy a slot.
 
 ### Changed
+- **The Docker image starts about 3.5× faster.** It now ships a JDK 25 AOT cache, built during
+  `docker build` from a training session of the handshake and list calls a client makes on connect:
+  `initialize` is answered in ~0.3 s instead of ~1.1 s (median of cold starts on Temurin 25, with G1
+  or SerialGC alike). The cache is per-architecture and adds ~44 MB to each image. If it ever cannot
+  be used, the JVM says so on stderr and starts without it.
+- **The JVM's own log output goes to stderr** in every distribution (`-Xlog:disable
+  -Xlog:all=warning:stderr`). It defaults to stdout, which over stdio is the protocol channel.
 - **The library index resource is a bounded summary.** `kotlinlib://{group}/{artifact}/{version}/index`
   returned the whole parsed index — every declaration with its full KDoc — which is unbounded in the
   size of the library, and a resource has no arguments to page with: attaching it to a conversation
@@ -72,6 +79,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pulls in deliberately stay at its own 3.5.1 — the reasoning is in `gradle/libs.versions.toml`.
 
 ### Fixed
+- **The stdio server exits when its client disconnects.** After the first library it analyzed, the
+  process never exited once the client closed stdin: the Analysis API leaves an IntelliJ pooled
+  thread behind that is not a daemon, so the JVM — and, under `docker run --rm`, the container —
+  stayed up until the client escalated to a signal. MCP's stdio shutdown expects the server to exit
+  on its own; it now does, as soon as the transport closes and the cache, task records and
+  telemetry have been flushed.
 - **`explain_public_api` no longer drops declarations without saying so.** The prompt meant to
   embed up to 150 public declarations and note how many it left out, but it took them from
   `list_declarations`' default page of 100 — so a library with more than 100 public declarations got

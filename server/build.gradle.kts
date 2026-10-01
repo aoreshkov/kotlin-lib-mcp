@@ -86,4 +86,8 @@ tasks.test {
 
 application {
     mainClass = "app.oreshkov.kotlinlibmcp.server.MainKt"
+    // The JVM's unified logging writes to *stdout* by default — and stdout is the stdio protocol
+    // channel. An unusable AOT cache, for one, prints `[error][aot] …` lines there before `main`
+    // runs. Route every JVM log line to stderr instead, for every launch of the distribution.
+    applicationDefaultJvmArgs = listOf("-Xlog:disable", "-Xlog:all=warning:stderr")
 }

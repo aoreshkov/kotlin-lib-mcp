@@ -41,6 +41,20 @@ For `$ARGUMENTS` (or the intended target Kotlin version), verify against officia
 - Does the new Kotlin change the **caffeine** version its `-for-ide` jars expect? (Check the
   Kotlin build's own bundled version.) If so, update the `caffeine` pin to match and update
   the comment.
+- Did the **`kotlin-compiler` fat jar drop anything** the `-for-ide` jars rely on? Kotlin moves
+  modules between that jar and the `-for-ide` set (`prepare/compiler` vs
+  `prepare/ide-plugin-dependencies` in its build), and the fat jar is ProGuard-shrunk against only
+  what it contains. Diff the two versions' package lists
+  (`unzip -Z1 … | grep '\.class$' | sed 's|/[^/]*$||' | sort -u`) before trusting a green compile.
+  **Known blocker for 2.4.20+:** it moved the decompiler (`org.jetbrains.kotlin.analysis.decompiler.*`)
+  out of `kotlin-compiler` into `kotlin-compiler-common-for-ide`, and the shrinker then stripped
+  IntelliJ members only the decompiler used (`FileType.getDefaultExtension()`). Pulling
+  `kotlin-compiler-common-for-ide` alongside the fat jar trades the `NoClassDefFoundError:
+  ClsKotlinBinaryClassCache` for a `NoSuchMethodError` (tried, CI-verified). Getting past 2.4.10 needs
+  an unshrunk classpath — the IntelliJ platform jars plus `kotlin-compiler-*-for-ide` instead of
+  `kotlin-compiler` — or the `org.jetbrains.kotlin:kotlin-analysis-api*` artifacts 2.4.20's build
+  defines (`prepare/analysis-api/`), once they are published. detekt hit the same wall
+  (detekt/detekt#9734).
 - Is **KT-81457** fixed in this version, making the `intellijCoroutines` fork pin
   unnecessary? If yes, that's a chance to drop the fork; if not, keep the pin.
 - Compose Multiplatform ↔ Kotlin compatibility: pick the `compose` version aligned to the
@@ -62,9 +76,12 @@ In `gradle/libs.versions.toml` **only** (never inline versions):
 A green compile is **not** sufficient — the Analysis API fails at runtime, not compile time.
 
 - `./gradlew :core:build` — compiles and runs `core` tests, including `SourceAnalyzer` tests.
-- Run the analyzer end-to-end on a real library so type resolution is exercised, e.g. fetch a
-  known library via the MCP tools (`fetch_library` then `get_api_signature` / `get_kdoc`) and
-  confirm signatures resolve types (not just PSI text fallback).
+- Run the analyzer end-to-end on a real library so type resolution is exercised:
+  `./gradlew :server:installDist` then
+  `python3 .github/scripts/analyze-smoke.py server/build/install/server/bin/server`. It fetches
+  `ktor-client-core`, requires a signature resolved to `kotlin.Boolean` rather than the PSI text
+  fallback, and requires a clean exit. CI's `Docker image smoke` job runs the same script on the
+  shipped image, so a bump PR is checked even where the `-for-ide` jars cannot be downloaded.
 - Watch for `NoSuchMethodError` / `NoClassDefFoundError` / immutable-collections shadowing —
   those signal a coupled-pin mismatch, not a code bug. Revisit step 2.
 

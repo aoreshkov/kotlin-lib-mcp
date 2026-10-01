@@ -67,7 +67,9 @@ changes are also checked by CI's `conformance` job — the official MCP conforma
   `./gradlew updateKotlinAbi` and a committed `core/api/core.api`. The DSL is still
   `@ExperimentalAbiValidation`, so treat a Kotlin bump as able to break it.
 - **stdio transport: NEVER write to stdout** except MCP protocol frames. All logging goes to
-  stderr or a file, or it corrupts the protocol stream.
+  stderr or a file, or it corrupts the protocol stream. That includes the JVM's own unified logging,
+  which defaults to stdout (an unusable AOT cache prints `[error][aot]` there before `main` runs):
+  `applicationDefaultJvmArgs` in `server/build.gradle.kts` routes it to stderr — keep it.
 - **Core parsing/fetch gotchas** (Analysis API isolation, per-target KMP source jars) live in
   `.claude/rules/analysis-api.md` — loaded automatically when you edit `core/` sources.
 - **Cache first.** Downloads + parsed index are cached on disk keyed by
@@ -178,6 +180,18 @@ Three decisions in this repo are load-bearing for that migration. Keep them:
   who asked for it.
 - **`logging` stays behind `--forward-logs-to-client`, stderr stays primary.** 2026-07-28 deprecates
   Logging (alongside Roots and Sampling) on a ≥12-month window.
+
+What each milestone touches here, so a release lands on a map rather than a search:
+
+- **0.17.0** (2026-07-28 wire): session identity — below; plus `ttlMs`/`cacheScope` on list and
+  `resources/read` results, which the SDK should set rather than us.
+- **0.18.0** (MRTR): `elicitation/VersionElicitation.kt`, and nothing else.
+- **0.20.0** (Ktor split): `transport/HttpTransport.kt`'s `mcpStreamableHttp` import, plus a
+  `kotlin-sdk-server-ktor` catalog entry.
+- **0.23.0** (tasks extension): `tasks/`, all behind `--tasks`.
+- **0.24.0** (typed schemas, `kotlin-sdk#300`, which adds `additionalProperties`): declare
+  `additionalProperties: false` on every input schema. Keep `addTool`'s unknown-argument check
+  unless the SDK starts validating arguments itself.
 
 The exposure to look at first, when 0.17.0 lands, is **session identity** — 2026-07-28 retires
 `initialize`/`initialized` and `Mcp-Session-Id`, moving identity and capabilities into per-request
