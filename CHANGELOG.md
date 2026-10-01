@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **At most two libraries download and analyze at once** (`--max-concurrent-fetches <int>` to
+  change it). Concurrent calls for the *same* coordinate were already collapsed into one, but
+  nothing bounded calls for different ones: since SDK 0.15.0 runs requests concurrently, an agent
+  issuing a parallel batch of `fetch_library` calls started one Analysis API session per library,
+  each holding that library's sources in memory. Calls beyond the limit now queue, and say so with
+  a progress step 0 (`Queued: …`) so that a waiting fetch does not look like a hung one. A queued
+  call that the client cancels leaves the queue without ever downloading. Fetches that only wait on
+  an in-flight fetch of the same coordinate do not occupy a slot.
+
 ### Changed
 - **Tool arguments are validated.** A misspelt argument (`max_results` for `maxResults`) or a value
   of the wrong type (`"maxResults": "lots"`, `"regex": "yes"`) used to be ignored, so the call ran on

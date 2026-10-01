@@ -140,6 +140,11 @@ data class ServerConfig(
      * `LibraryService.exposeLocalPaths`.
      */
     val transport: String = STDIO_TRANSPORT,
+    /**
+     * Fetches of different coordinates that may download and analyze at once (`--max-concurrent-fetches`);
+     * the rest queue. See `LibraryService`'s parameter of the same name.
+     */
+    val maxConcurrentFetches: Int = LibraryService.DEFAULT_MAX_CONCURRENT_FETCHES,
 )
 
 /**
@@ -189,6 +194,7 @@ object McpServerFactory {
             repos = config.repos,
             // Only a stdio client shares this process filesystem, so only it can use a local path.
             exposeLocalPaths = sharesFilesystemWithClient(config.transport),
+            maxConcurrentFetches = config.maxConcurrentFetches,
         )
 
         val server = Server(
