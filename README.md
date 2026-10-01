@@ -153,9 +153,9 @@ Every tool ships the metadata the MCP spec encourages clients to use: a display 
 **behavior annotations** (`readOnlyHint: true` everywhere except `fetch_library`, which is
 additive-only — `destructiveHint: false`, `idempotentHint: true`; tools that reach Maven
 repositories set `openWorldHint: true`, cache-only tools `false`), a typed **`outputSchema`**
-derived from the response DTO's serializer, and an **icon**. Results carry both pretty-printed JSON
-text and the matching `structuredContent` object, so structured-output clients and plain-text
-clients see the same payload.
+derived from the response DTO's serializer, and an **icon**. Results carry both compact JSON text
+and the matching `structuredContent` object, so structured-output clients and plain-text clients
+see the same payload.
 
 `fetch_library` also reports **progress notifications** (download → analyze → cache) when the
 client sends a `progressToken`. Logs go to **stderr** by default (which the spec blesses for all

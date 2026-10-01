@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Tool results and resource reads are compact JSON.** The text block was pretty-printed, and
+  indentation alone was 22–41% of its characters on the captured responses the plugin evals mock
+  (`list_declarations` at the top of that range) — paid on every call, since the text block is what a
+  model reads. `structuredContent` is unchanged, and still the same payload as the text.
 - **Ktor 3.5.2 → 3.6.0.** For the client that fetches from Maven repositories this is mostly CIO
   robustness. Two of its fixes land on paths we actually run: `Failed to parse HTTP response:
   unexpected EOF` when pipelining is on — pipelining *is* on (`pipelineMaxSize` defaults to 20) and

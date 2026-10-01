@@ -27,8 +27,12 @@ import kotlinx.serialization.json.put
  * parse args → call LibraryService → serialize a core DTO. No business logic here or in tools.
  */
 
-/** One JSON encoder for every tool response; pretty output reads well in MCP clients. */
-internal val toolJson = Json { prettyPrint = true }
+/**
+ * One JSON encoder for every tool response and resource read. Compact on purpose: the text block a
+ * model reads is billed in tokens, and indentation is pure overhead on the nested DTOs these tools
+ * return. A client that wants to display the payload has `structuredContent` to format.
+ */
+internal val toolJson: Json = Json
 
 /**
  * Registers a tool with the full metadata set this server declares — including SEP-973 [icon].
