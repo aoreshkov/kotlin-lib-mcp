@@ -67,7 +67,9 @@ changes are also checked by CI's `conformance` job — the official MCP conforma
   `./gradlew updateKotlinAbi` and a committed `core/api/core.api`. The DSL is still
   `@ExperimentalAbiValidation`, so treat a Kotlin bump as able to break it.
 - **stdio transport: NEVER write to stdout** except MCP protocol frames. All logging goes to
-  stderr or a file, or it corrupts the protocol stream.
+  stderr or a file, or it corrupts the protocol stream. That includes the JVM's own unified logging,
+  which defaults to stdout (an unusable AOT cache prints `[error][aot]` there before `main` runs):
+  `applicationDefaultJvmArgs` in `server/build.gradle.kts` routes it to stderr — keep it.
 - **Core parsing/fetch gotchas** (Analysis API isolation, per-target KMP source jars) live in
   `.claude/rules/analysis-api.md` — loaded automatically when you edit `core/` sources.
 - **Cache first.** Downloads + parsed index are cached on disk keyed by

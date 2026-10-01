@@ -22,6 +22,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an in-flight fetch of the same coordinate do not occupy a slot.
 
 ### Changed
+- **The Docker image starts about 3.5× faster.** It now ships a JDK 25 AOT cache, built during
+  `docker build` from a training session of the handshake and list calls a client makes on connect:
+  `initialize` is answered in ~0.3 s instead of ~1.1 s (median of cold starts on Temurin 25, with G1
+  or SerialGC alike). The cache is per-architecture and adds ~44 MB to each image. If it ever cannot
+  be used, the JVM says so on stderr and starts without it.
+- **The JVM's own log output goes to stderr** in every distribution (`-Xlog:disable
+  -Xlog:all=warning:stderr`). It defaults to stdout, which over stdio is the protocol channel.
 - **Kotlin 2.4.10 → 2.4.20**, moving the seven version-locked Analysis API `-for-ide` artifacts and
   the compiler with it. The coupled pins hold: Kotlin 2.4.20's own build still uses Caffeine 2.9.3,
   and the IntelliJ coroutines fork stays — 2.4.20 now pins its own fork for the Analysis API

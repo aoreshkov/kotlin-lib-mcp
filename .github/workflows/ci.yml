@@ -183,8 +183,12 @@ jobs:
       # fixtures. So: fetch and analyze a real library on the shipped JDK, require a signature that
       # was resolved rather than rendered from text, and require the server to exit by itself once
       # the client closes stdin (the Analysis API's non-daemon threads used to keep it alive).
+      # `-XX:AOTMode=on` makes the JVM refuse to start unless the image's AOT cache is usable, where
+      # the default would quietly start without it and lose ~0.8 s on every launch.
       - name: Server analyzes a real library and exits when the client disconnects
-        run: python3 .github/scripts/analyze-smoke.py docker run --rm -i kotlin-lib-mcp:smoke
+        run: >
+          python3 .github/scripts/analyze-smoke.py
+          docker run --rm -i -e SERVER_OPTS="-XX:AOTCache=/app/server.aot -XX:AOTMode=on" kotlin-lib-mcp:smoke
 
   # The official MCP conformance suite, run against the shipped distribution over Streamable HTTP.
   # Unit tests pin individual behaviours; this checks the wire against the spec as an independent
