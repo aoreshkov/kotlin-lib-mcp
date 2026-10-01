@@ -9,6 +9,7 @@ import app.oreshkov.kotlinlibmcp.server.icons.Glyph
 import app.oreshkov.kotlinlibmcp.server.prompts.registerExplainPublicApiPrompt
 import app.oreshkov.kotlinlibmcp.server.resources.LibraryIndexResources
 import app.oreshkov.kotlinlibmcp.server.resources.registerLibraryIndexTemplate
+import app.oreshkov.kotlinlibmcp.server.resources.registerLibraryPackageTemplate
 import app.oreshkov.kotlinlibmcp.server.resources.segmentTemplateMatcherFactory
 import app.oreshkov.kotlinlibmcp.server.tasks.TaskRecordStore
 import app.oreshkov.kotlinlibmcp.server.tasks.TaskStore
@@ -239,6 +240,8 @@ object McpServerFactory {
             // Direct addressing of any cached index; the per-library resources below stay for
             // discoverability via resources/list.
             registerLibraryIndexTemplate(service)
+            // One package's public API, which each index summary points to.
+            registerLibraryPackageTemplate(service)
             // Autocomplete prompt args and template variables (group/artifact/version, coordinate,
             // package) from the cache — reads only, no network.
             registerLibraryCompletions(cache)

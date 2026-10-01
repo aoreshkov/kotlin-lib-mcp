@@ -9,6 +9,7 @@ import app.oreshkov.kotlinlibmcp.model.SymbolKind
 import app.oreshkov.kotlinlibmcp.model.Visibility
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.time.Instant
 import kotlinx.coroutines.test.runTest
 
@@ -61,5 +62,14 @@ class ListDeclarationsServiceTest {
         assertEquals(2, page.declarations.size) // only Sym9, Sym10 remain
         assertEquals(10, page.totalCount)
         assertEquals(false, page.truncated)
+    }
+
+    @Test
+    fun aPackageTheLibraryDoesNotHaveIsAnErrorNotAnEmptyPage() = runTest {
+        // An empty page would read as "this package declares nothing" — a different answer.
+        val e = assertFailsWith<IllegalArgumentException> {
+            serviceWith(3).listDeclarations(coordinate, packageName = "com.exmaple", visibility = null)
+        }
+        assertEquals("No package 'com.exmaple' in $coordinate (see list_packages)", e.message)
     }
 }

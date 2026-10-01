@@ -268,9 +268,13 @@ renamed — one more reason the whole feature is opt-in.
 [sep-414]: https://modelcontextprotocol.io/community/seps/414-request-meta
 
 **Resources:** each cached library is readable at
-`kotlinlib://{group}/{artifact}/{version}/index` (the parsed index as JSON); the list updates as
-libraries are fetched, and the same URI shape is published as a **resource template**, so any
-cached coordinate is directly addressable. **Prompt:** `explain_public_api(coordinate, package?)`
+`kotlinlib://{group}/{artifact}/{version}/index` — a summary as JSON: KMP targets, declaration, file
+and package counts, and its packages (up to 200). Each package's public API (signature and KDoc
+summary per declaration, up to 200) is readable at
+`kotlinlib://{group}/{artifact}/{version}/package/{package}`; the tools page through anything past
+those caps. The resource list updates as libraries are fetched, both URI shapes are published as
+**resource templates** so any cached coordinate is directly addressable, and template variables —
+including `package` — autocomplete from the cache. **Prompt:** `explain_public_api(coordinate, package?)`
 renders an explanation request grounded in the cached signatures and KDoc.
 
 **Icons:** the server, every tool, the prompt and the library-index resource/template each declare

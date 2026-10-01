@@ -4,6 +4,7 @@ import app.oreshkov.kotlinlibmcp.core.LibraryCache
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.server.onEachSession
 import app.oreshkov.kotlinlibmcp.server.resources.LIBRARY_INDEX_URI_TEMPLATE
+import app.oreshkov.kotlinlibmcp.server.resources.LIBRARY_PACKAGE_URI_TEMPLATE
 import app.oreshkov.kotlinlibmcp.server.telemetry.completionSpan
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.CompleteRequest
@@ -25,8 +26,9 @@ private const val MAX_COMPLETIONS = 100
  * only to prompts and resource templates (never tool arguments), so the tools are untouched.
  *
  * Suggestions are:
- * - the `group`/`artifact`/`version` variables of the [LIBRARY_INDEX_URI_TEMPLATE] resource
- *   template, each narrowed by any sibling segments the client has already resolved; and
+ * - the `group`/`artifact`/`version` variables of the [LIBRARY_INDEX_URI_TEMPLATE] and
+ *   [LIBRARY_PACKAGE_URI_TEMPLATE] resource templates, each narrowed by any sibling segments the
+ *   client has already resolved, plus the latter's `package` from that library's cached index; and
  * - the [EXPLAIN_PROMPT] prompt's `coordinate` (cached `group:artifact:version` strings) and
  *   `package` (packages of the coordinate already in context).
  *
@@ -43,12 +45,12 @@ fun Server.registerLibraryCompletions(cache: LibraryCache) {
                 val values = runCatching {
                     val ctx = request.context?.arguments.orEmpty()
                     when (val ref = request.ref) {
-                        is ResourceTemplateReference ->
-                            if (ref.uri == LIBRARY_INDEX_URI_TEMPLATE) {
+                        is ResourceTemplateReference -> when (ref.uri) {
+                            LIBRARY_INDEX_URI_TEMPLATE ->
                                 coordinateSegmentCompletions(request.argument, ctx, cache.list())
-                            } else {
-                                emptyList()
-                            }
+                            LIBRARY_PACKAGE_URI_TEMPLATE -> packageTemplateCompletions(request.argument, ctx, cache)
+                            else -> emptyList()
+                        }
                         is PromptReference ->
                             if (ref.name == EXPLAIN_PROMPT) promptArgCompletions(request.argument, ctx, cache) else emptyList()
                         // No `else`: `ref` is sealed, so an SDK that adds a third reference type
@@ -86,6 +88,23 @@ internal fun coordinateSegmentCompletions(
         else -> return emptyList()
     }
     return candidates.prefixed(arg.value)
+}
+
+/**
+ * Completes the [LIBRARY_PACKAGE_URI_TEMPLATE] variables: `package` from the packages of the library
+ * named by the `group`/`artifact`/`version` already resolved in [ctx], the rest as for the index.
+ */
+internal suspend fun packageTemplateCompletions(
+    arg: CompleteRequestParams.Argument,
+    ctx: Map<String, String>,
+    cache: LibraryCache,
+): List<String> {
+    if (arg.name != "package") return coordinateSegmentCompletions(arg, ctx, cache.list())
+    val group = ctx["group"] ?: return emptyList()
+    val artifact = ctx["artifact"] ?: return emptyList()
+    val version = ctx["version"] ?: return emptyList()
+    val coordinate = LibraryCoordinate.parseOrNull("$group:$artifact:$version") ?: return emptyList()
+    return cache.get(coordinate)?.packages?.map { it.name }.orEmpty().prefixed(arg.value)
 }
 
 /**

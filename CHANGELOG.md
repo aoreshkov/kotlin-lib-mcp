@@ -8,6 +8,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`kotlinlib://{group}/{artifact}/{version}/package/{package}` resource template** — one
+  package's public API: each declaration's signature and KDoc summary, up to 200
+  (`truncated`/`totalCount` say what was left out; `list_declarations` pages through the rest). Its
+  `package` variable autocompletes from the cached index, like the coordinate variables.
 - **At most two libraries download and analyze at once** (`--max-concurrent-fetches <int>` to
   change it). Concurrent calls for the *same* coordinate were already collapsed into one, but
   nothing bounded calls for different ones: since SDK 0.15.0 runs requests concurrently, an agent
@@ -18,6 +22,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an in-flight fetch of the same coordinate do not occupy a slot.
 
 ### Changed
+- **The library index resource is a bounded summary.** `kotlinlib://{group}/{artifact}/{version}/index`
+  returned the whole parsed index — every declaration with its full KDoc — which is unbounded in the
+  size of the library, and a resource has no arguments to page with: attaching it to a conversation
+  could pull megabytes into context. It now returns KMP targets, declaration/file/package counts,
+  the first 200 packages and the URI template for each package's API. For `ktor-client-core` 3.5.1
+  that is 2 KB. *Breaking* for anything that parsed the full index out of this resource; the tools
+  serve the same data, paged.
+- **`list_declarations` rejects a package the library does not have.** A misspelt `package` used to
+  return an empty page, which reads as "this package declares nothing"; it is now an error that
+  points to `list_packages`. The `explain_public_api` prompt and the new package resource behave the
+  same way.
 - **Tool arguments are validated.** A misspelt argument (`max_results` for `maxResults`) or a value
   of the wrong type (`"maxResults": "lots"`, `"regex": "yes"`) used to be ignored, so the call ran on
   the default while the model believed it had asked for something else. Both are now `isError`
