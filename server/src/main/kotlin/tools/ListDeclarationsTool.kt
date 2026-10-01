@@ -15,9 +15,22 @@ fun Server.registerListDeclarationsTool(service: LibraryService) {
         inputSchema = coordinateSchema(
             extraProps = mapOf(
                 "package" to stringProp("Only declarations in this package, e.g. 'io.ktor.client'"),
-                "visibility" to stringProp("Visibility filter: 'public' (default), 'internal', or 'all'"),
-                "maxResults" to intProp("Page size, 1-500 (default 100)"),
-                "offset" to intProp("Number of matching declarations to skip for paging (default 0)"),
+                "visibility" to enumProp(
+                    "Visibility filter: 'public' (default), 'internal', or 'all'",
+                    values = listOf("public", "internal", "all"),
+                    default = "public",
+                ),
+                "maxResults" to intProp(
+                    "Page size, 1-500 (default 100)",
+                    minimum = 1,
+                    maximum = LibraryService.MAX_DECLARATION_RESULTS,
+                    default = LibraryService.DEFAULT_DECLARATION_RESULTS,
+                ),
+                "offset" to intProp(
+                    "Number of matching declarations to skip for paging (default 0)",
+                    minimum = 0,
+                    default = 0,
+                ),
             ),
         ),
         title = "List declarations",
@@ -32,7 +45,7 @@ fun Server.registerListDeclarationsTool(service: LibraryService) {
                     coordinate = args.coordinateArg(),
                     packageName = args.stringArg("package"),
                     visibility = args.stringArg("visibility"),
-                    maxResults = args.intArg("maxResults") ?: 100,
+                    maxResults = args.intArg("maxResults") ?: LibraryService.DEFAULT_DECLARATION_RESULTS,
                     offset = args.intArg("offset") ?: 0,
                 )
             )

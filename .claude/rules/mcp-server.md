@@ -13,6 +13,16 @@ matching `structuredContent`. When adding a tool, pass all four to `addTool` —
 `LOCAL_READ_ONLY`/`REPOSITORY_READ_ONLY` annotation constants in `ToolSupport.kt`, and add a new
 `Glyph` entry (plus its PNG, via `./gradlew :tools:generateIcons`) in `server/.../icons/Icons.kt`.
 
+**Arguments are validated, never quietly defaulted.** The SDK checks nothing against `inputSchema`,
+so the server does: `addTool` (the `ToolSupport.kt` extension) rejects any argument the schema does
+not declare — its `ToolSchema` cannot say `additionalProperties: false`, so this is the only place
+that check can live, and it means a new argument must be in the schema to be accepted at all. Read
+arguments with the typed readers (`stringArg`/`intArg`/`booleanArg`), which throw on a wrong type
+rather than returning null into a `?: default`. Declare integers with `intProp(description,
+minimum, maximum, default)` fed from `LibraryService`'s limit constants, so the advertised bounds are
+the enforced ones; keep the range and default in the prose too, for clients that drop schema
+keywords — `ToolRegistrationTest` fails if the two disagree.
+
 **Every tool result must be bounded.** The rule: if a result's size is a function of the *library*
 rather than of the *arguments*, it needs a cap — and the cap has to be the tool's own, because
 nothing downstream will impose one. This was learned three times: `list_declarations` shipped

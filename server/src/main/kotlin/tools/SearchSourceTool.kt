@@ -14,8 +14,13 @@ fun Server.registerSearchSourceTool(service: LibraryService) {
         inputSchema = coordinateSchema(
             extraProps = mapOf(
                 "query" to stringProp("Substring (default) or regex to search for"),
-                "regex" to boolProp("Treat 'query' as a regular expression (default false)"),
-                "maxResults" to intProp("Result cap, 1-200 (default 50)"),
+                "regex" to boolProp("Treat 'query' as a regular expression (default false)", default = false),
+                "maxResults" to intProp(
+                    "Result cap, 1-200 (default 50)",
+                    minimum = 1,
+                    maximum = LibraryService.MAX_SEARCH_RESULTS,
+                    default = LibraryService.DEFAULT_SEARCH_RESULTS,
+                ),
             ),
             extraRequired = listOf("query"),
         ),
@@ -31,7 +36,7 @@ fun Server.registerSearchSourceTool(service: LibraryService) {
                     coordinate = args.coordinateArg(),
                     query = args.requireStringArg("query"),
                     regex = args.booleanArg("regex") ?: false,
-                    maxResults = args.intArg("maxResults") ?: 50,
+                    maxResults = args.intArg("maxResults") ?: LibraryService.DEFAULT_SEARCH_RESULTS,
                 )
             )
         }

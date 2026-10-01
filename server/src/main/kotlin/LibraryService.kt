@@ -765,7 +765,13 @@ class LibraryService(
     private suspend fun localSourceRoot(coordinate: LibraryCoordinate): String? =
         if (!exposeLocalPaths) null else runCatching { sourceRoot(coordinate).toString() }.getOrNull()
 
-    private companion object {
+    /**
+     * Limits and defaults. `internal` rather than private because the tools declare the same numbers
+     * as `minimum`/`maximum`/`default` in their input schemas; reading them from here keeps the
+     * advertised bounds and the enforced ones from drifting apart.
+     */
+    internal companion object {
+        const val DEFAULT_SEARCH_RESULTS = 50
         const val MAX_SEARCH_RESULTS = 200
 
         /** Upper bound on a caller-supplied regex; far above any pattern a search needs. */
@@ -818,6 +824,7 @@ class LibraryService(
         /** Nodes returned by `get_dependencies`; `depth` bounds resolution, this bounds output. */
         const val DEFAULT_DEPENDENCY_NODES = 200
         const val MAX_DEPENDENCY_NODES = 1_000
+        const val DEFAULT_DEPENDENCY_DEPTH = 1
         const val MAX_DEPENDENCY_DEPTH = 5
         const val LATEST = "latest"
 

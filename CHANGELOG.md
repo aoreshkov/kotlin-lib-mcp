@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **Tool arguments are validated.** A misspelt argument (`max_results` for `maxResults`) or a value
+  of the wrong type (`"maxResults": "lots"`, `"regex": "yes"`) used to be ignored, so the call ran on
+  the default while the model believed it had asked for something else. Both are now `isError`
+  results naming the problem — and, for an unknown argument, the ones the tool does accept — which is
+  what the MCP spec prescribes for invalid input. Unambiguous encodings still work: `"10"` or `10.0`
+  for an integer, `"true"` for a boolean.
+- **Input schemas declare their bounds.** Every integer argument carries `minimum`, `maximum` (except
+  offsets and line numbers) and `default`; `visibility` is an `enum`; optional booleans declare
+  `default: false`. The numbers come from the same constants the server enforces, so the advertised
+  and the applied limits cannot drift. Out-of-range values are still clamped, as before.
 - **Tool results and resource reads are compact JSON.** The text block was pretty-printed, and
   indentation alone was 22–41% of its characters on the captured responses the plugin evals mock
   (`list_declarations` at the top of that range) — paid on every call, since the text block is what a

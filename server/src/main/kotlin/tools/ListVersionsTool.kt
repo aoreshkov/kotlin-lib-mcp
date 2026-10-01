@@ -20,8 +20,16 @@ fun Server.registerListVersionsTool(service: LibraryService) {
             schema = JSON_SCHEMA_DIALECT,
             properties = buildJsonObject {
                 put("coordinate", stringProp("Maven coordinate 'group:artifact' or 'group:artifact:version'"))
-                put("maxResults", intProp("Page size, 1-500 (default 100)"))
-                put("offset", intProp("Number of versions to skip for paging (default 0)"))
+                put(
+                    "maxResults",
+                    intProp(
+                        "Page size, 1-500 (default 100)",
+                        minimum = 1,
+                        maximum = LibraryService.MAX_VERSION_RESULTS,
+                        default = LibraryService.DEFAULT_VERSION_RESULTS,
+                    ),
+                )
+                put("offset", intProp("Number of versions to skip for paging (default 0)", minimum = 0, default = 0))
             },
             required = listOf("coordinate"),
         ),
@@ -40,7 +48,7 @@ fun Server.registerListVersionsTool(service: LibraryService) {
                 service.listVersions(
                     group = parts[0].trim(),
                     artifact = parts[1].trim(),
-                    maxResults = args.intArg("maxResults") ?: 100,
+                    maxResults = args.intArg("maxResults") ?: LibraryService.DEFAULT_VERSION_RESULTS,
                     offset = args.intArg("offset") ?: 0,
                 )
             )

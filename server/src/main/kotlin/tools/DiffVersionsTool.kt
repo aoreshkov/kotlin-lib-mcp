@@ -33,9 +33,28 @@ fun Server.registerDiffVersionsTool(service: LibraryService) {
                             "'commonMain/io/ktor/client/HttpClient.kt'."
                     ),
                 )
-                put("maxResults", intProp("Files per page, 1-50 (default 20)"))
-                put("offset", intProp("Number of changed files to skip for paging (default 0)"))
-                put("contextLines", intProp("Unchanged lines of context around each hunk, 0-10 (default 3)"))
+                put(
+                    "maxResults",
+                    intProp(
+                        "Files per page, 1-50 (default 20)",
+                        minimum = 1,
+                        maximum = LibraryService.MAX_DIFF_FILES,
+                        default = LibraryService.DEFAULT_DIFF_FILES,
+                    ),
+                )
+                put(
+                    "offset",
+                    intProp("Number of changed files to skip for paging (default 0)", minimum = 0, default = 0),
+                )
+                put(
+                    "contextLines",
+                    intProp(
+                        "Unchanged lines of context around each hunk, 0-10 (default 3)",
+                        minimum = 0,
+                        maximum = LibraryService.MAX_DIFF_CONTEXT,
+                        default = LibraryService.DEFAULT_DIFF_CONTEXT,
+                    ),
+                )
             },
             required = listOf("group", "artifact", "fromVersion", "toVersion"),
         ),
@@ -53,9 +72,9 @@ fun Server.registerDiffVersionsTool(service: LibraryService) {
                     fromVersion = args.requireStringArg("fromVersion"),
                     toVersion = args.requireStringArg("toVersion"),
                     pathFilter = args.stringArg("path"),
-                    maxResults = args.intArg("maxResults") ?: 20,
+                    maxResults = args.intArg("maxResults") ?: LibraryService.DEFAULT_DIFF_FILES,
                     offset = args.intArg("offset") ?: 0,
-                    contextLines = args.intArg("contextLines") ?: 3,
+                    contextLines = args.intArg("contextLines") ?: LibraryService.DEFAULT_DIFF_CONTEXT,
                 )
             )
         }
