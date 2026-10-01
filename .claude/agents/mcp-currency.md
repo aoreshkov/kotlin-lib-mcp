@@ -28,7 +28,10 @@ removes sessions and therefore `SessionSetup.kt` and `TaskStore`'s ownership mod
 (Tasks as an extension: `tasks/result` and `tasks/list` are deleted, `tasks/update` added) and
 **#813** (`ttlMs`/`cacheScope` on every list/read result, which this repo does not yet emit).
 Report movement on those as a finding in its own right, and say plainly when there has been
-none. Porting ahead of the SDK is explicitly not recommended: `ConcurrentDispatchTransport.kt`
+none. The SDK's milestones page (github.com/modelcontextprotocol/kotlin-sdk/milestones) maps that
+work to planned releases (as of 2026-10-01: 0.17.0 the 2026-07-28 wire, 0.18.0 MRTR, 0.23.0 the
+tasks extension) — report a milestone that closed or shipped, and compare against `CLAUDE.md`'s
+"2026-07-28 horizon". Porting ahead of the SDK is explicitly not recommended: `ConcurrentDispatchTransport.kt`
 was written for 0.14.0 and deleted at 0.15.0 when the SDK shipped the same behaviour.
 
 **Project gotchas:** stdio transport must never write to stdout except protocol frames —
