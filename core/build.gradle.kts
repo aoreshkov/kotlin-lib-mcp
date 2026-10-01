@@ -38,12 +38,6 @@ kotlin {
                 implementation(libs.analysisApi.implBase.coordinates()) { isTransitive = false }
                 implementation(libs.analysisApi.platform.coordinates()) { isTransitive = false }
                 implementation(libs.analysisApi.symbolLightClasses.coordinates()) { isTransitive = false }
-                // The decompiler/stub modules (`ClsKotlinBinaryClassCache`, needed to build any
-                // standalone session) left the `kotlin-compiler` fat jar in 2.4.20 and now ship only
-                // here. Declared before `kotlin-compiler` on purpose: the two jars share the common
-                // compiler modules, and this copy is not ProGuard-shrunk, so classpath order makes
-                // the decompiler see the full classes it was compiled against.
-                implementation(libs.analysisApi.compilerCommon.coordinates()) { isTransitive = false }
                 // Compiler + bundled IntelliJ core, resolved transitively from Maven Central.
                 implementation(libs.kotlin.compiler)
                 // Runtime-only deps of the non-transitive `-for-ide` jars (LL FIR caches), plus

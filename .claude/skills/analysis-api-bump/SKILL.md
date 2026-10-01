@@ -2,7 +2,7 @@
 name: analysis-api-bump
 description: Bump the Kotlin version together with the version-locked Analysis API `-for-ide` artifacts and their runtime-dep pins, then verify source analysis still works. Use when upgrading Kotlin, when the Analysis API fails to resolve types after a bump, or when auditing whether the coupled pins are still correct.
 disable-model-invocation: true
-argument-hint: "[target Kotlin version, e.g. 2.4.20]"
+argument-hint: "[target Kotlin version, e.g. 2.4.10]"
 ---
 
 # Bump Kotlin + Analysis API (version-locked)
@@ -21,7 +21,7 @@ Read `gradle/libs.versions.toml` and record:
 - `kotlin` — the shared version ref used by **all** of: `analysisApi-standalone`,
   `analysisApi-highLevel`, `analysisApi-k2`, `analysisApi-lowLevelFir`,
   `analysisApi-implBase`, `analysisApi-platform`, `analysisApi-symbolLightClasses`,
-  `analysisApi-compilerCommon`, `kotlin-compiler`, plus the `kotlin-*` / `composeCompiler-*` plugin artifacts.
+  `kotlin-compiler`, plus the `kotlin-*` / `composeCompiler-*` plugin artifacts.
 - `caffeine` (comment: "runtime dep of the Analysis API `-for-ide` jars; matches Kotlin's own pin").
 - `intellijCoroutines` (comment: "JetBrains coroutines fork the bundled IJ core expects (KT-81457)").
 - `compose` (comment: "aligned to Kotlin X.Y.Z") — Compose is Kotlin-coupled too.
@@ -41,12 +41,20 @@ For `$ARGUMENTS` (or the intended target Kotlin version), verify against officia
 - Does the new Kotlin change the **caffeine** version its `-for-ide` jars expect? (Check the
   Kotlin build's own bundled version.) If so, update the `caffeine` pin to match and update
   the comment.
-- Did the **`kotlin-compiler` fat jar drop packages** the `-for-ide` jars rely on? Kotlin moves
+- Did the **`kotlin-compiler` fat jar drop anything** the `-for-ide` jars rely on? Kotlin moves
   modules between that jar and the `-for-ide` set (`prepare/compiler` vs
-  `prepare/ide-plugin-dependencies` in its build): 2.4.20 dropped the decompiler
-  (`org.jetbrains.kotlin.analysis.decompiler.*`), which is why `analysisApi-compilerCommon` exists.
-  Diff the two versions' package lists (`unzip -Z1 … | sed 's|/[^/]*$||' | sort -u`); a
-  package that vanished without the analyzer losing a feature still has to come from somewhere.
+  `prepare/ide-plugin-dependencies` in its build), and the fat jar is ProGuard-shrunk against only
+  what it contains. Diff the two versions' package lists
+  (`unzip -Z1 … | grep '\.class$' | sed 's|/[^/]*$||' | sort -u`) before trusting a green compile.
+  **Known blocker for 2.4.20+:** it moved the decompiler (`org.jetbrains.kotlin.analysis.decompiler.*`)
+  out of `kotlin-compiler` into `kotlin-compiler-common-for-ide`, and the shrinker then stripped
+  IntelliJ members only the decompiler used (`FileType.getDefaultExtension()`). Pulling
+  `kotlin-compiler-common-for-ide` alongside the fat jar trades the `NoClassDefFoundError:
+  ClsKotlinBinaryClassCache` for a `NoSuchMethodError` (tried, CI-verified). Getting past 2.4.10 needs
+  an unshrunk classpath — the IntelliJ platform jars plus `kotlin-compiler-*-for-ide` instead of
+  `kotlin-compiler` — or the `org.jetbrains.kotlin:kotlin-analysis-api*` artifacts 2.4.20's build
+  defines (`prepare/analysis-api/`), once they are published. detekt hit the same wall
+  (detekt/detekt#9734).
 - Is **KT-81457** fixed in this version, making the `intellijCoroutines` fork pin
   unnecessary? If yes, that's a chance to drop the fork; if not, keep the pin.
 - Compose Multiplatform ↔ Kotlin compatibility: pick the `compose` version aligned to the

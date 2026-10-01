@@ -29,12 +29,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   be used, the JVM says so on stderr and starts without it.
 - **The JVM's own log output goes to stderr** in every distribution (`-Xlog:disable
   -Xlog:all=warning:stderr`). It defaults to stdout, which over stdio is the protocol channel.
-- **Kotlin 2.4.10 → 2.4.20**, moving the seven version-locked Analysis API `-for-ide` artifacts and
-  the compiler with it. The coupled pins hold: Kotlin 2.4.20's own build still uses Caffeine 2.9.3,
-  and the IntelliJ coroutines fork stays — 2.4.20 now pins its own fork for the Analysis API
-  (`1.8.0-intellij-13`), so the `IntellijCoroutines` dependency KT-81457 describes has not gone away. 2.4.20 also moved the Analysis API's decompiler out of the
-  `kotlin-compiler` jar, so `kotlin-compiler-common-for-ide` is now pulled alongside it — without it no
-  standalone session can start (`NoClassDefFoundError: ClsKotlinBinaryClassCache`).
 - **The library index resource is a bounded summary.** `kotlinlib://{group}/{artifact}/{version}/index`
   returned the whole parsed index — every declaration with its full KDoc — which is unbounded in the
   size of the library, and a resource has no arguments to page with: attaching it to a conversation
