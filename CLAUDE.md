@@ -181,6 +181,18 @@ Three decisions in this repo are load-bearing for that migration. Keep them:
 - **`logging` stays behind `--forward-logs-to-client`, stderr stays primary.** 2026-07-28 deprecates
   Logging (alongside Roots and Sampling) on a ≥12-month window.
 
+What each milestone touches here, so a release lands on a map rather than a search:
+
+- **0.17.0** (2026-07-28 wire): session identity — below; plus `ttlMs`/`cacheScope` on list and
+  `resources/read` results, which the SDK should set rather than us.
+- **0.18.0** (MRTR): `elicitation/VersionElicitation.kt`, and nothing else.
+- **0.20.0** (Ktor split): `transport/HttpTransport.kt`'s `mcpStreamableHttp` import, plus a
+  `kotlin-sdk-server-ktor` catalog entry.
+- **0.23.0** (tasks extension): `tasks/`, all behind `--tasks`.
+- **0.24.0** (typed schemas, `kotlin-sdk#300`, which adds `additionalProperties`): declare
+  `additionalProperties: false` on every input schema. Keep `addTool`'s unknown-argument check
+  unless the SDK starts validating arguments itself.
+
 The exposure to look at first, when 0.17.0 lands, is **session identity** — 2026-07-28 retires
 `initialize`/`initialized` and `Mcp-Session-Id`, moving identity and capabilities into per-request
 `_meta`. Two things here rest on a session existing: the elicitation gate reads
