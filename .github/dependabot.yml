@@ -23,6 +23,12 @@ updates:
       # (see gradle/libs.versions.toml) — don't propose major bumps.
       - dependency-name: "com.github.ben-manes.caffeine:caffeine"
         update-types: ["version-update:semver-major"]
+      # Not a dependency: Dependabot's Gradle parser reads any `a:b:c` string literal as
+      # `group:name:version`, so the JVM flag "-Xlog:all=warning:stderr" in
+      # server/build.gradle.kts becomes "-Xlog:all=warning" at version "stderr". Looking it up
+      # in the IntelliJ repository fails as `private_source_authentication_failure`, which
+      # fails the whole update job.
+      - dependency-name: "-Xlog:*"
     open-pull-requests-limit: 5
 
   - package-ecosystem: github-actions
