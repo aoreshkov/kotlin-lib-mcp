@@ -152,12 +152,16 @@ place so a rename is a single edit.
 ## The 2026-07-28 horizon
 
 We target **2025-11-25**, because that is what the Kotlin SDK declares
-(`LATEST_PROTOCOL_VERSION`). Spec revision **2026-07-28** is stable, but the SDK has shipped none of
-it: as of **2026-09-12** the newest release is still 0.15.0 (2026-07-28, no beta or pre-release) and
-the upstream tracking issue, `modelcontextprotocol/kotlin-sdk#842`, is open and untouched since
-2026-06-18. **There is nothing here to adopt yet, and adopting it early would mean inventing wire
-surface ahead of the SDK.** Re-check that release list and that issue before assuming otherwise —
-this paragraph carries a date precisely because it goes stale.
+(`LATEST_PROTOCOL_VERSION`). Spec revision **2026-07-28** is stable, but the SDK has released none
+of it: as of **2026-10-01** the newest release is still 0.15.0 (2026-07-28, no beta or
+pre-release). Work has started upstream — the stateless lifecycle is an open PR
+(`modelcontextprotocol/kotlin-sdk#985`) — and the SDK's milestones set the order: **0.17.0** puts
+2026-07-28 on the wire (per-request `_meta` envelope, `subscriptions/listen`, SEP-2243 headers),
+**0.18.0** brings MRTR, **0.20.0** moves the Ktor integration (`mcpStreamableHttp`) into a separate
+`kotlin-sdk-server-ktor` artifact, **0.23.0** ships the tasks extension, and **0.24.0** typed
+JSON Schema 2020-12 tool schemas. **There is nothing here to adopt yet, and adopting it early would
+mean inventing wire surface ahead of the SDK.** Re-check the SDK's releases and milestones before
+assuming otherwise — this paragraph carries a date precisely because it goes stale.
 
 Three decisions in this repo are load-bearing for that migration. Keep them:
 
@@ -165,12 +169,13 @@ Three decisions in this repo are load-bearing for that migration. Keep them:
   request/response with MRTR (`InputRequiredResult` + a client retry), so a single-file rewrite is
   the whole migration.
 - **`--tasks` stays opt-in.** Tasks become an `io.modelcontextprotocol/tasks` *extension*, gaining
-  `tasks/update` and moving notifications to one `subscriptions/listen` stream. Opt-in bounds the
-  blast radius to operators who asked for it.
+  `tasks/update`, dropping `tasks/result` (clients poll `tasks/get`) and `tasks/list`, and moving
+  notifications to one `subscriptions/listen` stream. Opt-in bounds the blast radius to operators
+  who asked for it.
 - **`logging` stays behind `--forward-logs-to-client`, stderr stays primary.** 2026-07-28 deprecates
   Logging (alongside Roots and Sampling) on a ≥12-month window.
 
-The exposure to look at first, when a beta does land, is **session identity** — 2026-07-28 retires
+The exposure to look at first, when 0.17.0 lands, is **session identity** — 2026-07-28 retires
 `initialize`/`initialized` and `Mcp-Session-Id`, moving identity and capabilities into per-request
 `_meta`. Two things here rest on a session existing: the elicitation gate reads
 `server.sessions[sessionId]?.clientCapabilities`, and task records are *owned* by the session that

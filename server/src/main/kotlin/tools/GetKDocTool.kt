@@ -10,7 +10,7 @@ fun Server.registerGetKDocTool(service: LibraryService) {
         name = "get_kdoc",
         description = "KDoc of one declaration by fully-qualified name: summary, description, and " +
             "structured tags (@param, @return, @throws, @sample, …). 'kdoc: null' means the " +
-            "declaration is undocumented.",
+            "declaration is undocumented." + THIRD_PARTY_TEXT_NOTE,
         inputSchema = coordinateSchema(
             extraProps = mapOf(
                 "fqName" to stringProp("Fully-qualified declaration name, e.g. 'io.ktor.client.HttpClient'"),

@@ -1,6 +1,7 @@
 package app.oreshkov.kotlinlibmcp.server
 
 import app.oreshkov.kotlinlibmcp.server.tools.JSON_SCHEMA_DIALECT
+import app.oreshkov.kotlinlibmcp.server.tools.THIRD_PARTY_TEXT_NOTE
 import app.oreshkov.kotlinlibmcp.server.tools.registerDiffVersionsTool
 import app.oreshkov.kotlinlibmcp.server.tools.registerFetchLibraryTool
 import app.oreshkov.kotlinlibmcp.server.tools.registerGetApiSignatureTool
@@ -187,5 +188,13 @@ class ToolRegistrationTest {
         assertEquals(false, annotations.destructiveHint)
         assertEquals(true, annotations.idempotentHint)
         assertEquals(true, annotations.openWorldHint)
+    }
+
+    @Test
+    fun toolsReturningLibraryTextLabelItAsThirdPartyData() {
+        // Their results are mostly text the library's authors wrote, which can carry instructions
+        // aimed at the model reading it. A new tool of that kind belongs in this set.
+        val labelled = tools().filterValues { it.description.orEmpty().endsWith(THIRD_PARTY_TEXT_NOTE) }.keys
+        assertEquals(setOf("get_kdoc", "get_source", "search_source", "diff_versions"), labelled)
     }
 }

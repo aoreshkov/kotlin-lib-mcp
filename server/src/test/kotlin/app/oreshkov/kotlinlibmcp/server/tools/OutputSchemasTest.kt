@@ -99,6 +99,15 @@ class OutputSchemasTest {
     }
 
     @Test
+    fun toolResultTextIsCompactJson() {
+        // The text block is what a model reads and is billed for; indentation would be pure overhead.
+        val result = toolResult(LatestVersion(group = "io.ktor", artifact = "ktor-client-core", totalVersions = 42))
+
+        val text = (result.content.single() as TextContent).text
+        assertEquals(assertNotNull(result.structuredContent).toString(), text)
+    }
+
+    @Test
     fun structuredContentValidatesAgainstTheAdvertisedSchema() {
         // Cheap structural check: every non-default field emitted by toolResult is declared in the
         // schema, and every required property is present in the payload.
