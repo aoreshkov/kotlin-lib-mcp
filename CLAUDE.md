@@ -41,7 +41,9 @@ Validate with `claude plugin validate ./plugin --strict`; the image pin and the 
 
 **Verify a change:** compile fast with `./gradlew :server:compileKotlin` (pulls in `core`);
 run the affected module's tests, e.g. `./gradlew :core:build`. A `Stop` hook runs the fast
-compile automatically when Kotlin sources changed (`.claude/hooks/stop-verify.sh`).
+compile automatically when Kotlin sources changed (`.claude/hooks/stop-verify.sh`). Wire-level
+changes are also checked by CI's `conformance` job — the official MCP conformance suite, pinned in
+`.github/conformance/` with a baseline of fixture-only scenarios (how to run it: `CONTRIBUTING.md`).
 
 ## Tech stack (versions live ONLY in `gradle/libs.versions.toml`)
 

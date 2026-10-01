@@ -1,0 +1,8 @@
+{
+  "name": "kotlin-lib-mcp-conformance",
+  "private": true,
+  "description": "Pins the official MCP conformance suite that CI runs against the server; see baseline.yml.",
+  "devDependencies": {
+    "@modelcontextprotocol/conformance": "0.1.16"
+  }
+}

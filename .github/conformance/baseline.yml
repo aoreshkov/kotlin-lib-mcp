@@ -1,0 +1,35 @@
+# Expected failures for the MCP conformance suite (`conformance server --expected-failures`).
+#
+# Every scenario below drives the suite's reference "everything" server: it calls tools, prompts
+# and resources only that fixture defines (`test_tool_with_progress`, `test_simple_prompt`,
+# `test://static-text`, …), so it cannot pass against a server with a real product surface. None
+# of them is a known defect. A defect shows up as a scenario *outside* this list failing — and an
+# entry here that starts passing fails the run too ("stale baseline"), so the list cannot rot.
+#
+# When bumping the suite in package.json, run it against `--transport http` locally first and
+# triage every new failure: a fixture dependency goes here, anything else is a bug to fix.
+server:
+  # Fixture tools (test_image_content, test_audio_content, test_tool_with_progress, …)
+  - tools-call-image
+  - tools-call-audio
+  - tools-call-embedded-resource
+  - tools-call-mixed-content
+  - tools-call-with-logging
+  - tools-call-with-progress
+  - tools-call-sampling
+  - tools-call-elicitation
+  - elicitation-sep1034-defaults
+  - elicitation-sep1330-enums
+  # Fixture resources (test://static-text, test://static-binary, test://template/{id}/data)
+  - resources-read-text
+  - resources-read-binary
+  - resources-templates-read
+  # Not offered: the server does not advertise resources.subscribe — its resources only change by
+  # being added, which resources/list's listChanged already announces.
+  - resources-subscribe
+  - resources-unsubscribe
+  # Fixture prompts (test_simple_prompt, test_prompt_with_arguments, …)
+  - prompts-get-simple
+  - prompts-get-with-args
+  - prompts-get-embedded-resource
+  - prompts-get-with-image
