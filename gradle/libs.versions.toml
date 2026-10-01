@@ -1,7 +1,7 @@
 [versions]
 # Build tools
 kotlin = "2.4.10"
-kover = "0.9.9"
+kover = "0.9.10"
 
 # Third-party
 mcpKotlinSdk = "0.15.0"
@@ -14,7 +14,7 @@ caffeine = "2.9.3"             # runtime dep of the Analysis API `-for-ide` jars
 intellijCoroutines = "1.11.0-intellij-1"  # JetBrains coroutines fork the bundled IJ core expects (KT-81457)
 slf4j = "2.0.20"
 kotlinLogging = "8.0.4"        # matches the MCP SDK's transitive facade; needed to silence its stdout banner
-logback = "1.6.3"
+logback = "1.6.4"
 opentelemetry = "1.66.0"       # BOM governs every io.opentelemetry artifact below
 
 [libraries]
