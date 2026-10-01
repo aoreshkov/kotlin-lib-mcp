@@ -28,6 +28,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   offsets and line numbers) and `default`; `visibility` is an `enum`; optional booleans declare
   `default: false`. The numbers come from the same constants the server enforces, so the advertised
   and the applied limits cannot drift. Out-of-range values are still clamped, as before.
+- **Unexpected tool failures no longer expose server internals over HTTP.** Every exception's
+  message used to be returned to the client as is, and an IO failure or an Analysis API crash can
+  carry absolute paths in the server's cache — the layout `extractedDir` already withholds from HTTP
+  clients. Messages this server writes for the caller (bad arguments, a library not fetched yet,
+  missing sources, a checksum mismatch, …) are still returned verbatim on every transport; anything
+  else now reaches an HTTP client as `<tool> failed with an internal error (<ExceptionType>)`, while
+  stdio clients still see the full message. The detail is logged to stderr in both cases, and is
+  still recorded on the trace span under `--otel`.
 - **Tool results and resource reads are compact JSON.** The text block was pretty-printed, and
   indentation alone was 22–41% of its characters on the captured responses the plugin evals mock
   (`list_declarations` at the top of that range) — paid on every call, since the text block is what a

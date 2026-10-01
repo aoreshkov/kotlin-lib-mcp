@@ -32,7 +32,7 @@ fun Server.registerGetLatestVersionTool(service: LibraryService) {
         toolAnnotations = REPOSITORY_READ_ONLY,
         icon = Glyph.Latest,
     ) { request ->
-        guarded(request) {
+        guarded(request, revealInternalErrors = service.exposeLocalPaths) {
             val args = request.args()
             val spec = args.requireStringArg("coordinate").parseCoordinateSpec()
             val includePreReleases = args.booleanArg("includePreReleases") ?: false

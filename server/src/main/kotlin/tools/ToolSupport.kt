@@ -1,8 +1,13 @@
 package app.oreshkov.kotlinlibmcp.server.tools
 
+import app.oreshkov.kotlinlibmcp.fetch.FetchException
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
+import app.oreshkov.kotlinlibmcp.server.LibraryNotFetchedException
+import app.oreshkov.kotlinlibmcp.server.SearchPatternTooExpensiveException
+import app.oreshkov.kotlinlibmcp.server.elicitation.VersionSelectionDismissedException
 import app.oreshkov.kotlinlibmcp.server.icons.Glyph
 import app.oreshkov.kotlinlibmcp.server.telemetry.toolSpan
+import co.touchlab.kermit.Logger
 import io.modelcontextprotocol.kotlin.sdk.server.ClientConnection
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequest
@@ -110,19 +115,25 @@ internal val LOCAL_READ_ONLY = ToolAnnotations(readOnlyHint = true, openWorldHin
 internal val REPOSITORY_READ_ONLY = ToolAnnotations(readOnlyHint = true, openWorldHint = true)
 
 /**
- * Runs a tool body, turning expected failures (bad arguments, un-fetched coordinate, IO) into an
- * `isError` result the model can read and act on, per the MCP tool-error convention.
+ * Runs a tool body, turning failures into an `isError` result the model can read and act on, per
+ * the MCP tool-error convention.
  *
  * Every tool funnels through here, so it is also where the `tools/call` span is opened (a no-op
  * unless `--otel` is set). Declared on [ClientConnection] — the receiver of every `addTool`
  * handler — so `mcp.session.id` comes for free without touching the call sites; [request] supplies
  * both the tool name and the `_meta` carrying any inbound trace context.
  *
- * The exception is recorded on the span before it is flattened into an `isError` result, so the
- * failure detail survives even though the span's `error.type` becomes the spec's `tool_error`.
+ * **What the client sees.** A message this server wrote for the caller (see [isWrittenForTheCaller])
+ * is returned as is: it names only coordinates, relative paths and public repository URLs, and it
+ * tells the model what to do next. Anything else — an IO failure, an Analysis API crash — can carry
+ * absolute paths and other internals, so unless [revealInternalErrors] is set (a stdio client, which
+ * launched this process and shares its machine) it is reduced to its exception type. The detail is
+ * never lost: it is logged to stderr, and recorded on the span before being flattened, so it
+ * survives even though the span's `error.type` becomes the spec's `tool_error`.
  */
 internal suspend fun ClientConnection.guarded(
     request: CallToolRequest,
+    revealInternalErrors: Boolean = false,
     block: suspend () -> CallToolResult,
 ): CallToolResult = toolSpan(request.name, sessionId, request.params.meta) {
     try {
@@ -131,9 +142,37 @@ internal suspend fun ClientConnection.guarded(
         throw e
     } catch (e: Exception) {
         Span.current().recordException(e)
-        CallToolResult(content = listOf(TextContent(e.message ?: e.toString())), isError = true)
+        val message = when {
+            e.isWrittenForTheCaller() -> e.message ?: e.toString()
+            else -> {
+                log.w(e) { "${request.name} failed" }
+                if (revealInternalErrors) {
+                    e.message ?: e.toString()
+                } else {
+                    "${request.name} failed with an internal error (${e::class.simpleName}); " +
+                        "the server log has the details."
+                }
+            }
+        }
+        CallToolResult(content = listOf(TextContent(message)), isError = true)
     }
 }
+
+private val log = Logger.withTag("Tools")
+
+/**
+ * Exceptions whose message is part of the tool's contract with the model: bad arguments, a library
+ * not fetched yet, a regex too expensive to run, a dismissed version picker, and fetch failures
+ * (sources missing, checksum mismatch, download too large). [IllegalArgumentException] covers every
+ * `require` and argument check in this server. `ZipExtractionException` is deliberately absent: its
+ * message names the archive by its absolute path in the cache.
+ */
+private fun Exception.isWrittenForTheCaller(): Boolean =
+    this is IllegalArgumentException ||
+        this is LibraryNotFetchedException ||
+        this is SearchPatternTooExpensiveException ||
+        this is VersionSelectionDismissedException ||
+        this is FetchException
 
 // --- input schema helpers ---
 

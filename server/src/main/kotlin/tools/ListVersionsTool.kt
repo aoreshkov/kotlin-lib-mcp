@@ -38,7 +38,7 @@ fun Server.registerListVersionsTool(service: LibraryService) {
         toolAnnotations = REPOSITORY_READ_ONLY,
         icon = Glyph.Versions,
     ) { request ->
-        guarded(request) {
+        guarded(request, revealInternalErrors = service.exposeLocalPaths) {
             val args = request.args()
             val parts = args.requireStringArg("coordinate").split(':')
             require(parts.size in 2..3 && parts.take(2).none(String::isBlank)) {

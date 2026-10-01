@@ -28,7 +28,7 @@ fun Server.registerListPackagesTool(service: LibraryService) {
         toolAnnotations = LOCAL_READ_ONLY,
         icon = Glyph.Packages,
     ) { request ->
-        guarded(request) {
+        guarded(request, revealInternalErrors = service.exposeLocalPaths) {
             val args = request.args()
             toolResult(
                 service.listPackages(

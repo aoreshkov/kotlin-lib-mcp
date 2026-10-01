@@ -110,8 +110,11 @@ class LibraryService(
      * path is both usable and already within the caller's reach. Over HTTP the caller may be on
      * another machine: the path would be useless to it and would disclose the server's layout for
      * no benefit, so it stays `null`.
+     *
+     * The same reasoning decides how much of an *unexpected* tool failure the client is shown (see
+     * `guarded`): everything over stdio, only the exception type otherwise.
      */
-    private val exposeLocalPaths: Boolean = false,
+    internal val exposeLocalPaths: Boolean = false,
     /**
      * How many fetches of *different* coordinates may download and analyze at once; the rest queue.
      *

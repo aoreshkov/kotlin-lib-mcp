@@ -38,7 +38,7 @@ fun Server.registerListDeclarationsTool(service: LibraryService) {
         toolAnnotations = LOCAL_READ_ONLY,
         icon = Glyph.Declarations,
     ) { request ->
-        guarded(request) {
+        guarded(request, revealInternalErrors = service.exposeLocalPaths) {
             val args = request.args()
             toolResult(
                 service.listDeclarations(

@@ -22,7 +22,7 @@ fun Server.registerGetKDocTool(service: LibraryService) {
         toolAnnotations = LOCAL_READ_ONLY,
         icon = Glyph.KDoc,
     ) { request ->
-        guarded(request) {
+        guarded(request, revealInternalErrors = service.exposeLocalPaths) {
             val args = request.args()
             toolResult(service.getKDoc(args.coordinateArg(), args.requireStringArg("fqName")))
         }

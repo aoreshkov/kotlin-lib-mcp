@@ -22,7 +22,7 @@ fun Server.registerGetApiSignatureTool(service: LibraryService) {
         toolAnnotations = LOCAL_READ_ONLY,
         icon = Glyph.Signature,
     ) { request ->
-        guarded(request) {
+        guarded(request, revealInternalErrors = service.exposeLocalPaths) {
             val args = request.args()
             toolResult(service.getSignature(args.coordinateArg(), args.requireStringArg("fqName")))
         }

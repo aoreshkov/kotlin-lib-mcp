@@ -63,7 +63,7 @@ fun Server.registerDiffVersionsTool(service: LibraryService) {
         toolAnnotations = LOCAL_READ_ONLY,
         icon = Glyph.Diff,
     ) { request ->
-        guarded(request) {
+        guarded(request, revealInternalErrors = service.exposeLocalPaths) {
             val args = request.args()
             toolResult(
                 service.diffVersions(

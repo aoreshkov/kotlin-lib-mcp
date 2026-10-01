@@ -23,6 +23,13 @@ minimum, maximum, default)` fed from `LibraryService`'s limit constants, so the 
 the enforced ones; keep the range and default in the prose too, for clients that drop schema
 keywords — `ToolRegistrationTest` fails if the two disagree.
 
+**Failures reach the client through `guarded`, filtered.** Every tool calls
+`guarded(request, revealInternalErrors = service.exposeLocalPaths)`. Only exceptions listed in
+`isWrittenForTheCaller` (`ToolSupport.kt`) are returned verbatim; anything else is reduced to its
+type unless the client shares the machine (stdio), and logged to stderr. A new exception whose
+message is meant for the model belongs on that list — but only if the message names no absolute
+path: `ZipExtractionException` is kept off it because it names the archive by its cache path.
+
 **Every tool result must be bounded.** The rule: if a result's size is a function of the *library*
 rather than of the *arguments*, it needs a cap — and the cap has to be the tool's own, because
 nothing downstream will impose one. This was learned three times: `list_declarations` shipped

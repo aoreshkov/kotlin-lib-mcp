@@ -36,7 +36,7 @@ fun Server.registerGetDependenciesTool(service: LibraryService) {
         toolAnnotations = REPOSITORY_READ_ONLY,
         icon = Glyph.Dependencies,
     ) { request ->
-        guarded(request) {
+        guarded(request, revealInternalErrors = service.exposeLocalPaths) {
             val args = request.args()
             toolResult(
                 service.getDependencies(
