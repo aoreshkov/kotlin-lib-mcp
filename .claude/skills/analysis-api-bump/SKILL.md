@@ -21,7 +21,7 @@ Read `gradle/libs.versions.toml` and record:
 - `kotlin` — the shared version ref used by **all** of: `analysisApi-standalone`,
   `analysisApi-highLevel`, `analysisApi-k2`, `analysisApi-lowLevelFir`,
   `analysisApi-implBase`, `analysisApi-platform`, `analysisApi-symbolLightClasses`,
-  `kotlin-compiler`, plus the `kotlin-*` / `composeCompiler-*` plugin artifacts.
+  `analysisApi-compilerCommon`, `kotlin-compiler`, plus the `kotlin-*` / `composeCompiler-*` plugin artifacts.
 - `caffeine` (comment: "runtime dep of the Analysis API `-for-ide` jars; matches Kotlin's own pin").
 - `intellijCoroutines` (comment: "JetBrains coroutines fork the bundled IJ core expects (KT-81457)").
 - `compose` (comment: "aligned to Kotlin X.Y.Z") — Compose is Kotlin-coupled too.
@@ -41,6 +41,12 @@ For `$ARGUMENTS` (or the intended target Kotlin version), verify against officia
 - Does the new Kotlin change the **caffeine** version its `-for-ide` jars expect? (Check the
   Kotlin build's own bundled version.) If so, update the `caffeine` pin to match and update
   the comment.
+- Did the **`kotlin-compiler` fat jar drop packages** the `-for-ide` jars rely on? Kotlin moves
+  modules between that jar and the `-for-ide` set (`prepare/compiler` vs
+  `prepare/ide-plugin-dependencies` in its build): 2.4.20 dropped the decompiler
+  (`org.jetbrains.kotlin.analysis.decompiler.*`), which is why `analysisApi-compilerCommon` exists.
+  Diff the two versions' package lists (`unzip -Z1 … | sed 's|/[^/]*$||' | sort -u`); a
+  package that vanished without the analyzer losing a feature still has to come from somewhere.
 - Is **KT-81457** fixed in this version, making the `intellijCoroutines` fork pin
   unnecessary? If yes, that's a chance to drop the fork; if not, keep the pin.
 - Compose Multiplatform ↔ Kotlin compatibility: pick the `compose` version aligned to the

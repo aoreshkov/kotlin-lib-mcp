@@ -53,6 +53,9 @@ analysisApi-lowLevelFir = { module = "org.jetbrains.kotlin:low-level-api-fir-for
 analysisApi-implBase = { module = "org.jetbrains.kotlin:analysis-api-impl-base-for-ide", version.ref = "kotlin" }
 analysisApi-platform = { module = "org.jetbrains.kotlin:analysis-api-platform-interface-for-ide", version.ref = "kotlin" }
 analysisApi-symbolLightClasses = { module = "org.jetbrains.kotlin:symbol-light-classes-for-ide", version.ref = "kotlin" }
+# The decompiler and stub modules the standalone session registers (`ClsKotlinBinaryClassCache`, …).
+# Up to 2.4.10 they rode inside `kotlin-compiler`; from 2.4.20 they ship only in this jar.
+analysisApi-compilerCommon = { module = "org.jetbrains.kotlin:kotlin-compiler-common-for-ide", version.ref = "kotlin" }
 kotlin-compiler = { module = "org.jetbrains.kotlin:kotlin-compiler", version.ref = "kotlin" }
 # The `-for-ide` jars are resolved non-transitively, so their runtime deps are declared here.
 caffeine = { module = "com.github.ben-manes.caffeine:caffeine", version.ref = "caffeine" }
