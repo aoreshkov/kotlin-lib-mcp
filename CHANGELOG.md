@@ -72,6 +72,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   pulls in deliberately stay at its own 3.5.1 — the reasoning is in `gradle/libs.versions.toml`.
 
 ### Fixed
+- **The stdio server exits when its client disconnects.** After the first library it analyzed, the
+  process never exited once the client closed stdin: the Analysis API leaves an IntelliJ pooled
+  thread behind that is not a daemon, so the JVM — and, under `docker run --rm`, the container —
+  stayed up until the client escalated to a signal. MCP's stdio shutdown expects the server to exit
+  on its own; it now does, as soon as the transport closes and the cache, task records and
+  telemetry have been flushed.
 - **`explain_public_api` no longer drops declarations without saying so.** The prompt meant to
   embed up to 150 public declarations and note how many it left out, but it took them from
   `list_declarations`' default page of 100 — so a library with more than 100 public declarations got
