@@ -22,6 +22,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   an in-flight fetch of the same coordinate do not occupy a slot.
 
 ### Changed
+- **Kotlin 2.4.10 → 2.4.20**, moving the seven version-locked Analysis API `-for-ide` artifacts and
+  the compiler with it. The coupled pins hold: Kotlin 2.4.20's own build still uses Caffeine 2.9.3,
+  and the IntelliJ coroutines fork stays — 2.4.20 now pins its own fork for the Analysis API
+  (`1.8.0-intellij-13`), so the `IntellijCoroutines` dependency KT-81457 describes has not gone away.
 - **The library index resource is a bounded summary.** `kotlinlib://{group}/{artifact}/{version}/index`
   returned the whole parsed index — every declaration with its full KDoc — which is unbounded in the
   size of the library, and a resource has no arguments to page with: attaching it to a conversation

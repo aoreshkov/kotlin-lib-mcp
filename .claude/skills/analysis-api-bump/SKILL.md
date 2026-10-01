@@ -2,7 +2,7 @@
 name: analysis-api-bump
 description: Bump the Kotlin version together with the version-locked Analysis API `-for-ide` artifacts and their runtime-dep pins, then verify source analysis still works. Use when upgrading Kotlin, when the Analysis API fails to resolve types after a bump, or when auditing whether the coupled pins are still correct.
 disable-model-invocation: true
-argument-hint: "[target Kotlin version, e.g. 2.4.10]"
+argument-hint: "[target Kotlin version, e.g. 2.4.20]"
 ---
 
 # Bump Kotlin + Analysis API (version-locked)
