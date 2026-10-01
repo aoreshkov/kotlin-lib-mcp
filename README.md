@@ -118,15 +118,30 @@ Or in `.mcp.json` / Claude Desktop config:
 }
 ```
 
-For remote use, run the http transport (`--transport http --port 3000`) and point the client
-at `http://127.0.0.1:3000/mcp` — DNS-rebinding protection admits localhost hosts by default;
-`--allowed-host`/`--allowed-origin` extend the allowlist for non-localhost deployments.
+**Streamable HTTP.** Run `--transport http --port 3000` and point the client at
+`http://127.0.0.1:3000/mcp`. Out of the box it is reachable from this machine only: the server
+binds to loopback, and DNS-rebinding protection rejects any `Host` (or `Origin`) header other than
+`localhost`, `127.0.0.1` or `[::1]`. There is **no built-in authentication**, so to serve other
+machines put an authenticating reverse proxy in front, then bind wider with `--host` (e.g.
+`0.0.0.0`) and name the public host with `--allowed-host` (plus `--allowed-origin` for browser
+clients).
 
-CLI flags: `--transport stdio|http`, `--port <int>` (default 3000), `--allowed-host <host>` /
-`--allowed-origin <url>` (repeatable; extend the http transport's localhost-only defaults),
-`--cache-dir <path>`, `--repo <url>` (repeatable; Maven Central is the default),
-`--forward-logs-to-client` (opt into mirroring logs to the client; off by default, stderr-only),
-`--otel` (opt into OTLP/HTTP trace export; off by default — see [Telemetry](#telemetry)), `--help`.
+In Docker, loopback is the container's own, which a published port cannot reach. Bind every
+interface inside the container and publish the port on the host's loopback instead — the endpoint
+is still `http://127.0.0.1:3000/mcp`, and still unreachable from other machines:
+
+```sh
+docker run --rm -p 127.0.0.1:3000:3000 -v kotlin-lib-mcp-cache:/home/mcp/.cache \
+  ghcr.io/aoreshkov/kotlin-lib-mcp --transport http --host 0.0.0.0 --port 3000
+```
+
+CLI flags: `--transport stdio|http`, `--port <int>` (default 3000), `--host <addr>` (http bind
+address; default `127.0.0.1`), `--allowed-host <host>` / `--allowed-origin <url>` (repeatable;
+extend the http transport's localhost-only defaults), `--cache-dir <path>`, `--repo <url>`
+(repeatable; Maven Central is the default), `--forward-logs-to-client` (opt into mirroring logs to
+the client; off by default, stderr-only), `--otel` (opt into OTLP/HTTP trace export; off by
+default — see [Telemetry](#telemetry)), `--tasks` (opt into task-augmented `fetch_library`; off by
+default — see [Tasks](#tasks)), `--help`.
 
 ## Tools
 
