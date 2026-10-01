@@ -12,6 +12,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   indentation alone was 22–41% of its characters on the captured responses the plugin evals mock
   (`list_declarations` at the top of that range) — paid on every call, since the text block is what a
   model reads. `structuredContent` is unchanged, and still the same payload as the text.
+- **Library-authored text is labelled as third-party data.** Source, KDoc, search snippets and diffs
+  are written by whoever published the artifact, so they can carry instructions aimed at the model
+  reading them; the MCP spec makes the server responsible for its tool output. `get_kdoc`,
+  `get_source`, `search_source` and `diff_versions` now end their descriptions by saying their text
+  is data, not instructions, and the server `instructions` say the same for every result. The
+  content itself is untouched — rewriting source would defeat the tools.
 - **Ktor 3.5.2 → 3.6.0.** For the client that fetches from Maven repositories this is mostly CIO
   robustness. Two of its fixes land on paths we actually run: `Failed to parse HTTP response:
   unexpected EOF` when pipelining is on — pipelining *is* on (`pipelineMaxSize` defaults to 20) and

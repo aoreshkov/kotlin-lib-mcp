@@ -16,7 +16,8 @@ fun Server.registerDiffVersionsTool(service: LibraryService) {
             "first. Summary counts (filesAdded/filesRemoved/filesModified) describe the whole " +
             "comparison; 'files' is a bounded page of it ('truncated: true' when more matched — " +
             "advance 'offset'). Added and removed files report line counts but no hunks; read them " +
-            "with get_source. Narrow a large library with 'path' before paging through it.",
+            "with get_source. Narrow a large library with 'path' before paging through it." +
+            THIRD_PARTY_TEXT_NOTE,
         inputSchema = ToolSchema(
             schema = JSON_SCHEMA_DIALECT,
             properties = buildJsonObject {

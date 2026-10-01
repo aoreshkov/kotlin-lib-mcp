@@ -10,7 +10,7 @@ fun Server.registerSearchSourceTool(service: LibraryService) {
         name = "search_source",
         description = "Search a fetched library's sources line by line and return file:line hits " +
             "with a snippet. Substring match by default; set 'regex' for Kotlin regex syntax. " +
-            "Results are capped ('truncated: true' when more existed).",
+            "Results are capped ('truncated: true' when more existed)." + THIRD_PARTY_TEXT_NOTE,
         inputSchema = coordinateSchema(
             extraProps = mapOf(
                 "query" to stringProp("Substring (default) or regex to search for"),

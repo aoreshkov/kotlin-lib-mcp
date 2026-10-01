@@ -12,7 +12,7 @@ fun Server.registerGetSourceTool(service: LibraryService) {
             "'jvm/io/ktor/client/HttpClient.kt') or of a single declaration (by 'fqName'). " +
             "Provide exactly one of the two. Results are paged ('truncated: true' with a " +
             "'totalLines' when the file or declaration is longer than the returned page; advance " +
-            "'startLine' to read on).",
+            "'startLine' to read on)." + THIRD_PARTY_TEXT_NOTE,
         inputSchema = coordinateSchema(
             extraProps = mapOf(
                 "path" to stringProp("Source file path relative to the extracted sources root"),
