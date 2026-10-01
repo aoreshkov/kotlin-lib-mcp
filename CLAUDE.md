@@ -41,7 +41,9 @@ Validate with `claude plugin validate ./plugin --strict`; the image pin and the 
 
 **Verify a change:** compile fast with `./gradlew :server:compileKotlin` (pulls in `core`);
 run the affected module's tests, e.g. `./gradlew :core:build`. A `Stop` hook runs the fast
-compile automatically when Kotlin sources changed (`.claude/hooks/stop-verify.sh`).
+compile automatically when Kotlin sources changed (`.claude/hooks/stop-verify.sh`). Wire-level
+changes are also checked by CI's `conformance` job — the official MCP conformance suite, pinned in
+`.github/conformance/` with a baseline of fixture-only scenarios (how to run it: `CONTRIBUTING.md`).
 
 ## Tech stack (versions live ONLY in `gradle/libs.versions.toml`)
 
@@ -82,8 +84,10 @@ resolves the latest stable release (canonical `<release>`/`<latest>` from `maven
 with a semantic-version fallback in `core/util/MavenVersions.kt`).
 
 Cached library indexes are also exposed as MCP **resources** (one static resource per cached
-library plus a `kotlinlib://{group}/{artifact}/{version}/index` **resource template**), and an
-"explain the public API" **prompt** — exercising all three MCP primitives.
+library plus a `kotlinlib://{group}/{artifact}/{version}/index` **resource template**, and a
+`…/package/{package}` template for one package's public API — both bounded, see
+`.claude/rules/mcp-server.md`), and an "explain the public API" **prompt** — exercising all three
+MCP primitives.
 
 **Icons (SEP-973)** are on `serverInfo`, every tool, the prompt and the resource/template
 (`icons/Icons.kt`, PNGs in `server/src/main/resources/icons/`, drawn by `:tools`). Inline `data:`

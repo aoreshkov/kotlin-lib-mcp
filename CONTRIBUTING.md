@@ -18,6 +18,20 @@ you invest time.
 ./gradlew :server:run --args="--transport stdio"   # run the MCP server locally
 ```
 
+CI also runs the official [MCP conformance suite](https://github.com/modelcontextprotocol/conformance)
+against the server over Streamable HTTP. To run it the same way locally (needs Node):
+
+```sh
+./gradlew :server:installDist
+npm ci --prefix .github/conformance --ignore-scripts
+server/build/install/server/bin/server --transport http --port 3000 --forward-logs-to-client &
+.github/conformance/node_modules/.bin/conformance server --url http://127.0.0.1:3000/mcp \
+  --expected-failures .github/conformance/baseline.yml
+```
+
+A failing scenario that is not in `.github/conformance/baseline.yml` is a real conformance bug; the
+file explains what does belong there.
+
 ## Project conventions
 
 - **Dependency versions live only in `gradle/libs.versions.toml`.** Never hard-code a version

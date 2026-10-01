@@ -25,6 +25,10 @@ CLAUDE.local.md
 # Eval run output — timestamped reports from real model calls; the suite ships, its results do not
 plugin/evals/results/
 
+# MCP conformance suite (.github/conformance): installed by `npm ci`, results written by its runner
+node_modules/
+.github/conformance/results/
+
 # Logs & OS noise
 *.log
 .DS_Store

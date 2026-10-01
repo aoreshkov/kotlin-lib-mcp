@@ -246,6 +246,12 @@ class LibraryService(
         )
     }
 
+    /**
+     * Declarations of a fetched library, filtered by [packageName] and [visibility], as a bounded page.
+     *
+     * A [packageName] the library does not have is an error rather than an empty page: a misspelt
+     * package would otherwise read as "this package declares nothing", which is a different answer.
+     */
     suspend fun listDeclarations(
         coordinate: LibraryCoordinate,
         packageName: String?,
@@ -259,7 +265,11 @@ class LibraryService(
             "all" -> Visibility.entries.toSet()
             else -> throw IllegalArgumentException("visibility must be one of: public, internal, all")
         }
-        val matching = index(coordinate).symbolsByFqName.values.filter { symbol ->
+        val index = index(coordinate)
+        if (packageName != null && index.packages.none { it.name == packageName }) {
+            throw IllegalArgumentException("No package '$packageName' in $coordinate (see list_packages)")
+        }
+        val matching = index.symbolsByFqName.values.filter { symbol ->
             symbol.visibility in wanted &&
                 (packageName == null || symbol.sourceRef?.file?.packageName == packageName)
         }

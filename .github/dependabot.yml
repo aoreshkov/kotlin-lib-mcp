@@ -36,6 +36,13 @@ updates:
       github-actions:
         patterns: ["*"]
 
+  # The MCP conformance suite CI runs (.github/conformance). A bump can add scenarios, so its PR
+  # is where new failures get triaged into baseline.yml or fixed.
+  - package-ecosystem: npm
+    directory: /.github/conformance
+    schedule:
+      interval: weekly
+
   # Keeps the digest-pinned eclipse-temurin base image fresh (JRE CVE patches).
   - package-ecosystem: docker
     directory: /

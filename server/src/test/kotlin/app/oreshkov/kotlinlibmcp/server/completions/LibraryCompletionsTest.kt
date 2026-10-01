@@ -7,6 +7,7 @@ import app.oreshkov.kotlinlibmcp.model.PackageInfo
 import app.oreshkov.kotlinlibmcp.server.FakeTransport
 import app.oreshkov.kotlinlibmcp.server.handshake
 import app.oreshkov.kotlinlibmcp.server.resources.LIBRARY_INDEX_URI_TEMPLATE
+import app.oreshkov.kotlinlibmcp.server.resources.LIBRARY_PACKAGE_URI_TEMPLATE
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
 import io.modelcontextprotocol.kotlin.sdk.types.CompleteRequest
@@ -127,6 +128,46 @@ class LibraryCompletionsTest {
         assertEquals(emptyList(), result)
     }
 
+    // --- packageTemplateCompletions (the package resource template) ---
+
+    @Test
+    fun packageVariableIsCompletedFromTheResolvedLibrarysPackages() = runTest {
+        val packages = listOf("io.ktor.client", "io.ktor.client.plugins")
+        val cache = FakeCache(cached, packages = mapOf(ktorCore351 to packages))
+
+        val result = packageTemplateCompletions(
+            Argument("package", "io.ktor.client.p"),
+            mapOf("group" to "io.ktor", "artifact" to "ktor-client-core", "version" to "3.5.1"),
+            cache,
+        )
+
+        assertEquals(listOf("io.ktor.client.plugins"), result)
+    }
+
+    @Test
+    fun packageVariableNeedsTheWholeCoordinateResolvedFirst() = runTest {
+        val cache = FakeCache(cached, packages = mapOf(ktorCore351 to listOf("io.ktor.client")))
+
+        val result = packageTemplateCompletions(
+            Argument("package", ""),
+            mapOf("group" to "io.ktor", "artifact" to "ktor-client-core"),
+            cache,
+        )
+
+        assertEquals(emptyList(), result)
+    }
+
+    @Test
+    fun coordinateVariablesOfThePackageTemplateCompleteLikeTheIndexs() = runTest {
+        val result = packageTemplateCompletions(
+            Argument("version", "3.5"),
+            mapOf("group" to "io.ktor", "artifact" to "ktor-client-core"),
+            FakeCache(cached),
+        )
+
+        assertEquals(listOf("3.5.1"), result)
+    }
+
     // --- registration: the handler has to reach every session, not just the newest ---
 
     @OptIn(ExperimentalCoroutinesApi::class)
@@ -168,6 +209,38 @@ class LibraryCompletionsTest {
 
         aliceSession.close()
         bobSession.close()
+    }
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    @Test
+    fun thePackageTemplateIsRoutedToPackageCompletions() = runTest {
+        val server = Server(
+            serverInfo = Implementation(name = "test", version = "0"),
+            options = ServerOptions(
+                capabilities = ServerCapabilities(completions = EmptyJsonObject),
+                handlerCoroutineContext = StandardTestDispatcher(testScheduler),
+            ),
+        )
+        server.registerLibraryCompletions(FakeCache(cached, packages = mapOf(ktorCore351 to listOf("io.ktor.client"))))
+        val transport = FakeTransport()
+        val session = server.createSession(transport)
+        transport.handshake()
+
+        val resolved = mapOf("group" to "io.ktor", "artifact" to "ktor-client-core", "version" to "3.5.1")
+        transport.deliver(
+            CompleteRequest(
+                CompleteRequestParams(
+                    argument = Argument("package", "io"),
+                    ref = ResourceTemplateReference(uri = LIBRARY_PACKAGE_URI_TEMPLATE),
+                    context = CompleteRequestParams.Context(arguments = resolved),
+                )
+            ).toJSON().copy(id = RequestId(2L)),
+        )
+        runCurrent()
+
+        val result = assertNotNull(transport.responseTo(2), "no completion response")
+        assertEquals(listOf("io.ktor.client"), assertIs<CompleteResult>(result.result).completion.values)
+        session.close()
     }
 }
 

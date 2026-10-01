@@ -45,6 +45,12 @@ page for the rest. Where rows are the wrong unit, bound the real one instead and
 line runs to thousands of characters), and `get_dependencies` prunes by node count breadth-first
 (`depth` bounds resolution cost, not result size).
 
+**Resources fall under the same rule**, with less room: a resource has no arguments to page with,
+and a client may attach one to a conversation wholesale. So `…/index` is a summary (counts plus the
+first 200 packages), not the parsed index — which runs to megabytes for a large library — and each
+`…/package/{package}` caps its declarations, keeping only the KDoc summary. Anything past a cap is
+reachable through the tools.
+
 **Icons gotcha:** `icons` exists only on the `Tool`/`Prompt`/`Resource`/`ResourceTemplate` types,
 never on the SDK's `addTool(name, …)`/`addPrompt(name, …)`/`addResource(uri, …)` convenience
 overloads — and there is no `addResource(Resource, handler)` at all, so a resource with icons has
