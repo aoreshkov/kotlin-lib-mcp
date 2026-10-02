@@ -7,6 +7,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-10-02
+
+The server now says what the sources say, and refuses what it would otherwise get quietly wrong.
+`get_api_signature` renders a declaration as written — parameter defaults and `public` included —
+so an optional argument no longer reads as a required one; a misspelt or mistyped tool argument is
+an error instead of a silent fallback to the default; and the library index resource, the last
+result whose size grew with the library, is bounded. It is also cheaper to run: compact JSON
+results, at most two analyses at a time, a Docker image that starts about 3.5× faster, and a stdio
+process that exits when its client goes away. **Upgrading:** the index resource's shape changed
+(see *Changed*), and a library cached by an earlier version answers "not fetched yet" until
+`fetch_library` is called for it once — that re-analyzes the sources already on disk, without
+downloading them again.
+
 ### Added
 - **`kotlinlib://{group}/{artifact}/{version}/package/{package}` resource template** — one
   package's public API: each declaration's signature and KDoc summary, up to 200
@@ -20,6 +33,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   a progress step 0 (`Queued: …`) so that a waiting fetch does not look like a hung one. A queued
   call that the client cancels leaves the queue without ever downloading. Fetches that only wait on
   an in-flight fetch of the same coordinate do not occupy a slot.
+- **CI runs the official MCP conformance suite, and analyzes a real library on the shipped image.**
+  The `conformance` job starts the server over Streamable HTTP and runs
+  `@modelcontextprotocol/conformance` against it, every message validated against the 2025-11-25
+  schema; the suite is pinned in `.github/conformance/`, and the scenarios that need the suite's own
+  fixture server are baselined with the reason. The Docker smoke job now drives the image over stdio
+  the way a client does — `fetch_library` on `ktor-client-core` 3.5.1, then a `get_api_signature`
+  that must come back resolved rather than as the text fallback — and requires the process to exit
+  on its own once stdin closes. An Analysis API pin out of step fails only at runtime, never at
+  compile time, and the unit tests analyze fixtures, so this is the first automated check that
+  would see it.
+- **A behavioural eval suite for the plugin** (`plugin/evals/`, run by `claude plugin eval`)
+  measures whether the plugin beats a model answering from memory and one allowed to browse the
+  web. Its first two-arm run found the signature-rendering bug fixed below.
 
 ### Changed
 - **The Docker image starts about 3.5× faster.** It now ships a JDK 25 AOT cache, built during
@@ -77,8 +103,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   deprecates `ByteReadChannel.readRemaining` in favour of `readBuffer`; the capped download path
   moved over, which is a rename with no behavioural change. Four Ktor modules that only the MCP SDK
   pulls in deliberately stay at its own 3.5.1 — the reasoning is in `gradle/libs.versions.toml`.
+- **OpenTelemetry 1.65.0 → 1.66.0**, **slf4j-api 2.0.19 → 2.0.20**, **Logback 1.6.3 → 1.6.4**,
+  **Compose Multiplatform 1.12.0 → 1.12.1**, the IntelliJ coroutines fork the Analysis API expects
+  1.10.2-intellij-1 → 1.11.0-intellij-1, two Temurin 25 JRE base-image digest re-pins, and, in the
+  build only, Gradle 9.7.1 → 9.8.0, Kover 0.9.9 → 0.9.11 and fourteen GitHub Actions bumps. Kotlin
+  stays at 2.4.10: with 2.4.20 no standalone Analysis API session can start, and moving past it
+  needs a classpath restructure rather than a version pin.
 
 ### Fixed
+- **Signatures keep parameter defaults and `public`.** `get_api_signature` rendered ktor's
+  `public expect fun HttpClient(block: HttpClientConfig<*>.() -> Unit = {}): HttpClient` without
+  either, so an optional parameter was indistinguishable from a required one — an agent reading it
+  would conclude that `HttpClient()` does not compile — and visibility had to be inferred from
+  absence. Defaults are now printed from their own source text; one longer than 60 characters, or
+  inherited from an `expect` or overridden declaration with no local text, renders as `...`, which
+  still says the argument may be omitted. Visibility is always rendered. The on-disk index
+  (`index.json` → `index-v2.json`) is versioned with the rendering, so cached libraries do not keep
+  serving the old signatures; see *Upgrading* above.
 - **The stdio server exits when its client disconnects.** After the first library it analyzed, the
   process never exited once the client closed stdin: the Analysis API leaves an IntelliJ pooled
   thread behind that is not a daemon, so the JVM — and, under `docker run --rm`, the container —
@@ -481,7 +522,8 @@ Initial public release.
 - On-disk cache keyed by `group/artifact/version` under the OS cache directory.
 - Optional **Compose Desktop dashboard** embedding the server (control, logs, cache browser).
 
-[Unreleased]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.6.0...HEAD
+[Unreleased]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.4.0...v0.5.0
 [0.4.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.3.0...v0.4.0
