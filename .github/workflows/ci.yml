@@ -68,16 +68,22 @@ jobs:
   claude-code-plugin:
     name: Claude Code plugin manifests
     runs-on: ubuntu-latest
+    env:
+      # 2.1.281 or later: earlier `validate` skips the checks on the plugin's MCP servers.
+      # Pinned so a new Claude Code release cannot change what `--strict` accepts without a
+      # reviewed commit. Bump it deliberately.
+      CLAUDE_CODE_VERSION: 2.1.294
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          # The version check below compares against the last release tag.
+          fetch-depth: 0
 
       # The plugin is consumed straight from this repository by
       # `/plugin marketplace add aoreshkov/kotlin-lib-mcp`, so a broken manifest ships the
       # moment it lands on main — there is no build step between here and the user. This job
-      # is that build step; until now the only check was running `claude plugin validate`
-      # by hand.
+      # is that build step.
       - name: Validate the marketplace and plugin manifests
         run: |
           MARKET=.claude-plugin/marketplace.json
@@ -116,6 +122,39 @@ jobs:
             echo "expected the image tag to be ${expected}"
             exit 1; }
           echo "OK: ${image} matches version ${version}"
+
+      # Claude Code updates an installed plugin only when plugin.json's `version` changes, so
+      # a change under plugin/ without a bump never reaches anyone who already has it. That
+      # covers users of this repository's marketplace, and of any marketplace that pins a
+      # release of it. Bump once per release cycle, in the first change after a tag. evals/
+      # and README.md are left out: Claude Code never loads either.
+      - name: Plugin version moves with the plugin
+        run: |
+          dir=plugin
+          tag=$(git describe --tags --abbrev=0 --match 'v*' HEAD 2>/dev/null) || {
+            echo "No release tag yet: nothing to compare against"; exit 0; }
+          paths=("$dir" ":(exclude)${dir}/evals" ":(exclude)${dir}/README.md")
+          if git diff --quiet "$tag" HEAD -- "${paths[@]}"; then
+            echo "OK: ${dir}/ unchanged since ${tag}"; exit 0
+          fi
+          was=$(git show "${tag}:${dir}/.claude-plugin/plugin.json" | jq -r .version)
+          now=$(jq -r .version "${dir}/.claude-plugin/plugin.json")
+          test "$now" != "$was" || {
+            echo "::error file=${dir}/.claude-plugin/plugin.json::${dir}/ changed since ${tag}, but its version is still ${now}. Bump it, or users who have ${now} never get the change."
+            git diff --stat "$tag" HEAD -- "${paths[@]}"
+            exit 1; }
+          echo "OK: ${dir}/ changed since ${tag}, and its version moved ${was} -> ${now}"
+
+      # The jq checks above cover this repository's own invariants; `validate` covers Claude
+      # Code's, including each MCP server entry and every ${user_config.*} reference.
+      # ubuntu-latest ships Node, so no setup-node step is needed.
+      - name: Install Claude Code
+        run: npm install -g "@anthropic-ai/claude-code@${CLAUDE_CODE_VERSION}"
+
+      - name: claude plugin validate --strict
+        run: |
+          claude plugin validate . --strict
+          claude plugin validate ./plugin --strict
 
   docker-smoke:
     name: Docker image smoke (JDK 25 runtime)
