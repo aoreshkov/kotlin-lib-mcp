@@ -15,6 +15,13 @@ pluginManagement {
     }
 }
 
+plugins {
+    // Gradle's toolchain auto-provisioning: downloads the JDK the convention plugins ask for (`jdk`
+    // in libs.versions.toml) when no matching one is installed. A settings plugin is applied before
+    // the version catalog exists, so its version is the one that cannot live in the catalog.
+    id("org.gradle.toolchains.foojay-resolver-convention") version "1.0.0"
+}
+
 dependencyResolutionManagement {
     repositoriesMode.set(RepositoriesMode.FAIL_ON_PROJECT_REPOS)
     repositories {

@@ -1,5 +1,8 @@
 [versions]
 # Build tools
+# The JDK every module compiles with and targets (Gradle toolchain, read by the build-logic
+# convention plugins). Keep CI's `setup-java` and the Dockerfile's `eclipse-temurin` base in step.
+jdk = "25"
 kotlin = "2.4.10"
 kover = "0.9.11"
 

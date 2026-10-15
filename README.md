@@ -68,7 +68,7 @@ See [`plugin/README.md`](plugin/README.md) for what it bundles.
 
 **Option 2 — release zip.** Download the latest
 [release](https://github.com/aoreshkov/kotlin-lib-mcp/releases/latest), unzip (needs a
-Java 21+ runtime), then:
+Java 25+ runtime), then:
 
 ```sh
 claude mcp add kotlin-lib -- /path/to/kotlin-lib-mcp-server-<version>/bin/server --transport stdio
@@ -301,7 +301,7 @@ about 800 bytes encoded each, since they ride in every `tools/list`.
 ./gradlew :server:installDist                      # standalone launcher in server/build/install/server/bin
 ```
 
-Requires JDK 21 (resolved automatically via Gradle toolchains).
+Requires JDK 25 (a Gradle toolchain: an installed JDK 25 is detected, otherwise Gradle downloads one).
 
 | Module | What it is |
 |---|---|

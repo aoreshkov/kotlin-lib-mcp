@@ -47,6 +47,7 @@ changes are also checked by CI's `conformance` job — the official MCP conforma
 
 ## Tech stack (versions live ONLY in `gradle/libs.versions.toml`)
 
+- JDK **25** (Gradle toolchain, `jdk` in the catalog; CI `setup-java` and the Docker base image match)
 - Kotlin **2.4.x** · MCP `io.modelcontextprotocol:kotlin-sdk-server:0.15.0` · Ktor **3.5.x**
 - kotlinx-serialization-json · kotlinx-coroutines
 - Source parsing: Kotlin **Analysis API (standalone mode)** — must be version-matched to Kotlin

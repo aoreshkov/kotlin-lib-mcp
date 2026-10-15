@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Java 25 is now required** to run the release zip (`bin/server`), and to build from source.
+  The Docker image is unaffected: it has always run on a Temurin 25 JRE. Every module now compiles
+  with and targets JDK 25 (Gradle toolchain, set once as `jdk` in `gradle/libs.versions.toml`),
+  so the distribution is built and tested on the JDK it ships on. A missing JDK 25 is downloaded
+  by Gradle's toolchain auto-provisioning (foojay resolver).
+
 ## [0.7.0] - 2026-10-02
 
 The server now says what the sources say, and refuses what it would otherwise get quietly wrong.
