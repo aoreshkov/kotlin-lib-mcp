@@ -26,11 +26,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up JDK 21
+      - name: Set up JDK 25
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
-          java-version: 21
+          java-version: 25
 
       # Includes Gradle wrapper validation and build caching.
       - name: Set up Gradle
@@ -164,11 +164,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up JDK 21
+      - name: Set up JDK 25
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
-          java-version: 21
+          java-version: 25
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
@@ -200,9 +200,9 @@ jobs:
             echo "OK: $(id -un) wrote ${f} on the anonymous volume"
           '
 
-      # The only place the shipped artifact is exercised on the JDK it actually ships on:
-      # the distribution is compiled against the toolchain's JDK 21, but the image is a
-      # JDK 25 JRE. This also covers tool registration, which is where a classpath conflict
+      # The only place the shipped artifact is exercised as it actually ships: the distribution
+      # in the image's own Temurin 25 JRE, with its AOT cache, rather than the toolchain JDK the
+      # unit tests run on. This also covers tool registration, which is where a classpath conflict
       # with kotlin-compiler's shaded jars surfaces — as a NoSuchMethodError at startup,
       # invisible to compilation and to the unit tests.
       - name: Server completes an MCP handshake and lists its tools
@@ -242,11 +242,11 @@ jobs:
         with:
           persist-credentials: false
 
-      - name: Set up JDK 21
+      - name: Set up JDK 25
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
           distribution: temurin
-          java-version: 21
+          java-version: 25
 
       - name: Set up Gradle
         uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0

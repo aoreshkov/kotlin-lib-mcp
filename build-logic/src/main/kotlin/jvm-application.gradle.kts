@@ -12,7 +12,7 @@ plugins {
 val libs = the<VersionCatalogsExtension>().named("libs")
 
 kotlin {
-    jvmToolchain(21)
+    jvmToolchain(libs.findVersion("jdk").get().requiredVersion.toInt())
 
     // The codebase compiles warning-free; keep it that way. A Kotlin bump that introduces a new
     // deprecation will fail the build here, which is the point — that is exactly when it is
