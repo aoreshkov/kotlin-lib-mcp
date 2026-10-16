@@ -10,7 +10,12 @@ dependencies {
     implementation(libs.opentelemetry.api)
     implementation(libs.opentelemetry.sdk)
     implementation(libs.opentelemetry.autoconfigure)
-    implementation(libs.opentelemetry.extension.kotlin)
+    implementation(libs.opentelemetry.extension.kotlin) {
+        // Since 1.67.0 it imports `kotlin-bom` as a platform, whose constraints would drag
+        // `kotlin-compiler` past the version the Analysis API jars need. `core` pins that compiler
+        // `strictly`, so this would fail resolution rather than ship — drop the BOM, keep the stdlib.
+        exclude(group = "org.jetbrains.kotlin", module = "kotlin-bom")
+    }
     implementation(libs.opentelemetry.exporter.otlp) {
         // We only speak http/protobuf; the default OkHttp sender would drag in OkHttp *and* a
         // second Kotlin stdlib. `opentelemetry-exporter-sender-jdk` below covers it with no deps.
@@ -71,7 +76,7 @@ tasks.named<CreateStartScripts>("startScripts") { classpath = classpath?.hoistOv
 // Single source of truth for the MCP `Implementation` version: bake `project.version`
 // (from gradle.properties) into a classpath resource read at startup, so the advertised
 // server version can never drift from the build. See `ServerVersion` in the server sources.
-val generateVersionResource by tasks.registering(WriteProperties::class) {
+val generateVersionResource = tasks.register<WriteProperties>("generateVersionResource") {
     destinationFile = layout.buildDirectory.file("generated/version/mcp-version.properties")
     property("version", providers.provider { project.version.toString() })
 }
@@ -79,9 +84,11 @@ tasks.processResources {
     from(generateVersionResource) { into("META-INF/kotlin-lib-mcp") }
 }
 
-// Let the version test assert the resource matches the build's project.version.
+// Let the version test assert the resource matches the build's project.version, and
+// AnalysisApiClasspathTest that the runtime kotlin-compiler is the one the Analysis API expects.
 tasks.test {
     systemProperty("kotlin-lib-mcp.expectedVersion", project.version.toString())
+    systemProperty("kotlin-lib-mcp.expectedKotlinVersion", libs.versions.kotlin.get())
 }
 
 application {

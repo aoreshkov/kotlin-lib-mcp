@@ -39,7 +39,13 @@ kotlin {
                 implementation(libs.analysisApi.platform.coordinates()) { isTransitive = false }
                 implementation(libs.analysisApi.symbolLightClasses.coordinates()) { isTransitive = false }
                 // Compiler + bundled IntelliJ core, resolved transitively from Maven Central.
-                implementation(libs.kotlin.compiler)
+                // `strictly`, because the `-for-ide` jars above only work against this exact
+                // version, yet any `kotlin-bom` in a consumer's graph outranks a plain request:
+                // `opentelemetry-extension-kotlin` 1.67.0 imports `kotlin-bom` 2.4.21, which
+                // silently shipped the server a compiler that cannot start an analysis session.
+                implementation(libs.kotlin.compiler.coordinates()) {
+                    version { strictly(libs.versions.kotlin.get()) }
+                }
                 // Runtime-only deps of the non-transitive `-for-ide` jars (LL FIR caches), plus
                 // the JetBrains coroutines fork the bundled IJ core's thread pool expects
                 // (KT-81457 workaround, same as detekt) — without it pooled workers die with

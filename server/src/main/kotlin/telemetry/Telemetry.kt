@@ -182,12 +182,12 @@ internal fun stopTelemetry(sdk: OpenTelemetrySdk) {
  * because MCP is transport-independent and one HTTP request may carry several MCP messages. Keys
  * are written **unprefixed** (`traceparent`/`tracestate`/`baggage`) — an explicit carve-out from
  * MCP's usual DNS-prefix rule, formalized in SEP-414.
+ *
+ * Only `get` is implemented: the W3C propagator reads its known fields by name, and OpenTelemetry
+ * deprecated key enumeration (`keys`) in 1.67.0.
  */
-private val META_GETTER = object : TextMapGetter<RequestMeta> {
-    override fun keys(carrier: RequestMeta): Iterable<String> = carrier.json.keys
-
-    override fun get(carrier: RequestMeta?, key: String): String? =
-        (carrier?.get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
+private val META_GETTER = TextMapGetter<RequestMeta> { carrier, key ->
+    (carrier?.get(key) as? JsonPrimitive)?.takeIf { it.isString }?.content
 }
 
 private val PROPAGATOR: TextMapPropagator = W3CTraceContextPropagator.getInstance()

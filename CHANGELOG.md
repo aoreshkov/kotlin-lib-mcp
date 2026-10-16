@@ -13,6 +13,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with and targets JDK 25 (Gradle toolchain, set once as `jdk` in `gradle/libs.versions.toml`),
   so the distribution is built and tested on the JDK it ships on. A missing JDK 25 is downloaded
   by Gradle's toolchain auto-provisioning (foojay resolver).
+- **OpenTelemetry 1.66.0 → 1.67.0**, **Compose Multiplatform 1.12.1 → 1.12.2**, and, in the build
+  only, Gradle 9.8.0 → 9.8.1. OpenTelemetry 1.67.0 deprecates `TextMapGetter.keys`; the `_meta`
+  trace-context getter now implements only `get`, which is all the W3C propagator reads. Kotlin
+  stays at 2.4.10: 2.4.21 still lacks what the standalone Analysis API needs from the compiler jar.
+- **The Analysis API's compiler version is now enforced by the build.** `opentelemetry-extension-kotlin`
+  1.67.0 imports `kotlin-bom` 2.4.21, which on its own would have silently replaced the 2.4.10
+  `kotlin-compiler` in the shipped server and failed every `fetch_library` at runtime. `core` now
+  pins that compiler `strictly`, so any future drift fails the build instead, and a server test
+  checks the runtime classpath carries the version the Analysis API jars were built against.
 
 ## [0.7.0] - 2026-10-02
 
