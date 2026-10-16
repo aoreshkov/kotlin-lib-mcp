@@ -54,7 +54,11 @@ For `$ARGUMENTS` (or the intended target Kotlin version), verify against officia
   an unshrunk classpath — the IntelliJ platform jars plus `kotlin-compiler-*-for-ide` instead of
   `kotlin-compiler` — or the `org.jetbrains.kotlin:kotlin-analysis-api*` artifacts 2.4.20's build
   defines (`prepare/analysis-api/`), once they are published. detekt hit the same wall
-  (detekt/detekt#9734).
+  (detekt/detekt#9734). **Still true for 2.4.21** (checked 2026-10-16: no decompiler, `analysis.utils`
+  or `decompiled.light.classes` packages in the fat jar, no `kotlin-analysis-api*` on Central), and
+  its changelog is Wasm/JS/Native/scripting only. detekt's maintainers are skipping 2.4.20+ and going
+  straight to 2.5.0, where they say a fix is coming — so the next target to try is 2.5.0 stable,
+  not another 2.4.x patch.
 - Is **KT-81457** fixed in this version, making the `intellijCoroutines` fork pin
   unnecessary? If yes, that's a chance to drop the fork; if not, keep the pin.
 - Compose Multiplatform ↔ Kotlin compatibility: pick the `compose` version aligned to the

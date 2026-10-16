@@ -3,13 +3,15 @@
 # The JDK every module compiles with and targets (Gradle toolchain, read by the build-logic
 # convention plugins). Keep CI's `setup-java` and the Dockerfile's `eclipse-temurin` base in step.
 jdk = "25"
+# Held at 2.4.10: 2.4.20+ (incl. 2.4.21) breaks the standalone Analysis API session. Next target
+# is 2.5.0 — see the /analysis-api-bump skill for why and how to check.
 kotlin = "2.4.10"
 kover = "0.9.11"
 
 # Third-party
 mcpKotlinSdk = "0.15.0"
 ktor = "3.6.0"
-compose = "1.12.1"             # aligned to Kotlin 2.4.x
+compose = "1.12.2"             # aligned to Kotlin 2.4.x
 kotlinxCoroutines = "1.11.0"
 kotlinxSerialization = "1.11.0"
 kermit = "2.2.0"
@@ -18,7 +20,7 @@ intellijCoroutines = "1.11.0-intellij-1"  # JetBrains coroutines fork the bundle
 slf4j = "2.0.20"
 kotlinLogging = "8.0.4"        # matches the MCP SDK's transitive facade; needed to silence its stdout banner
 logback = "1.6.5"
-opentelemetry = "1.66.0"       # BOM governs every io.opentelemetry artifact below
+opentelemetry = "1.67.0"       # BOM governs every io.opentelemetry artifact below
 
 [libraries]
 # Build (gradle-plugin classpath for build-logic convention plugins)
