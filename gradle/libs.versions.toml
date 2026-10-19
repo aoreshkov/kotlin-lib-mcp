@@ -21,6 +21,7 @@ slf4j = "2.0.20"
 kotlinLogging = "8.0.4"        # matches the MCP SDK's transitive facade; needed to silence its stdout banner
 logback = "1.6.5"
 opentelemetry = "1.67.0"       # BOM governs every io.opentelemetry artifact below
+cliKit = "0.2.0"               # pre-1.0: a minor may break; read its CHANGELOG before bumping
 
 [libraries]
 # Build (gradle-plugin classpath for build-logic convention plugins)
@@ -81,6 +82,10 @@ opentelemetry-exporter-otlp = { module = "io.opentelemetry:opentelemetry-exporte
 # Zero-dependency http/protobuf sender (JDK HttpClient); replaces the default OkHttp sender.
 opentelemetry-sender-jdk = { module = "io.opentelemetry:opentelemetry-exporter-sender-jdk" }
 opentelemetry-sdk-testing = { module = "io.opentelemetry:opentelemetry-sdk-testing" }
+
+# The server's command line: one declaration drives parsing and --help (stdlib-only).
+cliKit = { module = "app.oreshkov.clikit:cli-kit", version.ref = "cliKit" }
+cliKit-testing = { module = "app.oreshkov.clikit:cli-kit-testing", version.ref = "cliKit" }
 
 # Kotlinx
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }

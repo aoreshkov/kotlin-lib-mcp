@@ -9,6 +9,9 @@ import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.mcpStreamableHttp
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
+import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.awaitCancellation
+import kotlinx.coroutines.withContext
 
 /** The SDK's DNS-rebinding protection default: only these Host values are admitted. */
 private val LOCALHOST_HOSTS = listOf("localhost", "127.0.0.1", "[::1]")
@@ -23,8 +26,17 @@ public const val LOOPBACK_HOST: String = "127.0.0.1"
 private val SSE_HEARTBEAT_PERIOD: Duration = 30.seconds
 
 /**
- * Runs [server] over the MCP Streamable HTTP transport, bound to [host]:[port], and blocks until
- * shutdown.
+ * How long a stop lets in-flight requests finish, and how long it waits in all: well inside the
+ * interrupt grace `Main.kt` gives the whole shutdown, which still has `close()` to run after this.
+ */
+private const val STOP_GRACE_MILLIS = 1_000L
+private const val STOP_TIMEOUT_MILLIS = 2_000L
+
+/**
+ * Runs [server] over the MCP Streamable HTTP transport, bound to [host]:[port], and suspends until
+ * cancelled, then stops the engine before returning. Cancellation is how the CLI stops it on SIGTERM
+ * or Ctrl-C: a blocking `start(wait = true)` would ignore it, leaving the stop to Ktor's own
+ * shutdown hook, which races `close()`.
  *
  * [host] defaults to loopback so the socket is unreachable from the network — the Host/Origin
  * allowlist below only filters *headers*, it does not restrict which interface the server listens
@@ -47,7 +59,7 @@ private val SSE_HEARTBEAT_PERIOD: Duration = 30.seconds
  * connections get culled by proxies and load balancers long before that. [SSE_HEARTBEAT_PERIOD]
  * keeps the stream demonstrably alive; the comment events it sends are ignored by SSE clients.
  */
-fun runHttpServer(
+suspend fun runHttpServer(
     server: Server,
     port: Int,
     host: String = LOOPBACK_HOST,
@@ -64,12 +76,23 @@ fun runHttpServer(
     if (allowedOrigins.isNotEmpty()) log.i { "Additionally accepting Origin: $allowedOrigins" }
     // Before the engine starts, so no connection can be accepted ahead of the hook.
     taskStore?.let { server.installTaskHandlersOnEverySession(it) }
-    embeddedServer(CIO, host = host, port = port) {
+    val engine = embeddedServer(CIO, host = host, port = port) {
         mcpStreamableHttp(
             allowedHosts = (LOCALHOST_HOSTS + allowedHosts).takeIf { allowedHosts.isNotEmpty() },
             allowedOrigins = (LOCALHOST_HOSTS + allowedOrigins).takeIf { allowedOrigins.isNotEmpty() },
             // Non-null opts in: the SDK sends no heartbeat at all by default.
             sseHeartbeatConfig = { period = SSE_HEARTBEAT_PERIOD },
         ) { server }
-    }.start(wait = true)
+    }
+    // Not cancellable: Ktor's `startSuspend` is `withContext { start() }` around a blocking start, so
+    // a cancel arriving after the socket binds makes it throw although the engine is up — skipping
+    // the `finally` below and leaving the engine running past `close()`. A cancel that came during
+    // the start is seen by `awaitCancellation` instead. Starting inside the `try` is no fix: CIO's
+    // stop joins its lazy server job, which would start an engine that never was.
+    withContext(NonCancellable) { engine.startSuspend(wait = false) }
+    try {
+        awaitCancellation()
+    } finally {
+        withContext(NonCancellable) { engine.stopSuspend(STOP_GRACE_MILLIS, STOP_TIMEOUT_MILLIS) }
+    }
 }

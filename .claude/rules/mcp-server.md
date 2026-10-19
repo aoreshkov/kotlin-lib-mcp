@@ -169,3 +169,10 @@ the anti-deadlock property, the serial handshake, and cancellation.
 are `AttributeKey` constants at the top of that file; do not inline `mcp.*`/`gen_ai.*` strings at
 call sites, since the upstream conventions are still Development status. Nothing in the exporter
 path may write to stdout.
+
+**CLI (`Cli.kt`, cli-kit):** every option is declared once in `Cli`, and `CliTest` pins the
+`--help` page as a golden file (`./gradlew :server:test -Dgolden.update=true`, then read the diff).
+The handler (`serve` in `Main.kt`) **never writes through `CommandContext.output` or `io.out*`** —
+stdout belongs to the transport; `CliTest.interruptReturnsOnlyOnceTheServerHasClosed` fails if it
+does. Its interrupt action must keep waiting for the latch counted down *after* `close()`, not for
+the serving job: the JVM halts the moment the action returns.
