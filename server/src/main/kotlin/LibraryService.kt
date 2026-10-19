@@ -258,6 +258,7 @@ class LibraryService(
         visibility: String?,
         maxResults: Int = DEFAULT_DECLARATION_RESULTS,
         offset: Int = 0,
+        deprecated: Boolean? = null,
     ): DeclarationList {
         val wanted: Set<Visibility> = when (visibility?.lowercase() ?: "public") {
             "public" -> setOf(Visibility.PUBLIC)
@@ -271,7 +272,8 @@ class LibraryService(
         }
         val matching = index.symbolsByFqName.values.filter { symbol ->
             symbol.visibility in wanted &&
-                (packageName == null || symbol.sourceRef?.file?.packageName == packageName)
+                (packageName == null || symbol.sourceRef?.file?.packageName == packageName) &&
+                (deprecated == null || (symbol.deprecation != null) == deprecated)
         }
         // Bounded page: a large library must not flood the model's context in one response.
         val cap = maxResults.coerceIn(1, MAX_DECLARATION_RESULTS)

@@ -184,6 +184,9 @@ public class AnalysisApiSourceAnalyzer : SourceAnalyzer {
                 endOffset = declaration.textRange.endOffset,
             ),
             bestEffort = bestEffort,
+            // Resolved whenever the symbol resolved at all: an error type elsewhere in its shape
+            // does not make the compiler's deprecation verdict any less exact.
+            deprecation = if (rendered != null) rendered.deprecation else psiDeprecation(declaration),
         )
     }
 

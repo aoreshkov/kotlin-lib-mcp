@@ -3,6 +3,8 @@
 package app.oreshkov.kotlinlibmcp.analyze
 
 import app.oreshkov.kotlinlibmcp.cache.OnDiskLibraryCache
+import app.oreshkov.kotlinlibmcp.model.ApiSymbol
+import app.oreshkov.kotlinlibmcp.model.Deprecation
 import app.oreshkov.kotlinlibmcp.model.KmpTarget
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.model.LibraryIndex
@@ -17,6 +19,7 @@ import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.Json
@@ -145,6 +148,91 @@ class AnalysisApiSourceAnalyzerTest {
         val location = assertNotNull(symbol.sourceRef)
         assertEquals("common/com/example/tiny/Greeter.kt", location.file.path)
         assertEquals(19, location.line)
+    }
+
+    @Test
+    fun capturesWarningDeprecationWithReplaceWithAndImports() {
+        val symbol = assertNotNull(index.symbolsByFqName["com.example.tiny.oldGreet"])
+
+        assertFalse(symbol.bestEffort)
+        assertEquals(
+            Deprecation(
+                level = Deprecation.Level.WARNING,
+                message = "Use newGreet instead",
+                replaceWith = "newGreet(name)",
+                replaceWithImports = listOf("com.example.tiny.newGreet", "kotlin.text.trim"),
+            ),
+            symbol.deprecation,
+        )
+    }
+
+    @Test
+    fun capturesErrorDeprecationFromNamedAndQualifiedArguments() {
+        val symbol = assertNotNull(index.symbolsByFqName["com.example.tiny.greetById"])
+
+        assertEquals(
+            Deprecation(
+                level = Deprecation.Level.ERROR,
+                message = "Greeting by number was a mistake",
+                replaceWith = "newGreet(id.toString())",
+            ),
+            symbol.deprecation,
+        )
+    }
+
+    @Test
+    fun capturesHiddenDeprecation() {
+        val symbol = assertNotNull(index.symbolsByFqName["com.example.tiny.greetLoudly"])
+
+        assertEquals(
+            Deprecation(level = Deprecation.Level.HIDDEN, message = "Kept for binary compatibility"),
+            symbol.deprecation,
+        )
+    }
+
+    @Test
+    fun capturesClassLevelDeprecation() {
+        val symbol = assertNotNull(index.symbolsByFqName["com.example.tiny.LegacyGreeter"])
+
+        assertEquals(Deprecation(level = Deprecation.Level.WARNING, message = "Use DefaultGreeter"), symbol.deprecation)
+    }
+
+    @Test
+    fun leavesUndeprecatedDeclarationsWithoutADeprecation() {
+        assertNull(assertNotNull(index.symbolsByFqName["com.example.tiny.newGreet"]).deprecation)
+        assertNull(assertNotNull(index.symbolsByFqName["com.example.tiny.DefaultGreeter"]).deprecation)
+    }
+
+    /**
+     * The discriminating case: the message is a `const val`, which the PSI fallback cannot read
+     * (see [PsiDeprecationTest]). Passing here means the resolved path produced the deprecation.
+     */
+    @Test
+    fun readsAConstantDeprecationMessageThroughResolution() {
+        val symbol = assertNotNull(index.symbolsByFqName["com.example.tiny.legacyGreeting"])
+
+        assertEquals(
+            Deprecation(level = Deprecation.Level.WARNING, message = "Greetings are functions now"),
+            symbol.deprecation,
+        )
+    }
+
+    @Test
+    fun keepsTheDeprecationOfABestEffortSymbol() {
+        val symbol = assertNotNull(index.symbolsByFqName["com.example.tiny.renderLegacy"])
+
+        assertTrue(symbol.bestEffort, "unresolvable Widget type should degrade the symbol")
+        assertEquals(
+            Deprecation(level = Deprecation.Level.WARNING, message = "Widgets are going away", replaceWith = "render(widget)"),
+            symbol.deprecation,
+        )
+    }
+
+    @Test
+    fun omitsAnAbsentDeprecationFromTheJson() {
+        val symbol = assertNotNull(index.symbolsByFqName["com.example.tiny.newGreet"])
+
+        assertFalse("deprecation" in Json.encodeToString(ApiSymbol.serializer(), symbol))
     }
 
     @Test

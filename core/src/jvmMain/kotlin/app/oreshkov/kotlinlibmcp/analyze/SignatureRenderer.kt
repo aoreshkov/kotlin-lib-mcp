@@ -2,6 +2,7 @@
 
 package app.oreshkov.kotlinlibmcp.analyze
 
+import app.oreshkov.kotlinlibmcp.model.Deprecation
 import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
 import org.jetbrains.kotlin.analysis.api.renderer.declarations.KaDeclarationRenderer
@@ -41,6 +42,7 @@ internal data class RenderedSymbol(
     val signature: String,
     val supertypes: List<String>,
     val hasErrorTypes: Boolean,
+    val deprecation: Deprecation?,
 )
 
 private val whitespace = Regex("""\s+""")
@@ -108,7 +110,12 @@ internal fun KaSession.renderResolved(symbol: KaDeclarationSymbol): RenderedSymb
         ?.map { it.render(KaTypeRendererForSource.WITH_QUALIFIED_NAMES, position = Variance.INVARIANT).squash() }
         ?.filterNot { it == "kotlin.Any" }
         .orEmpty()
-    return RenderedSymbol(signature, supertypes, hasErrorTypes = symbol.referencesErrorType())
+    return RenderedSymbol(
+        signature,
+        supertypes,
+        hasErrorTypes = symbol.referencesErrorType(),
+        deprecation = resolvedDeprecation(symbol),
+    )
 }
 
 /**

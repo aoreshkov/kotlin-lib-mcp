@@ -3,6 +3,7 @@ package app.oreshkov.kotlinlibmcp.server.resources
 import app.oreshkov.kotlinlibmcp.core.LibraryCache
 import app.oreshkov.kotlinlibmcp.core.VersionCatalog
 import app.oreshkov.kotlinlibmcp.model.ApiSymbol
+import app.oreshkov.kotlinlibmcp.model.Deprecation
 import app.oreshkov.kotlinlibmcp.model.KDoc
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.model.LibraryIndex
@@ -73,6 +74,11 @@ class LibraryResourceContentsTest {
                 signature = "class Sym$i",
                 kdoc = KDoc(summary = "Summary of Sym$i.", description = "LONG-DESCRIPTION-$i"),
                 sourceRef = SourceLocation(file, line = i, offset = 0),
+                deprecation = when (i) {
+                    2 -> Deprecation(Deprecation.Level.ERROR, message = "Use Sym1", replaceWith = "Sym1()")
+                    3 -> Deprecation(Deprecation.Level.WARNING, message = "x".repeat(1_000))
+                    else -> null
+                },
             )
         }
         LibraryIndex(
@@ -159,6 +165,18 @@ class LibraryResourceContentsTest {
         assertEquals("class Sym1", first.getValue("signature").jsonPrimitive.content)
         assertEquals("Summary of Sym1.", first.getValue("summary").jsonPrimitive.content)
         assertFalse("LONG-DESCRIPTION" in text, "only the KDoc summary, not its full description")
+    }
+
+    @Test
+    fun aPackageResourceMarksDeprecatedDeclarationsOnOneBoundedLine() = runTest {
+        val (_, page) = readJson(libraryPackageUri(coordinate, api))
+
+        val (sym1, sym2, sym3) = page.getValue("declarations").jsonArray.take(3).map { it.jsonObject }
+        assertFalse("deprecated" in sym1, "an undeprecated declaration carries no marker: $sym1")
+        assertEquals("error: Use Sym1 → Sym1()", sym2.getValue("deprecated").jsonPrimitive.content)
+        val clipped = sym3.getValue("deprecated").jsonPrimitive.content
+        assertEquals(200, clipped.length)
+        assertTrue(clipped.startsWith("warning: xxx") && clipped.endsWith("…"), clipped)
     }
 
     @Test

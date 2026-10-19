@@ -1,5 +1,6 @@
 package app.oreshkov.kotlinlibmcp.server.resources
 
+import app.oreshkov.kotlinlibmcp.model.Deprecation
 import app.oreshkov.kotlinlibmcp.model.KmpTarget
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.model.PackageInfo
@@ -74,14 +75,33 @@ internal data class PackageApi(
     val truncated: Boolean,
 )
 
-/** One declaration as a package resource shows it: the signature and the KDoc's first sentence. */
+/**
+ * One declaration as a package resource shows it: the signature, the KDoc's first sentence, and —
+ * only when it is deprecated — one [deprecated] line, `<level>: <message> → <replaceWith>`.
+ */
 @Serializable
 internal data class DeclarationDigest(
     val fqName: String,
     val kind: SymbolKind,
     val signature: String,
     val summary: String? = null,
+    val deprecated: String? = null,
 )
+
+/** A deprecation line's length cap: it rides on up to [MAX_PACKAGE_DECLARATIONS] digests. */
+private const val MAX_DEPRECATION_LINE = 200
+
+/** `error: Use newGreet → newGreet(name)`; the full [Deprecation] is in `get_api_signature`. */
+internal fun Deprecation.digestLine(): String {
+    val line = buildString {
+        append(level.name.lowercase())
+        message?.let { append(": ").append(it) }
+        replaceWith?.let { append(" → ").append(it) }
+    }.replace(whitespace, " ")
+    return if (line.length <= MAX_DEPRECATION_LINE) line else line.take(MAX_DEPRECATION_LINE - 1) + "…"
+}
+
+private val whitespace = Regex("""\s+""")
 
 /**
  * Registers the `kotlinlib://{group}/{artifact}/{version}/index` resource template so clients can
@@ -117,10 +137,10 @@ fun Server.registerLibraryPackageTemplate(service: LibraryService) {
         ResourceTemplate(
             uriTemplate = LIBRARY_PACKAGE_URI_TEMPLATE,
             name = "Library package API",
-            description = "Public declarations of one package of a fetched library — signature and KDoc " +
-                "summary each, up to $MAX_PACKAGE_DECLARATIONS ('truncated: true' when there are more; " +
-                "list_declarations pages through the rest). The coordinate must have been fetched with " +
-                "fetch_library first.",
+            description = "Public declarations of one package of a fetched library — signature, KDoc " +
+                "summary and, when deprecated, a one-line deprecation note each, up to " +
+                "$MAX_PACKAGE_DECLARATIONS ('truncated: true' when there are more; list_declarations " +
+                "pages through the rest). The coordinate must have been fetched with fetch_library first.",
             mimeType = "application/json",
             icons = Glyph.Declarations.icons,
         )
@@ -142,7 +162,13 @@ fun Server.registerLibraryPackageTemplate(service: LibraryService) {
                     coordinate = coordinate,
                     packageName = packageName,
                     declarations = page.declarations.map { symbol ->
-                        DeclarationDigest(symbol.fqName, symbol.kind, symbol.signature, symbol.kdoc?.summary)
+                        DeclarationDigest(
+                            symbol.fqName,
+                            symbol.kind,
+                            symbol.signature,
+                            symbol.kdoc?.summary,
+                            symbol.deprecation?.digestLine(),
+                        )
                     },
                     totalCount = page.totalCount,
                     truncated = page.truncated,

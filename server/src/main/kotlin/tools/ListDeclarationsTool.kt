@@ -10,8 +10,10 @@ fun Server.registerListDeclarationsTool(service: LibraryService) {
         name = "list_declarations",
         description = "List classes/interfaces/objects/functions/properties of a fetched library " +
             "with signatures and visibility. Optionally filter by package and visibility " +
-            "(public [default], internal, or all). Results are paged ('truncated: true' with a " +
-            "'totalCount' when more matched than the returned page; advance 'offset' to fetch the rest).",
+            "(public [default], internal, or all), and by deprecation. A deprecated declaration carries " +
+            "'deprecation': its level, message, and the author's 'replaceWith' expression when given. " +
+            "Results are paged ('truncated: true' with a 'totalCount' when more matched than the " +
+            "returned page; advance 'offset' to fetch the rest).",
         inputSchema = coordinateSchema(
             extraProps = mapOf(
                 "package" to stringProp("Only declarations in this package, e.g. 'io.ktor.client'"),
@@ -19,6 +21,9 @@ fun Server.registerListDeclarationsTool(service: LibraryService) {
                     "Visibility filter: 'public' (default), 'internal', or 'all'",
                     values = listOf("public", "internal", "all"),
                     default = "public",
+                ),
+                "deprecated" to boolProp(
+                    "true: only deprecated declarations; false: only undeprecated ones (default: both)",
                 ),
                 "maxResults" to intProp(
                     "Page size, 1-500 (default 100)",
@@ -47,6 +52,7 @@ fun Server.registerListDeclarationsTool(service: LibraryService) {
                     visibility = args.stringArg("visibility"),
                     maxResults = args.intArg("maxResults") ?: LibraryService.DEFAULT_DECLARATION_RESULTS,
                     offset = args.intArg("offset") ?: 0,
+                    deprecated = args.booleanArg("deprecated"),
                 )
             )
         }
