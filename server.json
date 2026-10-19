@@ -29,6 +29,22 @@
           "description": "Persist the downloaded sources and parsed index across container runs. Without it every session re-downloads and re-analyzes each library, since the container is --rm."
         }
       ],
+      "packageArguments": [
+        {
+          "type": "named",
+          "name": "--repo",
+          "description": "Extra Maven repository to search, on top of Maven Central. Repeat it for each repository.",
+          "placeholder": "https://maven.google.com",
+          "isRepeated": true
+        },
+        {
+          "type": "named",
+          "name": "--max-concurrent-fetches",
+          "description": "How many libraries may download and analyze at once; further fetch_library calls queue.",
+          "format": "number",
+          "default": "2"
+        }
+      ],
       "transport": {
         "type": "stdio"
       }
