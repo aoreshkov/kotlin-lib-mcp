@@ -7,7 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`--version`** (and `-V`) prints `kotlin-lib-mcp <version>`, the same version the server
+  advertises in `serverInfo`.
+- **A clean stop on SIGTERM and Ctrl-C.** The server now stops its transport and closes within
+  5 seconds, so task records are persisted and buffered OpenTelemetry spans are flushed. Before, a
+  `docker stop` or a client's SIGTERM ended the process without either.
+
 ### Changed
+- **The command line is parsed by [cli-kit](https://github.com/aoreshkov/delva) 0.2.0**, which
+  declares each option once for parsing and `--help` together. Visible differences:
+  - **Breaking:** `--port`, `--host`, `--allowed-host` and `--allowed-origin` without
+    `--transport http` are now a usage error (exit 2) that says why. Before, they were accepted and
+    silently ignored.
+  - An internal error exits **70** (`EX_SOFTWARE`) instead of 1, still with its stack trace on stderr.
+  - `--flag=value` is accepted as well as `--flag value`, and `--` ends the options.
+  - A mistyped option is reported as `error: …` with a "did you mean" hint and the usage line,
+    rather than the whole help page.
+  - `--help` lists the `OTEL_*` variables in an Environment section and wraps to the terminal,
+    up to 100 columns.
+- The release zip's start scripts pass `--enable-native-access=ALL-UNNAMED` (JEP 472). On Windows,
+  cli-kit uses the FFM API at a console; without the grant the JVM would print a warning on stderr.
 - **Java 25 is now required** to run the release zip (`bin/server`), and to build from source.
   The Docker image is unaffected: it has always run on a Temurin 25 JRE. Every module now compiles
   with and targets JDK 25 (Gradle toolchain, set once as `jdk` in `gradle/libs.versions.toml`),

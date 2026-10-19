@@ -1,159 +1,79 @@
 package app.oreshkov.kotlinlibmcp.server
 
-import app.oreshkov.kotlinlibmcp.server.transport.LOOPBACK_HOST
+import app.oreshkov.clikit.CommandContext
+import app.oreshkov.clikit.ExitStatus
+import app.oreshkov.clikit.onInterrupt
+import app.oreshkov.clikit.runAndExit
 import app.oreshkov.kotlinlibmcp.server.transport.runHttpServer
 import app.oreshkov.kotlinlibmcp.server.transport.runStdioServer
-import java.nio.file.Path
-import kotlin.system.exitProcess
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.job
 import kotlinx.coroutines.runBlocking
+import org.slf4j.LoggerFactory
 
-private const val DEFAULT_PORT = 3000
+/**
+ * How long a SIGTERM or Ctrl-C waits for the server to stop and [McpServerHandle.close] to finish:
+ * the JVM halts as soon as the interrupt hook returns. Well under Docker's 10 s `stop` grace, and
+ * under the wait an MCP stdio client allows before following SIGTERM with SIGKILL.
+ */
+internal const val SHUTDOWN_GRACE_SECONDS = 5L
 
-private val USAGE = """
-    kotlin-lib-mcp — MCP server exposing the sources of Maven-published Kotlin/Java libraries.
+/**
+ * `runAndExit` ends the process with the handler's status rather than returning from `main`. That
+ * exit is load-bearing: the Analysis API leaves a non-daemon IntelliJ pooled thread behind, so
+ * returning would keep the JVM (and a `docker run --rm` container) alive after the first library
+ * analyzed, while MCP's stdio shutdown expects the server to exit once the client closes its stdin.
+ */
+fun main(args: Array<String>): Unit = Cli.program(::serve).runAndExit(args)
 
-    Usage: server [options]
-
-    Options:
-      --transport stdio|http   Transport to run (default: stdio)
-      --port <int>             Port for the http transport (default: $DEFAULT_PORT)
-      --host <addr>            Interface the http transport binds (default: $LOOPBACK_HOST, loopback
-                               only). Widen (e.g. 0.0.0.0) only behind an authenticating proxy.
-      --allowed-host <host>    Extra Host header the http transport accepts; repeatable
-                               (default: localhost only, via DNS-rebinding protection)
-      --allowed-origin <url>   Extra Origin the http transport accepts; repeatable
-      --cache-dir <path>       Cache directory (default: OS cache dir + /kotlin-lib-mcp)
-      --repo <url>             Extra Maven repository; repeatable (default: Maven Central)
-      --max-concurrent-fetches <int>
-                               Libraries that may download and analyze at once; further
-                               fetch_library calls queue (default: ${LibraryService.DEFAULT_MAX_CONCURRENT_FETCHES})
-      --forward-logs-to-client Mirror logs to MCP clients via the (deprecated) `logging` capability.
-                               Off by default: logs go to stderr only, which the spec blesses for all
-                               stdio logging.
-      --otel                   Export traces for every MCP request over OTLP/HTTP. Off by default.
-                               Configured entirely by the standard OTEL_* environment variables;
-                               defaults to protocol http/protobuf and endpoint http://localhost:4318.
-      --tasks                  Accept task-augmented tools/call (SEP-1686) for fetch_library, and
-                               answer tasks/get, tasks/result, tasks/list and tasks/cancel. Off by
-                               default. Works on both transports. Records are stored under
-                               <cache-dir>/tasks and survive a restart; each session sees only its
-                               own in tasks/list, and a recovered task is reachable by its exact
-                               task id. See the README before exposing this beyond loopback.
-      --help                   Show this help and exit
-
-    Telemetry (--otel):
-      OTEL_EXPORTER_OTLP_ENDPOINT     Base endpoint; '/v1/traces' is appended automatically.
-      OTEL_EXPORTER_OTLP_TRACES_ENDPOINT  Per-signal endpoint, used AS-IS — spell out '/v1/traces'.
-      OTEL_EXPORTER_OTLP_HEADERS      e.g. 'api-key=...' for a hosted collector.
-      OTEL_SERVICE_NAME               Defaults to '$SERVER_NAME'.
-      OTEL_RESOURCE_ATTRIBUTES        e.g. 'deployment.environment=staging'.
-
-    Examples:
-      server --transport stdio
-      server --transport http --port 3000     # endpoint: http://127.0.0.1:3000/mcp
-      server --transport http --allowed-host mcp.example.com:3000 --allowed-origin https://mcp.example.com
-      server --transport stdio --cache-dir /tmp/klm --repo https://maven.google.com
-      server --transport stdio --tasks
-      server --transport http --port 3000 --tasks
-      OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 server --transport stdio --otel
-""".trimIndent()
-
-private enum class TransportKind { STDIO, HTTP }
-
-private data class CliOptions(
-    val transport: TransportKind = TransportKind.STDIO,
-    val port: Int = DEFAULT_PORT,
-    val host: String = LOOPBACK_HOST,
-    val allowedHosts: List<String> = emptyList(),
-    val allowedOrigins: List<String> = emptyList(),
-    val config: ServerConfig = ServerConfig(),
-)
-
-/** Tiny hand-rolled parser — a dozen flags don't warrant a dependency. [fail]s on anything unknown. */
-private fun parseArgs(args: Array<String>): CliOptions {
-    var options = CliOptions()
-    var i = 0
-
-    fun value(flag: String): String {
-        if (i + 1 >= args.size) fail("Missing value for $flag")
-        return args[++i]
-    }
-
-    while (i < args.size) {
-        when (val arg = args[i]) {
-            "--help", "-h" -> {
-                println(USAGE)
-                exitProcess(0)
-            }
-            "--transport" -> options = when (val t = value(arg)) {
-                "stdio" -> options.copy(transport = TransportKind.STDIO)
-                "http" -> options.copy(transport = TransportKind.HTTP)
-                else -> fail("Unknown transport '$t' (expected stdio or http)")
-            }
-            "--port" -> {
-                val port = value(arg).toIntOrNull()?.takeIf { it in 1..65535 }
-                    ?: fail("Invalid --port (expected 1-65535)")
-                options = options.copy(port = port)
-            }
-            "--host" -> options = options.copy(host = value(arg))
-            "--allowed-host" -> options =
-                options.copy(allowedHosts = options.allowedHosts + value(arg))
-            "--allowed-origin" -> options =
-                options.copy(allowedOrigins = options.allowedOrigins + value(arg))
-            "--cache-dir" -> options =
-                options.copy(config = options.config.copy(cacheDir = Path.of(value(arg))))
-            "--repo" -> options =
-                options.copy(config = options.config.copy(repos = options.config.repos + value(arg)))
-            "--max-concurrent-fetches" -> {
-                val limit = value(arg).toIntOrNull()?.takeIf { it >= 1 }
-                    ?: fail("Invalid --max-concurrent-fetches (expected a whole number, at least 1)")
-                options = options.copy(config = options.config.copy(maxConcurrentFetches = limit))
-            }
-            "--forward-logs-to-client" -> options =
-                options.copy(config = options.config.copy(forwardLogsToClient = true))
-            "--otel" -> options = options.copy(config = options.config.copy(otel = true))
-            "--tasks" -> options = options.copy(config = options.config.copy(tasks = true))
-            else -> fail("Unknown option '$arg'")
-        }
-        i++
-    }
-    // Resolved last: --transport may appear after --otel, and the span attribute needs the final value.
-    return options.copy(
-        config = options.config.copy(transport = options.transport.name.lowercase())
-    )
-}
-
-private fun fail(message: String): Nothing {
-    System.err.println("Error: $message\n\n$USAGE")
-    exitProcess(2)
-}
-
-fun main(args: Array<String>) {
-    val options = parseArgs(args)
-    try {
+/**
+ * Runs the server until the transport ends (stdio: the client closes stdin) or the process is
+ * interrupted. Writes nothing to stdout itself: see [Cli].
+ *
+ * On SIGTERM or Ctrl-C the interrupt action cancels the run and waits for the `finally` below,
+ * which comes after `close()`, so tasks are persisted and buffered spans flushed before the JVM halts.
+ * Waiting for the serving coroutine alone would not do: `close()` runs after it, on this thread.
+ * The action is registered around `create` and `close()` too, so an interrupt at any point stops
+ * the same way.
+ */
+internal fun serve(options: CliOptions, context: CommandContext): Int {
+    val stopped = CountDownLatch(1)
+    return try {
         runBlocking {
-            McpServerFactory.create(options.config).use { handle ->
-                when (options.transport) {
-                    TransportKind.STDIO -> runStdioServer(handle.server, handle.taskStore)
-                    TransportKind.HTTP -> runHttpServer(
-                        server = handle.server,
-                        port = options.port,
-                        host = options.host,
-                        allowedHosts = options.allowedHosts,
-                        allowedOrigins = options.allowedOrigins,
-                        taskStore = handle.taskStore,
-                    )
-                }
+            val run = coroutineContext.job
+            context.onInterrupt {
+                run.cancel()
+                stopped.await(SHUTDOWN_GRACE_SECONDS, TimeUnit.SECONDS)
+            }.use {
+                McpServerFactory.create(options.config).use { handle -> runTransport(options, handle) }
             }
         }
+        ExitStatus.OK
+    } catch (_: CancellationException) {
+        // Interrupted, and closed by now. The JVM is already shutting down, so the status it exits
+        // with is the platform's (143 for SIGTERM, 130 for SIGINT), whatever this answers.
+        ExitStatus.INTERRUPTED
     } catch (e: Throwable) {
-        e.printStackTrace() // stderr: stdout is the protocol channel
-        exitProcess(1)
+        // Logged rather than left to cli-kit, whose bug report points at a --verbose this server lacks.
+        LoggerFactory.getLogger("Main").error("server failed", e)
+        ExitStatus.SOFTWARE
+    } finally {
+        stopped.countDown()
     }
-    // Exit explicitly rather than by returning. The transport has closed and `close()` has already
-    // flushed telemetry, persisted tasks and released the HTTP client — but the Analysis API leaves an
-    // IntelliJ pooled thread behind, and it is not a daemon. Returning would keep the JVM (and a
-    // `docker run --rm` container) alive indefinitely after the first library analyzed, while MCP's
-    // stdio shutdown expects the server to exit once the client closes its stdin.
-    exitProcess(0)
+}
+
+private suspend fun runTransport(options: CliOptions, handle: McpServerHandle) {
+    when (options.transport) {
+        TransportKind.STDIO -> runStdioServer(handle.server, handle.taskStore)
+        TransportKind.HTTP -> runHttpServer(
+            server = handle.server,
+            port = options.port,
+            host = options.host,
+            allowedHosts = options.allowedHosts,
+            allowedOrigins = options.allowedOrigins,
+            taskStore = handle.taskStore,
+        )
+    }
 }

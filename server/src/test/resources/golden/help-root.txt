@@ -1,0 +1,67 @@
+kotlin-lib-mcp — MCP server exposing the sources of Maven-published Kotlin/Java libraries.
+
+Usage:
+  server [options]
+
+Examples:
+  # Serve one client over stdin/stdout (the default)
+  server --transport stdio
+
+  # Endpoint: http://127.0.0.1:3000/mcp
+  server --transport http --port 3000
+
+  # Also accept a reverse proxy's Host and Origin
+  server --transport http --allowed-host mcp.example.com --allowed-origin https://mcp.example.com
+
+  # Cache elsewhere, and also search Google's Maven repository
+  server --cache-dir /tmp/klm --repo https://maven.google.com
+
+  # Accept task-augmented fetch_library calls
+  server --tasks
+
+  # Export a trace span per MCP request
+  OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 server --otel
+
+Options:
+      --transport <name>              Transport to run (stdio|http) [default: stdio]
+      --port <int>                    Port for the http transport [default: 3000]
+      --host <addr>                   Interface the http transport binds, loopback only by default.
+                                      Widen it (e.g. 0.0.0.0) only behind an authenticating proxy.
+                                      [default: 127.0.0.1]
+      --allowed-host <host>           Extra Host header the http transport accepts; repeatable.
+                                      Without it, DNS-rebinding protection admits localhost only.
+      --allowed-origin <url>          Extra Origin the http transport accepts; repeatable
+      --cache-dir <path>              Cache directory [default: OS cache dir + /kotlin-lib-mcp]
+      --repo <url>                    Extra Maven repository, besides Maven Central; repeatable
+      --max-concurrent-fetches <int>  Libraries that may download and analyze at once; further
+                                      fetch_library calls queue [default: 2]
+      --forward-logs-to-client        Mirror logs to MCP clients via the (deprecated) logging
+                                      capability. Off by default: logs go to stderr only, which the
+                                      spec blesses for all stdio logging.
+      --otel                          Export traces for every MCP request over OTLP/HTTP. Off by
+                                      default. Configured entirely by the standard OTEL_*
+                                      environment variables; defaults to protocol http/protobuf and
+                                      endpoint http://localhost:4318.
+      --tasks                         Accept task-augmented tools/call (SEP-1686) for fetch_library,
+                                      and answer tasks/get, tasks/result, tasks/list and
+                                      tasks/cancel. Off by default; works on both transports.
+                                      Records are stored under <cache-dir>/tasks and survive a
+                                      restart; each session sees only its own in tasks/list, and a
+                                      recovered task is reachable by its exact task id. See the
+                                      README before exposing this beyond loopback.
+
+Environment:
+  OTEL_EXPORTER_OTLP_ENDPOINT         With --otel: base endpoint; '/v1/traces' is appended
+  OTEL_EXPORTER_OTLP_TRACES_ENDPOINT  With --otel: per-signal endpoint, used as is, so spell out
+                                      '/v1/traces'
+  OTEL_EXPORTER_OTLP_HEADERS          With --otel: e.g. 'api-key=...' for a hosted collector
+  OTEL_SERVICE_NAME                   With --otel: defaults to 'kotlin-lib-mcp'
+  OTEL_RESOURCE_ATTRIBUTES            With --otel: e.g. 'deployment.environment=staging'
+
+Notes:
+  --port requires --transport http
+  --host requires --transport http
+  --allowed-host requires --transport http
+  --allowed-origin requires --transport http
+
+Documentation: https://github.com/aoreshkov/kotlin-lib-mcp

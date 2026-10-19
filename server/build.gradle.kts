@@ -24,6 +24,7 @@ dependencies {
     runtimeOnly(libs.opentelemetry.sender.jdk)
 
     implementation(project(":core"))
+    implementation(libs.cliKit)
     implementation(libs.mcp.kotlinSdkServer)
     implementation(libs.kotlinx.coroutines.core)
     implementation(libs.kotlinx.serialization.json)
@@ -38,6 +39,7 @@ dependencies {
     testImplementation(libs.kotlinx.coroutines.test)
     testImplementation(platform(libs.opentelemetry.bom))
     testImplementation(libs.opentelemetry.sdk.testing)
+    testImplementation(libs.cliKit.testing)
 }
 
 /*
@@ -89,6 +91,8 @@ tasks.processResources {
 tasks.test {
     systemProperty("kotlin-lib-mcp.expectedVersion", project.version.toString())
     systemProperty("kotlin-lib-mcp.expectedKotlinVersion", libs.versions.kotlin.get())
+    // `./gradlew :server:test -Dgolden.update=true` rewrites the pinned --help page; read the diff.
+    systemProperty("golden.update", providers.systemProperty("golden.update").getOrElse("false"))
 }
 
 application {
@@ -96,5 +100,13 @@ application {
     // The JVM's unified logging writes to *stdout* by default — and stdout is the stdio protocol
     // channel. An unusable AOT cache, for one, prints `[error][aot] …` lines there before `main`
     // runs. Route every JVM log line to stderr instead, for every launch of the distribution.
-    applicationDefaultJvmArgs = listOf("-Xlog:disable", "-Xlog:all=warning:stderr")
+    //
+    // cli-kit makes FFM downcalls on Windows only (VT escapes at a console; telling a pipe from a
+    // file after a failed stdout write). JEP 472 has a classpath app's launcher grant that up front;
+    // without it JDK 24+ warns on stderr, and a future JDK will deny it.
+    applicationDefaultJvmArgs = listOf(
+        "-Xlog:disable",
+        "-Xlog:all=warning:stderr",
+        "--enable-native-access=ALL-UNNAMED",
+    )
 }

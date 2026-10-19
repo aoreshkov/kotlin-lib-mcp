@@ -135,15 +135,14 @@ docker run --rm -p 127.0.0.1:3000:3000 -v kotlin-lib-mcp-cache:/home/mcp/.cache 
   ghcr.io/aoreshkov/kotlin-lib-mcp --transport http --host 0.0.0.0 --port 3000
 ```
 
-CLI flags: `--transport stdio|http`, `--port <int>` (default 3000), `--host <addr>` (http bind
-address; default `127.0.0.1`), `--allowed-host <host>` / `--allowed-origin <url>` (repeatable;
-extend the http transport's localhost-only defaults), `--cache-dir <path>`, `--repo <url>`
-(repeatable; Maven Central is the default), `--max-concurrent-fetches <int>` (libraries that may
-download and analyze at once, default 2; further `fetch_library` calls queue and say so in their
-progress), `--forward-logs-to-client` (opt into mirroring logs to
-the client; off by default, stderr-only), `--otel` (opt into OTLP/HTTP trace export; off by
-default — see [Telemetry](#telemetry)), `--tasks` (opt into task-augmented `fetch_library`; off by
-default — see [Tasks](#tasks)), `--help`.
+CLI flags — `server --help` lists them all with their defaults, the `OTEL_*` variables and
+examples: `--transport stdio|http`; `--port`, `--host`, `--allowed-host` and `--allowed-origin`,
+which apply to the http transport only, so passing one with stdio is a usage error; `--cache-dir`;
+`--repo` (repeatable, on top of Maven Central); `--max-concurrent-fetches`; and the opt-ins
+`--forward-logs-to-client`, `--otel` (see [Telemetry](#telemetry)) and `--tasks` (see
+[Tasks](#tasks)). `--version` prints the server's version. A command-line mistake exits 2 and an
+internal error 70 (`sysexits.h`). SIGTERM or Ctrl-C stops the server cleanly within 5 seconds:
+task records are saved and buffered traces flushed before the process ends.
 
 ## Tools
 
