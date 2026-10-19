@@ -15,7 +15,12 @@ paths:
   (`NO_IMPLICIT_VISIBILITY`), which makes an optional parameter read as required. `SignatureRenderer`
   overrides both; keep the overrides when the Analysis API is bumped, and check the preset hasn't
   quietly dropped something else.
+- **`deprecationStatus` has no message in K2.** `KaFirSymbolInformationProvider` passes `null` on
+  purpose (KT-67823), so `Deprecations.kt` takes only the *level* from it and reads message and
+  `ReplaceWith` from the resolved `kotlin.Deprecated` annotation. `status.message` compiles and
+  silently drops every message. `readsAConstantDeprecationMessageThroughResolution` is the test that
+  tells the resolved path from the PSI fallback.
 - **A rendering change must invalidate the cache.** `index.json` holds rendered strings, and a
   coordinate is immutable, so a warm cache would answer with the old rendering forever. Bump
-  `CacheLayout.INDEX_FILE` (`index-v2.json` today) whenever signature rendering or the index shape
+  `CacheLayout.INDEX_FILE` (`index-v3.json` today) whenever signature rendering or the index shape
   changes; re-analysis is cheap because the sources are already on disk.

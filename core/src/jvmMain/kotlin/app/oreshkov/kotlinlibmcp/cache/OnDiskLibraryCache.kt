@@ -25,7 +25,7 @@ import kotlinx.serialization.json.Json
 /**
  * Shared on-disk layout under the cache root, used by both the cache and the fetcher so a
  * fetch lands directly in its cached location:
- * `<root>/<group>/<artifact>/<version>/{sources/{common,jvm}/, jars/, fetch-result.json, index-v2.json}`.
+ * `<root>/<group>/<artifact>/<version>/{sources/{common,jvm}/, jars/, fetch-result.json, index-v3.json}`.
  * Group dirs keep their dots (`io.ktor`) so the tree stays a fixed three levels deep and
  * human-browsable (the Phase 08 dashboard lists it).
  */
@@ -35,14 +35,14 @@ internal object CacheLayout {
     /**
      * The parsed index. Its name carries a generation number because the file holds rendered
      * output, not just downloaded bytes: when analysis starts producing different strings for the
-     * same sources — as adding parameter defaults and `public` to signatures did — every warm
+     * same sources — as adding parameter defaults and `public` to signatures (v2) and deprecations (v3) did — every warm
      * cache would otherwise keep answering with the old rendering forever, since a coordinate is
      * immutable and nothing else could tell the two apart. Bumping the name makes those entries a
      * miss, and re-analysis is cheap: the sources are already on disk. **Bump it whenever
      * `SignatureRenderer` or the index shape changes.** Superseded files are left behind as
      * garbage; the cache root is disposable.
      */
-    const val INDEX_FILE: String = "index-v2.json"
+    const val INDEX_FILE: String = "index-v3.json"
     const val SOURCES_DIR: String = "sources"
     const val JARS_DIR: String = "jars"
 

@@ -11,6 +11,10 @@ import kotlinx.serialization.Serializable
  * resolution degrades to a PSI-only reading, [bestEffort] is `true` and [signature] holds the raw
  * declaration text. That flag is part of the model from day one so tools can tell clients a
  * signature is approximate.
+ *
+ * [deprecation] is `null` for a declaration that is not deprecated. It is read from the resolved
+ * symbol when possible and from the `@Deprecated` annotation's text otherwise; [bestEffort] covers
+ * it in the same way it covers [signature].
  */
 @Serializable
 @SerialName("ApiSymbol")
@@ -25,4 +29,5 @@ public data class ApiSymbol(
     val kdoc: KDoc? = null,
     val sourceRef: SourceLocation? = null,
     val bestEffort: Boolean = false,
+    val deprecation: Deprecation? = null,
 )

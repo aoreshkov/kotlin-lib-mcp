@@ -11,6 +11,7 @@ import kotlin.io.path.createDirectories
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.deleteRecursively
 import kotlin.io.path.exists
+import kotlin.io.path.moveTo
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import kotlin.test.AfterTest
@@ -62,6 +63,17 @@ class OnDiskLibraryCacheTest {
     fun corruptIndexDegradesToMiss() = runTest {
         val dir = CacheLayout.versionDir(root, coordinate).createDirectories()
         dir.resolve(CacheLayout.INDEX_FILE).writeText("not json {")
+
+        assertNull(cache.get(coordinate))
+    }
+
+    @Test
+    fun indexFromAnEarlierGenerationIsAMiss() = runTest {
+        // A perfectly readable v2 index: it predates deprecation capture, so serving it would
+        // report every symbol as undeprecated forever.
+        cache.putIndex(index)
+        val dir = CacheLayout.versionDir(root, coordinate)
+        dir.resolve(CacheLayout.INDEX_FILE).moveTo(dir.resolve("index-v2.json"))
 
         assertNull(cache.get(coordinate))
     }

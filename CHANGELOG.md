@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **Deprecations are part of the index.** A deprecated declaration's `ApiSymbol` now carries
+  `deprecation`: its level (`warning`, `error`, `hidden`), its message, and the author's own
+  `ReplaceWith` expression and imports. `list_declarations` and `get_api_signature` return it; a
+  symbol that is not deprecated carries nothing, so their payloads don't grow. The level is the
+  compiler's own verdict, and messages given as constants are evaluated. A symbol that fails to
+  resolve falls back to reading the annotation's literal text, as its signature already does.
+- **`list_declarations` filters by deprecation**: `deprecated: true` lists only deprecated
+  declarations, `false` only the rest.
+- **The `…/package/{package}` resource marks deprecated declarations** with one `deprecated`
+  line, such as `error: Use newGreet → newGreet(name)`, capped at 200 characters.
+
+### Changed
+- **The cache index moves to `index-v3.json`.** Libraries cached by an earlier version are analyzed
+  again on their next `fetch_library`, from the sources already on disk, so they pick up deprecations.
+
 ## [0.8.0] - 2026-10-19
 
 This release changes how the server starts and how it stops. The command line is parsed by cli-kit,

@@ -157,8 +157,8 @@ index. `fetch_library`, `list_versions` and `get_latest_version` also accept `gr
 |---|---|
 | `fetch_library` | Download + analyze + cache; returns a summary. Idempotent. Version may be omitted or `latest` |
 | `list_packages` | Packages with declaration counts and KMP targets; paged |
-| `list_declarations` | Declarations with signatures; filter by `package` and `visibility`; paged |
-| `get_api_signature` | Resolved signature of one declaration by FQ name |
+| `list_declarations` | Declarations with signatures and deprecations; filter by `package`, `visibility` and `deprecated`; paged |
+| `get_api_signature` | Resolved signature of one declaration by FQ name, with its deprecation and `ReplaceWith` |
 | `get_kdoc` | KDoc (summary, description, tags) of one declaration |
 | `get_source` | Raw source of a file (`path`) or one declaration (`fqName`); paged by line |
 | `search_source` | Substring/regex search; bounded, returns `file:line` snippets |

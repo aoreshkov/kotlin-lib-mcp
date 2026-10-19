@@ -3,6 +3,7 @@ package app.oreshkov.kotlinlibmcp.server
 import app.oreshkov.kotlinlibmcp.core.LibraryCache
 import app.oreshkov.kotlinlibmcp.core.VersionCatalog
 import app.oreshkov.kotlinlibmcp.model.ApiSymbol
+import app.oreshkov.kotlinlibmcp.model.Deprecation
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.model.LibraryIndex
 import app.oreshkov.kotlinlibmcp.model.SymbolKind
@@ -10,6 +11,7 @@ import app.oreshkov.kotlinlibmcp.model.Visibility
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertTrue
 import kotlin.time.Instant
 import kotlinx.coroutines.test.runTest
 
@@ -31,10 +33,12 @@ class ListDeclarationsServiceTest {
         override suspend fun size(): Long = 0
     }
 
-    private fun serviceWith(symbolCount: Int): LibraryService {
+    /** Every [deprecatedEvery]-th symbol is deprecated; `0` deprecates none. */
+    private fun serviceWith(symbolCount: Int, deprecatedEvery: Int = 0): LibraryService {
         val symbols = (1..symbolCount).associate { i ->
             val fq = "com.example.Sym$i"
-            fq to ApiSymbol(fq, SymbolKind.CLASS, Visibility.PUBLIC, signature = "class Sym$i")
+            val deprecation = Deprecation(Deprecation.Level.WARNING).takeIf { deprecatedEvery > 0 && i % deprecatedEvery == 0 }
+            fq to ApiSymbol(fq, SymbolKind.CLASS, Visibility.PUBLIC, signature = "class Sym$i", deprecation = deprecation)
         }
         val index = LibraryIndex(coordinate, symbolsByFqName = symbols, fetchedAt = Instant.fromEpochSeconds(0))
         return LibraryService(
@@ -62,6 +66,21 @@ class ListDeclarationsServiceTest {
         assertEquals(2, page.declarations.size) // only Sym9, Sym10 remain
         assertEquals(10, page.totalCount)
         assertEquals(false, page.truncated)
+    }
+
+    @Test
+    fun deprecatedFilterSelectsEitherSideAndCountsOnlyWhatMatched() = runTest {
+        val service = serviceWith(10, deprecatedEvery = 3)
+
+        val deprecated = service.listDeclarations(coordinate, packageName = null, visibility = null, deprecated = true)
+        assertEquals(listOf("com.example.Sym3", "com.example.Sym6", "com.example.Sym9"), deprecated.declarations.map { it.fqName })
+        assertEquals(3, deprecated.totalCount)
+
+        val current = service.listDeclarations(coordinate, packageName = null, visibility = null, deprecated = false)
+        assertEquals(7, current.totalCount)
+        assertTrue(current.declarations.none { it.deprecation != null })
+
+        assertEquals(10, service.listDeclarations(coordinate, packageName = null, visibility = null).totalCount)
     }
 
     @Test
