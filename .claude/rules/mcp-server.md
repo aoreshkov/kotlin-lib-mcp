@@ -175,4 +175,8 @@ path may write to stdout.
 The handler (`serve` in `Main.kt`) **never writes through `CommandContext.output` or `io.out*`** —
 stdout belongs to the transport; `CliTest.interruptReturnsOnlyOnceTheServerHasClosed` fails if it
 does. Its interrupt action must keep waiting for the latch counted down *after* `close()`, not for
-the serving job: the JVM halts the moment the action returns.
+the serving job: the JVM halts the moment the action returns. `server.json`'s `packageArguments`
+are published command-line surface too: registry clients build the container's arguments from them,
+replacing the Dockerfile's `CMD`, so stdio must stay the parser's default. `RegistryManifestTest`
+runs them through the parser. Renaming one of those options, or changing a default the manifest
+advertises, is a breaking change for installed clients. Check edits with `mcp-publisher validate server.json`.

@@ -93,6 +93,8 @@ tasks.test {
     systemProperty("kotlin-lib-mcp.expectedKotlinVersion", libs.versions.kotlin.get())
     // `./gradlew :server:test -Dgolden.update=true` rewrites the pinned --help page; read the diff.
     systemProperty("golden.update", providers.systemProperty("golden.update").getOrElse("false"))
+    // RegistryManifestTest runs server.json's packageArguments through the parser.
+    inputs.file(layout.projectDirectory.file("../server.json")).withPathSensitivity(PathSensitivity.NONE)
 }
 
 application {

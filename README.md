@@ -103,7 +103,9 @@ takes the same JSON in its own MCP settings. Swap `command`/`args` for the relea
 [official MCP registry](https://registry.modelcontextprotocol.io) as
 `io.github.aoreshkov/kotlin-lib-mcp`, and listed in the
 [GitHub MCP Registry](https://github.com/mcp/aoreshkov/kotlin-lib-mcp); registry-aware clients can
-install it from there.
+install it from there. The entry declares two optional arguments a client can ask you for when it
+installs: `--repo`, for each extra Maven repository (a private one, or `https://maven.google.com`
+for AndroidX), and `--max-concurrent-fetches`.
 
 Or in `.mcp.json` / Claude Desktop config:
 

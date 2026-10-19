@@ -13,6 +13,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A clean stop on SIGTERM and Ctrl-C.** The server now stops its transport and closes within
   5 seconds, so task records are persisted and buffered OpenTelemetry spans are flushed. Before, a
   `docker stop` or a client's SIGTERM ended the process without either.
+- **The MCP registry entry declares `--repo` (repeatable) and `--max-concurrent-fetches`** as
+  optional `packageArguments`, so a registry-aware client can ask for an extra Maven repository at
+  install time. Without them, the entry left no way to reach anything but Maven Central.
 
 ### Changed
 - **The command line is parsed by [cli-kit](https://github.com/aoreshkov/delva) 0.2.0**, which
