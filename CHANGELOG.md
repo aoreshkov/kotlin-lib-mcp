@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-10-19
+
+This release changes how the server starts and how it stops. The command line is parsed by cli-kit,
+which reports an option that cannot apply as a usage error instead of ignoring it, and `--version`
+is new. SIGTERM and Ctrl-C now close the server cleanly, so a `docker stop` no longer loses task
+records or buffered spans. The registry entry declares `--repo` and `--max-concurrent-fetches`.
+The build now enforces the Analysis API's compiler pin, which a transitive BOM would otherwise
+have quietly replaced. **Upgrading:** the release zip needs Java 25 (the Docker image is
+unchanged). A launch command that passes `--port`, `--host`, `--allowed-host` or
+`--allowed-origin` without `--transport http` now exits 2: drop the option, or add the transport.
+
 ### Added
 - **`--version`** (and `-V`) prints `kotlin-lib-mcp <version>`, the same version the server
   advertises in `serverInfo`.
@@ -16,6 +27,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The MCP registry entry declares `--repo` (repeatable) and `--max-concurrent-fetches`** as
   optional `packageArguments`, so a registry-aware client can ask for an extra Maven repository at
   install time. Without them, the entry left no way to reach anything but Maven Central.
+- **CI fails when the plugin changes without a version bump.** Claude Code updates an installed
+  plugin only when `plugin.json`'s `version` changes, so such a change would never reach anyone who
+  already has it. The job also runs `claude plugin validate --strict` on the marketplace and the
+  plugin, which covers the plugin's MCP server entries.
 
 ### Changed
 - **The command line is parsed by [cli-kit](https://github.com/aoreshkov/delva) 0.2.0**, which
@@ -36,8 +51,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   with and targets JDK 25 (Gradle toolchain, set once as `jdk` in `gradle/libs.versions.toml`),
   so the distribution is built and tested on the JDK it ships on. A missing JDK 25 is downloaded
   by Gradle's toolchain auto-provisioning (foojay resolver).
-- **OpenTelemetry 1.66.0 → 1.67.0**, **Compose Multiplatform 1.12.1 → 1.12.2**, and, in the build
-  only, Gradle 9.8.0 → 9.8.1. OpenTelemetry 1.67.0 deprecates `TextMapGetter.keys`; the `_meta`
+- **OpenTelemetry 1.66.0 → 1.67.0**, **Logback 1.6.4 → 1.6.5**, **Compose Multiplatform 1.12.1 →
+  1.12.2**, a Temurin 25 JRE base-image digest re-pin, and, in the build only, Gradle 9.8.0 → 9.8.1
+  and six GitHub Actions bumps. OpenTelemetry 1.67.0 deprecates `TextMapGetter.keys`; the `_meta`
   trace-context getter now implements only `get`, which is all the W3C propagator reads. Kotlin
   stays at 2.4.10: 2.4.21 still lacks what the standalone Analysis API needs from the compiler jar.
 - **The Analysis API's compiler version is now enforced by the build.** `opentelemetry-extension-kotlin`
@@ -561,7 +577,8 @@ Initial public release.
 - On-disk cache keyed by `group/artifact/version` under the OS cache directory.
 - Optional **Compose Desktop dashboard** embedding the server (control, logs, cache browser).
 
-[Unreleased]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.7.0...HEAD
+[Unreleased]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.8.0...HEAD
+[0.8.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.5.0...v0.6.0
 [0.5.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.4.0...v0.5.0
