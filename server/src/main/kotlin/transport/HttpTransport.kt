@@ -84,7 +84,12 @@ suspend fun runHttpServer(
             sseHeartbeatConfig = { period = SSE_HEARTBEAT_PERIOD },
         ) { server }
     }
-    engine.startSuspend(wait = false)
+    // Not cancellable: Ktor's `startSuspend` is `withContext { start() }` around a blocking start, so
+    // a cancel arriving after the socket binds makes it throw although the engine is up — skipping
+    // the `finally` below and leaving the engine running past `close()`. A cancel that came during
+    // the start is seen by `awaitCancellation` instead. Starting inside the `try` is no fix: CIO's
+    // stop joins its lazy server job, which would start an engine that never was.
+    withContext(NonCancellable) { engine.startSuspend(wait = false) }
     try {
         awaitCancellation()
     } finally {
