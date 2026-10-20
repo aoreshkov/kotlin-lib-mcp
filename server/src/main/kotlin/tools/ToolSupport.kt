@@ -12,6 +12,7 @@ import io.modelcontextprotocol.kotlin.sdk.server.ClientConnection
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequest
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
+import io.modelcontextprotocol.kotlin.sdk.types.ResourceLink
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import io.modelcontextprotocol.kotlin.sdk.types.Tool
 import io.modelcontextprotocol.kotlin.sdk.types.ToolAnnotations
@@ -97,11 +98,17 @@ private fun unknownArguments(tool: String, unknown: Set<String>, accepted: Set<S
  * Serializes a DTO once and returns it both ways the spec recommends: human-readable JSON text
  * (for clients without structured-output support) and `structuredContent` matching the tool's
  * `outputSchema` (see [outputSchemaOf]).
+ *
+ * [links] follow the text as `resource_link` blocks, pointing at resources the client can attach
+ * instead of re-querying. The text stays first and stays the whole payload: the spec has a tool that
+ * returns `structuredContent` also return it serialized in a text block, and a client that ignores
+ * links must lose nothing. Links ride only in `content`, never in `structuredContent`, which has to
+ * match the `outputSchema`.
  */
-internal inline fun <reified T> toolResult(value: T): CallToolResult {
+internal inline fun <reified T> toolResult(value: T, links: List<ResourceLink> = emptyList()): CallToolResult {
     val json = toolJson.encodeToJsonElement(value)
     return CallToolResult(
-        content = listOf(TextContent(toolJson.encodeToString(json))),
+        content = listOf(TextContent(toolJson.encodeToString(json))) + links,
         structuredContent = json as? JsonObject,
     )
 }

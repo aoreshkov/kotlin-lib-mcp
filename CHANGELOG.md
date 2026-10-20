@@ -28,6 +28,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   declarations, `false` only the rest.
 - **The `…/package/{package}` resource marks deprecated declarations** with one `deprecated`
   line, such as `error: Use newGreet → newGreet(name)`, capped at 200 characters.
+- **Tool results link to the library resources.** `fetch_library` adds a `resource_link` to the
+  library's `…/index` resource, and `list_packages` adds one to each `…/package/{package}` resource
+  for the first 20 packages of the page, so a client can attach them rather than ask again. The links
+  come after the text block, which still carries the whole result. They carry no icons, which would
+  add about 1 KB of base64 per link.
 
 ### Changed
 - **The cache index moves to `index-v3.json`.** Libraries cached by an earlier version are analyzed

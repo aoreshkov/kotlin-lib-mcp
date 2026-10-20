@@ -276,7 +276,9 @@ summary per declaration, up to 200) is readable at
 `kotlinlib://{group}/{artifact}/{version}/package/{package}`; the tools page through anything past
 those caps. The resource list updates as libraries are fetched, both URI shapes are published as
 **resource templates** so any cached coordinate is directly addressable, and template variables —
-including `package` — autocomplete from the cache. **Prompt:** `explain_public_api(coordinate, package?)`
+including `package` — autocomplete from the cache. Tools point at them too: `fetch_library` returns
+a `resource_link` to the library's index, and `list_packages` links the first 20 packages of each page,
+so a client can attach them without another lookup. **Prompt:** `explain_public_api(coordinate, package?)`
 renders an explanation request grounded in the cached signatures and KDoc.
 
 **Icons:** the server, every tool, the prompt and the library-index resource/template each declare

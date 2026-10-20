@@ -1,6 +1,7 @@
 package app.oreshkov.kotlinlibmcp.server.tasks
 
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
+import io.modelcontextprotocol.kotlin.sdk.types.ResourceLink
 import io.modelcontextprotocol.kotlin.sdk.types.TaskMetadata
 import io.modelcontextprotocol.kotlin.sdk.types.TaskStatus
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
@@ -84,6 +85,21 @@ class TaskPersistenceTest {
             "cached sources",
             (second.payload("session-after-restart", started.taskId).content.single() as TextContent).text,
         )
+    }
+
+    @Test
+    fun aPersistedPayloadKeepsItsResourceLink(): Unit = runBlocking {
+        // fetch_library's result is text plus a resource_link; the store keeps the whole
+        // CallToolResult, so a task-augmented fetch must hand back the link after a restart too.
+        val link = ResourceLink(name = "demo index", uri = "kotlinlib://com.example/demo/1.0.0/index")
+        val dir = tempDir()
+        val first = store(dir)
+        val started = first.start(alice, job { CallToolResult(content = listOf(TextContent("{}"), link)) })
+        first.payload(alice, started.taskId)
+        first.close()
+
+        val restored = store(dir).payload("session-after-restart", started.taskId)
+        assertEquals(link, restored.content.filterIsInstance<ResourceLink>().single())
     }
 
     @Test

@@ -90,7 +90,8 @@ Cached library indexes are also exposed as MCP **resources** (one static resourc
 library plus a `kotlinlib://{group}/{artifact}/{version}/index` **resource template**, and a
 `…/package/{package}` template for one package's public API — both bounded, see
 `.claude/rules/mcp-server.md`), and an "explain the public API" **prompt** — exercising all three
-MCP primitives.
+MCP primitives. `fetch_library` and `list_packages` (first 20 of the page) also return
+`resource_link` blocks to those resources, after the text block (`toolResult(value, links)`).
 
 **Icons (SEP-973)** are on `serverInfo`, every tool, the prompt and the resource/template
 (`icons/Icons.kt`, PNGs in `server/src/main/resources/icons/`, drawn by `:tools`). Inline `data:`

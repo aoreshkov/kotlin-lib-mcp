@@ -52,6 +52,14 @@ first 200 packages), not the parsed index — which runs to megabytes for a larg
 `…/package/{package}` caps its declarations, keeping only the KDoc summary. Anything past a cap is
 reachable through the tools.
 
+**Resource links count against the result too.** `toolResult(value, links)` appends
+`resource_link` blocks after the text; only `fetch_library` (its index) and `list_packages` (the
+first `MAX_PACKAGE_LINKS` of the page) send them. Links on every tool would be noise, and one link
+per row would outweigh a page of 1 000 packages — so cap them like rows. Never put an icon on a link
+(~1.1 KB of base64 each), and never link what no template can resolve: the root package's URI ends
+in `package/`, so `libraryPackageLink` returns `null` for it. `ResourceLinksTest` reads every link
+back through `resources/read`.
+
 **Icons gotcha:** `icons` exists only on the `Tool`/`Prompt`/`Resource`/`ResourceTemplate` types,
 never on the SDK's `addTool(name, …)`/`addPrompt(name, …)`/`addResource(uri, …)` convenience
 overloads — and there is no `addResource(Resource, handler)` at all, so a resource with icons has
