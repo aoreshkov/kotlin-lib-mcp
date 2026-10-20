@@ -7,6 +7,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.0] - 2026-10-20
+
+This release is about upgrades. The new `diff_api` tool reports how a library's public API changed
+between two fetched versions in one call, and the index now records deprecations, so a removed or
+deprecated declaration arrives with its author's own `ReplaceWith`. The plugin's
+`/kotlin-lib:migrate` is rebuilt on both. `fetch_library` and `list_packages` also link their
+results to the library resources. **Upgrading:** libraries cached by an earlier version are
+analyzed again once, on their next `fetch_library`, from the sources already on disk; nothing is
+downloaded again.
+
 ### Added
 - **`diff_api`** — how the public API changed between two already-fetched versions of one artifact,
   in one call: declarations `added`, `removed`, `changed` (same name, new signature) and
@@ -37,6 +47,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Changed
 - **The cache index moves to `index-v3.json`.** Libraries cached by an earlier version are analyzed
   again on their next `fetch_library`, from the sources already on disk, so they pick up deprecations.
+- **The plugin's `/kotlin-lib:migrate` is built on `diff_api`.** It fetches both versions and takes
+  the API diff in one call, instead of listing every package's declarations twice and comparing
+  signatures by hand, and it suggests the author's `ReplaceWith` before inferring a replacement from
+  KDoc or source search. A deprecation at level `error` or `hidden` is reported as breaking, one at
+  `warning` as a follow-up. The plugin moves to 0.6.0 and pins the 0.9 image.
 
 ## [0.8.0] - 2026-10-19
 
@@ -608,7 +623,8 @@ Initial public release.
 - On-disk cache keyed by `group/artifact/version` under the OS cache directory.
 - Optional **Compose Desktop dashboard** embedding the server (control, logs, cache browser).
 
-[Unreleased]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.8.0...HEAD
+[Unreleased]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.9.0...HEAD
+[0.9.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.6.0...v0.7.0
 [0.6.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.5.0...v0.6.0
