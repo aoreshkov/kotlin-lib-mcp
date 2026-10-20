@@ -6,6 +6,7 @@ import app.oreshkov.kotlinlibmcp.server.FetchProgress
 import app.oreshkov.kotlinlibmcp.server.LibraryService
 import app.oreshkov.kotlinlibmcp.server.elicitation.resolveCoordinate
 import app.oreshkov.kotlinlibmcp.server.icons.Glyph
+import app.oreshkov.kotlinlibmcp.server.resources.libraryIndexLink
 import io.modelcontextprotocol.kotlin.sdk.server.ClientConnection
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.shared.currentRequestHandlerExtra
@@ -34,9 +35,10 @@ fun Server.registerFetchLibraryTool(
             "'io.ktor:ktor-client-core' or 'io.ktor:ktor-client-core:latest') to fetch the latest " +
             "stable release — clients that support elicitation may ask the user to pick a version " +
             "in that case. Returns a summary (resolved coordinate, KMP targets, file and package " +
-            "counts). Over stdio it also returns 'extractedDir', the local root of the extracted " +
-            "sources: if you have file tools of your own, reading or diffing files under it " +
-            "directly is much cheaper than paging them through get_source.",
+            "counts), plus a resource link to the library's index summary. Over stdio it also " +
+            "returns 'extractedDir', the local root of the extracted sources: if you have file " +
+            "tools of your own, reading or diffing files under it directly is much cheaper than " +
+            "paging them through get_source.",
         inputSchema = ToolSchema(
             schema = JSON_SCHEMA_DIALECT,
             properties = buildJsonObject {
@@ -76,8 +78,10 @@ fun Server.registerFetchLibraryTool(
             val summary = service.fetchLibrary(coordinate) { progress ->
                 progressToken?.let { sendFetchProgress(it, progress) }
             }
+            // Registers the index resource, so it must run before the result that links to it
+            // goes out; the link resolves the moment the client sees it.
             onFetched(coordinate)
-            toolResult(summary)
+            toolResult(summary, links = listOf(libraryIndexLink(coordinate)))
         }
     }
 }

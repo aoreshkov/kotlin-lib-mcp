@@ -15,7 +15,7 @@
         ],
         "type": "object"
       },
-      "description": "Download, extract and analyze the sources of a Maven-published Kotlin/Java library, warming the local cache. Idempotent — call this once per coordinate before using the other tools. The version may be omitted or set to 'latest' (e.g. 'io.ktor:ktor-client-core' or 'io.ktor:ktor-client-core:latest') to fetch the latest stable release — clients that support elicitation may ask the user to pick a version in that case. Returns a summary (resolved coordinate, KMP targets, file and package counts). Over stdio it also returns 'extractedDir', the local root of the extracted sources: if you have file tools of your own, reading or diffing files under it directly is much cheaper than paging them through get_source.",
+      "description": "Download, extract and analyze the sources of a Maven-published Kotlin/Java library, warming the local cache. Idempotent — call this once per coordinate before using the other tools. The version may be omitted or set to 'latest' (e.g. 'io.ktor:ktor-client-core' or 'io.ktor:ktor-client-core:latest') to fetch the latest stable release — clients that support elicitation may ask the user to pick a version in that case. Returns a summary (resolved coordinate, KMP targets, file and package counts), plus a resource link to the library's index summary. Over stdio it also returns 'extractedDir', the local root of the extracted sources: if you have file tools of your own, reading or diffing files under it directly is much cheaper than paging them through get_source.",
       "outputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
@@ -121,7 +121,7 @@
         ],
         "type": "object"
       },
-      "description": "List the packages discovered in a fetched library's sources, with declaration counts and the KMP targets each package appears in. Results are paged ('truncated: true' with a 'totalCount' when the library has more than the returned page; advance 'offset' to fetch the rest).",
+      "description": "List the packages discovered in a fetched library's sources, with declaration counts and the KMP targets each package appears in. Results are paged ('truncated: true' with a 'totalCount' when the library has more than the returned page; advance 'offset' to fetch the rest). The first 20 packages of the page also come as resource links to their public API.",
       "outputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {

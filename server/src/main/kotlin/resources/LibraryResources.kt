@@ -13,6 +13,7 @@ import io.modelcontextprotocol.kotlin.sdk.server.RegisteredResource
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.ReadResourceResult
 import io.modelcontextprotocol.kotlin.sdk.types.Resource
+import io.modelcontextprotocol.kotlin.sdk.types.ResourceLink
 import io.modelcontextprotocol.kotlin.sdk.types.ResourceTemplate
 import io.modelcontextprotocol.kotlin.sdk.types.TextResourceContents
 import java.util.concurrent.ConcurrentHashMap
@@ -26,6 +27,36 @@ fun libraryIndexUri(coordinate: LibraryCoordinate): String =
 /** URI of one package's public API within a cached library; see [LIBRARY_PACKAGE_URI_TEMPLATE]. */
 fun libraryPackageUri(coordinate: LibraryCoordinate, packageName: String): String =
     "kotlinlib://${coordinate.group}/${coordinate.artifact}/${coordinate.version}/package/$packageName"
+
+/*
+ * `resource_link` content blocks for tool results, so a client can attach a resource rather than
+ * re-query for it. No icons, although the resources carry them: an icon is ~1.1 KB of base64 per
+ * link, and a client that does not render links may well paste the whole block into the model's
+ * context. A client that does render them can take the glyph from `resources/list`.
+ */
+
+/** Link to [coordinate]'s index summary — the resource `fetch_library` has just made readable. */
+internal fun libraryIndexLink(coordinate: LibraryCoordinate): ResourceLink = ResourceLink(
+    name = "$coordinate index",
+    uri = libraryIndexUri(coordinate),
+    description = "Summary of $coordinate: KMP targets, counts, and its packages.",
+    mimeType = "application/json",
+)
+
+/**
+ * Link to one package's public API, or `null` for the root package: its name is empty, so its URI
+ * ends in `package/` and no template matches it — a link to it would never resolve.
+ */
+internal fun libraryPackageLink(coordinate: LibraryCoordinate, packageName: String): ResourceLink? =
+    if (packageName.isEmpty()) {
+        null
+    } else {
+        ResourceLink(
+            name = packageName,
+            uri = libraryPackageUri(coordinate, packageName),
+            mimeType = "application/json",
+        )
+    }
 
 /** URI template matching every library index URI; see [libraryIndexUri]. */
 const val LIBRARY_INDEX_URI_TEMPLATE: String = "kotlinlib://{group}/{artifact}/{version}/index"
