@@ -225,6 +225,10 @@
             ],
             "default": "public"
           },
+          "deprecated": {
+            "type": "boolean",
+            "description": "true: only deprecated declarations; false: only undeprecated ones (default: both)"
+          },
           "maxResults": {
             "type": "integer",
             "description": "Page size, 1-500 (default 100)",
@@ -244,7 +248,7 @@
         ],
         "type": "object"
       },
-      "description": "List classes/interfaces/objects/functions/properties of a fetched library with signatures and visibility. Optionally filter by package and visibility (public [default], internal, or all). Results are paged ('truncated: true' with a 'totalCount' when more matched than the returned page; advance 'offset' to fetch the rest).",
+      "description": "List classes/interfaces/objects/functions/properties of a fetched library with signatures and visibility. Optionally filter by package and visibility (public [default], internal, or all), and by deprecation. A deprecated declaration carries 'deprecation': its level, message, and the author's 'replaceWith' expression when given. Results are paged ('truncated: true' with a 'totalCount' when more matched than the returned page; advance 'offset' to fetch the rest).",
       "outputSchema": {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "properties": {
@@ -394,6 +398,48 @@
               "offset"
             ]
           },
+          "Deprecation": {
+            "type": "object",
+            "properties": {
+              "level": {
+                "type": "string",
+                "enum": [
+                  "warning",
+                  "error",
+                  "hidden"
+                ]
+              },
+              "message": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "replaceWith": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "replaceWithImports": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "level"
+            ]
+          },
           "ApiSymbol": {
             "type": "object",
             "properties": {
@@ -466,6 +512,16 @@
               },
               "bestEffort": {
                 "type": "boolean"
+              },
+              "deprecation": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Deprecation"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
             "required": [
@@ -613,6 +669,48 @@
               "offset"
             ]
           },
+          "Deprecation": {
+            "type": "object",
+            "properties": {
+              "level": {
+                "type": "string",
+                "enum": [
+                  "warning",
+                  "error",
+                  "hidden"
+                ]
+              },
+              "message": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "replaceWith": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "replaceWithImports": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "level"
+            ]
+          },
           "ApiSymbol": {
             "type": "object",
             "properties": {
@@ -685,6 +783,16 @@
               },
               "bestEffort": {
                 "type": "boolean"
+              },
+              "deprecation": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Deprecation"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
               }
             },
             "required": [
@@ -1079,6 +1187,256 @@
         "type": "object"
       },
       "title": "Diff versions",
+      "annotations": {
+        "readOnlyHint": true,
+        "openWorldHint": false
+      }
+    },
+    {
+      "name": "diff_api",
+      "inputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "group": {
+            "type": "string",
+            "description": "Maven group id, e.g. 'io.ktor'"
+          },
+          "artifact": {
+            "type": "string",
+            "description": "Maven artifact id, e.g. 'ktor-client-core'"
+          },
+          "fromVersion": {
+            "type": "string",
+            "description": "Baseline version, e.g. '3.4.0'"
+          },
+          "toVersion": {
+            "type": "string",
+            "description": "Version to compare against the baseline, e.g. '3.5.1'"
+          },
+          "package": {
+            "type": "string",
+            "description": "Only declarations in this package, e.g. 'io.ktor.client'"
+          },
+          "change": {
+            "type": "string",
+            "description": "Only changes of this type: 'added', 'removed', 'changed' or 'deprecated' (default: all). Summary counts still cover every type.",
+            "enum": [
+              "added",
+              "removed",
+              "changed",
+              "deprecated"
+            ]
+          },
+          "maxResults": {
+            "type": "integer",
+            "description": "Changes per page, 1-500 (default 100)",
+            "minimum": 1,
+            "maximum": 500,
+            "default": 100
+          },
+          "offset": {
+            "type": "integer",
+            "description": "Number of matching changes to skip for paging (default 0)",
+            "minimum": 0,
+            "default": 0
+          }
+        },
+        "required": [
+          "group",
+          "artifact",
+          "fromVersion",
+          "toVersion"
+        ],
+        "type": "object"
+      },
+      "description": "Compare the public API of two already-fetched versions of one artifact: declarations added, removed, changed (same name, new signature) and deprecated, in one call. Call fetch_library for BOTH versions first. Summary counts (added/removed/changed/deprecated) describe the whole comparison; 'changes' is a bounded page of it ('truncated: true' when more matched — advance 'offset'). A removed or deprecated declaration carries 'deprecation', whose 'replaceWith' is the author's own migration. Only public and protected declarations count, inside public classes. Overloads are matched by signature, so changing several at once reads as removed + added. 'approximate: true' marks a change read from unresolved declaration text, which may be formatting alone. Not modelled: opt-in markers (@RequiresOptIn) and @PublishedApi; binary-only changes are invisible to source analysis. For the source text of a change, use diff_versions.",
+      "outputSchema": {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "properties": {
+          "group": {
+            "type": "string"
+          },
+          "artifact": {
+            "type": "string"
+          },
+          "fromVersion": {
+            "type": "string"
+          },
+          "toVersion": {
+            "type": "string"
+          },
+          "packageName": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "added": {
+            "type": "integer"
+          },
+          "removed": {
+            "type": "integer"
+          },
+          "changed": {
+            "type": "integer"
+          },
+          "deprecated": {
+            "type": "integer"
+          },
+          "packagesAdded": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "packagesRemoved": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
+          },
+          "packagesTruncated": {
+            "type": "boolean"
+          },
+          "changes": {
+            "type": "array",
+            "items": {
+              "$ref": "#/$defs/ApiChange"
+            }
+          },
+          "totalCount": {
+            "type": "integer"
+          },
+          "truncated": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "group",
+          "artifact",
+          "fromVersion",
+          "toVersion"
+        ],
+        "$defs": {
+          "Deprecation": {
+            "type": "object",
+            "properties": {
+              "level": {
+                "type": "string",
+                "enum": [
+                  "warning",
+                  "error",
+                  "hidden"
+                ]
+              },
+              "message": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "replaceWith": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "replaceWithImports": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            },
+            "required": [
+              "level"
+            ]
+          },
+          "ApiChange": {
+            "type": "object",
+            "properties": {
+              "fqName": {
+                "type": "string"
+              },
+              "kind": {
+                "type": "string",
+                "enum": [
+                  "class",
+                  "interface",
+                  "object",
+                  "enum",
+                  "annotation",
+                  "function",
+                  "property",
+                  "constructor",
+                  "typealias"
+                ]
+              },
+              "change": {
+                "type": "string",
+                "enum": [
+                  "added",
+                  "removed",
+                  "changed",
+                  "deprecated"
+                ]
+              },
+              "fromSignature": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "toSignature": {
+                "anyOf": [
+                  {
+                    "type": "string"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "deprecation": {
+                "anyOf": [
+                  {
+                    "$ref": "#/$defs/Deprecation"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "approximate": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "fqName",
+              "kind",
+              "change"
+            ]
+          }
+        },
+        "type": "object"
+      },
+      "title": "Diff public API",
       "annotations": {
         "readOnlyHint": true,
         "openWorldHint": false

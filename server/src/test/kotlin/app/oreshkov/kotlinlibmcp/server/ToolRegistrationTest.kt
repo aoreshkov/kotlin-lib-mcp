@@ -2,6 +2,7 @@ package app.oreshkov.kotlinlibmcp.server
 
 import app.oreshkov.kotlinlibmcp.server.tools.JSON_SCHEMA_DIALECT
 import app.oreshkov.kotlinlibmcp.server.tools.THIRD_PARTY_TEXT_NOTE
+import app.oreshkov.kotlinlibmcp.server.tools.registerDiffApiTool
 import app.oreshkov.kotlinlibmcp.server.tools.registerDiffVersionsTool
 import app.oreshkov.kotlinlibmcp.server.tools.registerFetchLibraryTool
 import app.oreshkov.kotlinlibmcp.server.tools.registerGetApiSignatureTool
@@ -39,7 +40,7 @@ class ToolRegistrationTest {
     private val readOnlyLocal =
         setOf(
             "list_packages", "list_declarations", "get_api_signature", "get_kdoc", "get_source",
-            "search_source", "diff_versions",
+            "search_source", "diff_versions", "diff_api",
         )
     private val readOnlyRepository = setOf("get_dependencies", "list_versions", "get_latest_version")
 
@@ -59,6 +60,7 @@ class ToolRegistrationTest {
             registerGetSourceTool(service)
             registerSearchSourceTool(service)
             registerDiffVersionsTool(service)
+            registerDiffApiTool(service)
             registerGetDependenciesTool(service)
             registerListVersionsTool(service)
             registerGetLatestVersionTool(service)
@@ -68,7 +70,7 @@ class ToolRegistrationTest {
     private fun tools(): Map<String, Tool> = serverWithAllTools().tools.mapValues { it.value.tool }
 
     @Test
-    fun allElevenToolsAreRegistered() {
+    fun allTwelveToolsAreRegistered() {
         assertEquals(readOnlyLocal + readOnlyRepository + "fetch_library", tools().keys)
     }
 
@@ -87,6 +89,7 @@ class ToolRegistrationTest {
             "get_source",
             "search_source",
             "diff_versions",
+            "diff_api",
             "get_dependencies",
             "list_versions",
             "get_latest_version",
@@ -239,5 +242,15 @@ class ToolRegistrationTest {
             .getValue("visibility").jsonObject
         assertEquals(JsonArray(listOf("public", "internal", "all").map(::JsonPrimitive)), visibility["enum"])
         assertEquals(JsonPrimitive("public"), visibility["default"])
+    }
+
+    @Test
+    fun diffApiChangeIsAnEnumOfTheWireNames() {
+        // The values a caller may filter on must be the ones the result reports in `change`.
+        val change = tools().getValue("diff_api").inputSchema.properties!!.getValue("change").jsonObject
+        assertEquals(
+            JsonArray(listOf("added", "removed", "changed", "deprecated").map(::JsonPrimitive)),
+            change["enum"],
+        )
     }
 }

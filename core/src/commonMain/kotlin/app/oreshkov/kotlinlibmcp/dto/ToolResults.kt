@@ -2,10 +2,12 @@ package app.oreshkov.kotlinlibmcp.dto
 
 import app.oreshkov.kotlinlibmcp.model.ApiSymbol
 import app.oreshkov.kotlinlibmcp.model.DependencyNode
+import app.oreshkov.kotlinlibmcp.model.Deprecation
 import app.oreshkov.kotlinlibmcp.model.KDoc
 import app.oreshkov.kotlinlibmcp.model.KmpTarget
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.model.PackageInfo
+import app.oreshkov.kotlinlibmcp.model.SymbolKind
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
 
@@ -196,6 +198,80 @@ public data class VersionDiff(
     val filesRemoved: Int = 0,
     val filesModified: Int = 0,
     val files: List<FileDiff> = emptyList(),
+    val truncated: Boolean = false,
+)
+
+/** How one declaration's public API differs between two versions. */
+@Serializable
+public enum class ApiChangeType {
+    @SerialName("added")
+    ADDED,
+
+    @SerialName("removed")
+    REMOVED,
+
+    /** Same name, different signature. */
+    @SerialName("changed")
+    CHANGED,
+
+    /** Same signature, but newly deprecated or deprecated at a stricter level. */
+    @SerialName("deprecated")
+    DEPRECATED,
+}
+
+/**
+ * One public-API change between two versions of a library.
+ *
+ * [fromSignature] is set for [ApiChangeType.REMOVED] and [ApiChangeType.CHANGED], [toSignature] for
+ * every type but [ApiChangeType.REMOVED]; each is the declaration's indexed signature, verbatim.
+ *
+ * [deprecation] is the declaration's state in the newer version — except on a removal, where it is
+ * the deprecation the declaration carried *before* it went, since that is where its author usually
+ * named the replacement.
+ *
+ * [approximate] is `true` when either side was indexed best-effort (see [ApiSymbol.bestEffort]):
+ * its signature is the declaration's text rather than its resolved form, so a reported change can be
+ * a difference in formatting alone.
+ */
+@Serializable
+@SerialName("ApiChange")
+public data class ApiChange(
+    val fqName: String,
+    val kind: SymbolKind,
+    val change: ApiChangeType,
+    val fromSignature: String? = null,
+    val toSignature: String? = null,
+    val deprecation: Deprecation? = null,
+    val approximate: Boolean = false,
+)
+
+/**
+ * `diff_api` — how the public API changed between two versions of one artifact.
+ *
+ * Summary first: [added], [removed], [changed] and [deprecated] count the whole comparison (after
+ * any `package` filter, before the `change` filter), so the shape of a release is four numbers.
+ * [packagesAdded] and [packagesRemoved] list packages whose public API exists on only one side,
+ * capped; [packagesTruncated] says the cap was hit. [changes] is a bounded page; [totalCount] is how
+ * many matched both filters and [truncated] is `true` when more matched than the page returned
+ * (advance `offset` for the rest).
+ */
+@Serializable
+@SerialName("ApiDiff")
+public data class ApiDiff(
+    val group: String,
+    val artifact: String,
+    val fromVersion: String,
+    val toVersion: String,
+    val packageName: String? = null,
+    val added: Int = 0,
+    val removed: Int = 0,
+    val changed: Int = 0,
+    val deprecated: Int = 0,
+    val packagesAdded: List<String> = emptyList(),
+    val packagesRemoved: List<String> = emptyList(),
+    val packagesTruncated: Boolean = false,
+    val changes: List<ApiChange> = emptyList(),
+    val totalCount: Int = 0,
     val truncated: Boolean = false,
 )
 

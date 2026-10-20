@@ -114,6 +114,15 @@ internal val GLYPHS: List<Glyph> = listOf(
         stroke(10, line(32, 76, 96, 76))
         stroke(10, line(64, 56, 64, 96))
     },
+    // diff_api: diff_versions' minus-over-plus, inside get_api_signature's parentheses — a diff of
+    // signatures. The marks shrink to 20 wide to clear the curves' inner edge at x 48..80.
+    Glyph("apidiff") {
+        stroke(9, curve(44, 32, 26, 64, 44, 96))
+        stroke(9, curve(84, 32, 102, 64, 84, 96))
+        stroke(8, line(54, 46, 74, 46))
+        stroke(8, line(54, 76, 74, 76))
+        stroke(8, line(64, 66, 64, 86))
+    },
     // list_versions: a stack of releases.
     Glyph("versions") {
         fill(rrect(28, 32, 72, 18, 8))
