@@ -4,6 +4,8 @@ import app.oreshkov.kotlinlibmcp.core.LibraryCache
 import app.oreshkov.kotlinlibmcp.core.MavenSourceFetcher
 import app.oreshkov.kotlinlibmcp.core.SourceAnalyzer
 import app.oreshkov.kotlinlibmcp.core.VersionCatalog
+import app.oreshkov.kotlinlibmcp.dto.ApiChangeType
+import app.oreshkov.kotlinlibmcp.dto.ApiDiff
 import app.oreshkov.kotlinlibmcp.dto.DeclarationList
 import app.oreshkov.kotlinlibmcp.dto.DependencyResult
 import app.oreshkov.kotlinlibmcp.dto.FetchSummary
@@ -23,6 +25,7 @@ import app.oreshkov.kotlinlibmcp.model.DependencyNode
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.model.LibraryIndex
 import app.oreshkov.kotlinlibmcp.model.Visibility
+import app.oreshkov.kotlinlibmcp.server.diff.ApiSurfaceDiff
 import app.oreshkov.kotlinlibmcp.server.diff.LineDiff
 import app.oreshkov.kotlinlibmcp.util.MavenVersions
 import co.touchlab.kermit.Logger
@@ -484,6 +487,59 @@ class LibraryService(
     }
 
     /**
+     * How the public API changed between two versions of one artifact. Both must already be
+     * fetched; neither is downloaded here. See [ApiSurfaceDiff] for what counts as a change.
+     *
+     * Unlike [diffVersions] this reads no source: it compares the two cached indexes, so its cost is
+     * a pass over each, with no IO to cap. The result is still a function of the library, so
+     * [changes][ApiDiff.changes] is paged and the package lists are capped at [MAX_API_DIFF_PACKAGES].
+     *
+     * A [packageName] neither version has is an error, for the reason [listDeclarations] gives.
+     */
+    suspend fun diffApi(
+        group: String,
+        artifact: String,
+        fromVersion: String,
+        toVersion: String,
+        packageName: String? = null,
+        change: ApiChangeType? = null,
+        maxResults: Int = DEFAULT_API_DIFF_RESULTS,
+        offset: Int = 0,
+    ): ApiDiff {
+        val from = index(LibraryCoordinate(group, artifact, fromVersion))
+        val to = index(LibraryCoordinate(group, artifact, toVersion))
+        if (packageName != null && listOf(from, to).none { index -> index.packages.any { it.name == packageName } }) {
+            throw IllegalArgumentException(
+                "No package '$packageName' in $group:$artifact $fromVersion or $toVersion (see list_packages)"
+            )
+        }
+        // CPU-bound over every symbol of both libraries; keep it off the caller's dispatcher.
+        val comparison = withContext(Dispatchers.Default) { ApiSurfaceDiff.compare(from, to, packageName) }
+        val counts = comparison.changes.groupingBy { it.change }.eachCount()
+        val matching = if (change == null) comparison.changes else comparison.changes.filter { it.change == change }
+        val start = offset.coerceAtLeast(0)
+        val page = matching.drop(start).take(maxResults.coerceIn(1, MAX_API_DIFF_RESULTS))
+        return ApiDiff(
+            group = group,
+            artifact = artifact,
+            fromVersion = fromVersion,
+            toVersion = toVersion,
+            packageName = packageName,
+            added = counts[ApiChangeType.ADDED] ?: 0,
+            removed = counts[ApiChangeType.REMOVED] ?: 0,
+            changed = counts[ApiChangeType.CHANGED] ?: 0,
+            deprecated = counts[ApiChangeType.DEPRECATED] ?: 0,
+            packagesAdded = comparison.packagesAdded.take(MAX_API_DIFF_PACKAGES),
+            packagesRemoved = comparison.packagesRemoved.take(MAX_API_DIFF_PACKAGES),
+            packagesTruncated = maxOf(comparison.packagesAdded.size, comparison.packagesRemoved.size) >
+                MAX_API_DIFF_PACKAGES,
+            changes = page,
+            totalCount = matching.size,
+            truncated = start + page.size < matching.size,
+        )
+    }
+
+    /**
      * Source files of [index] keyed by target-independent path, each mapped to one real path to
      * read. Sorting picks `common/…` over `jvm/…` deterministically, so a re-run compares the same
      * copies.
@@ -866,6 +922,16 @@ class LibraryService(
 
         /** Per-file hunk budget, so one heavily-rewritten file cannot consume the whole page. */
         const val MAX_DIFF_LINES_PER_FILE = 400
+
+        /**
+         * Changes per `diff_api` page. A change is at most two signatures and a deprecation —
+         * smaller than a `list_declarations` entry, which also carries KDoc — so the same bounds.
+         */
+        const val DEFAULT_API_DIFF_RESULTS = 100
+        const val MAX_API_DIFF_RESULTS = 500
+
+        /** Each of `diff_api`'s package lists; the changes themselves name every package past it. */
+        const val MAX_API_DIFF_PACKAGES = 200
 
         const val DEFAULT_SOURCE_LINES = 500
         const val MAX_SOURCE_LINES = 5_000

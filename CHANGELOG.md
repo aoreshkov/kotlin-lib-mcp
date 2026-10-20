@@ -8,6 +8,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **`diff_api`** — how the public API changed between two already-fetched versions of one artifact,
+  in one call: declarations `added`, `removed`, `changed` (same name, new signature) and
+  `deprecated` (newly, or at a stricter level). It compares the two cached indexes and reads no
+  source. Summary counts come first, then a page of changes (up to 500), filterable by `package` and
+  `change`. A removed declaration carries the deprecation it had before it went, so its author's
+  `ReplaceWith` comes with it. Only public and protected declarations inside public classes count.
+  Overloads are matched by signature, not by position, and signatures are compared without
+  annotations, `expect`/`actual` or layout. A KMP declaration indexed once per target, or moved
+  between `expect`/`actual` and common code, is therefore not reported. A change read from
+  unresolved declaration text is marked `approximate`.
 - **Deprecations are part of the index.** A deprecated declaration's `ApiSymbol` now carries
   `deprecation`: its level (`warning`, `error`, `hidden`), its message, and the author's own
   `ReplaceWith` expression and imports. `list_declarations` and `get_api_signature` return it; a

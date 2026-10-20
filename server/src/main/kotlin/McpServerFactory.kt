@@ -15,6 +15,7 @@ import app.oreshkov.kotlinlibmcp.server.tasks.TaskRecordStore
 import app.oreshkov.kotlinlibmcp.server.tasks.TaskStore
 import app.oreshkov.kotlinlibmcp.server.telemetry.startTelemetry
 import app.oreshkov.kotlinlibmcp.server.telemetry.stopTelemetry
+import app.oreshkov.kotlinlibmcp.server.tools.registerDiffApiTool
 import app.oreshkov.kotlinlibmcp.server.tools.registerDiffVersionsTool
 import app.oreshkov.kotlinlibmcp.server.tools.registerFetchLibraryTool
 import app.oreshkov.kotlinlibmcp.server.tools.registerGetApiSignatureTool
@@ -233,6 +234,7 @@ object McpServerFactory {
             registerGetSourceTool(service)
             registerSearchSourceTool(service)
             registerDiffVersionsTool(service)
+            registerDiffApiTool(service)
             registerGetDependenciesTool(service)
             registerListVersionsTool(service)
             registerGetLatestVersionTool(service)

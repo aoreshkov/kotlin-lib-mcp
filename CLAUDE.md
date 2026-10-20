@@ -79,7 +79,7 @@ changes are also checked by CI's `conformance` job — the official MCP conforma
 ## MCP tools
 
 `fetch_library` · `list_packages` · `list_declarations` · `get_api_signature` · `get_kdoc` ·
-`get_source` · `search_source` · `diff_versions` · `get_dependencies` · `list_versions` ·
+`get_source` · `search_source` · `diff_versions` · `diff_api` · `get_dependencies` · `list_versions` ·
 `get_latest_version`
 
 `fetch_library` also accepts a version-less `group:artifact` or `group:artifact:latest` and
