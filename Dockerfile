@@ -3,7 +3,7 @@
 # The dist is pure JVM (arch-independent), so one COPY serves amd64 and arm64.
 # Tag + digest: the digest pins the exact multi-arch image (Dependabot's docker
 # ecosystem bumps it); the tag documents the intent.
-FROM eclipse-temurin:25-jre@sha256:fcd7fd7b387f94bb2ac461478a7436ad8e349924c374ea8313919624dceae636
+FROM eclipse-temurin:25-jre@sha256:dbb43d81099eec91e0800226ed2296d03146ee7857165b95112372ad0d67e87f
 
 LABEL org.opencontainers.image.source="https://github.com/aoreshkov/kotlin-lib-mcp" \
       org.opencontainers.image.licenses="Apache-2.0" \
