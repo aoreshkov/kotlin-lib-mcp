@@ -21,7 +21,7 @@ slf4j = "2.0.20"
 kotlinLogging = "8.0.4"        # matches the MCP SDK's transitive facade; needed to silence its stdout banner
 logback = "1.6.5"
 opentelemetry = "1.67.0"       # BOM governs every io.opentelemetry artifact below
-cliKit = "0.2.0"               # pre-1.0: a minor may break; read its CHANGELOG before bumping
+cliKit = "0.3.0"               # pre-1.0: a minor may break; read its CHANGELOG before bumping
 
 [libraries]
 # Build (gradle-plugin classpath for build-logic convention plugins)
