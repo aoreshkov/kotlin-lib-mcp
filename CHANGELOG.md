@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **cli-kit 0.2.0 → 0.3.0.** The command line and `--help` are unchanged. Its new configuration
+  files are deliberately not used: a launch is configured only by the client, through `server.json`
+  or the plugin's `.mcp.json`. An option renamed from now on keeps accepting its old name, with a
+  warning on stderr, so a client config written against an earlier release keeps working.
+
 ## [0.9.0] - 2026-10-20
 
 This release is about upgrades. The new `diff_api` tool reports how a library's public API changed
