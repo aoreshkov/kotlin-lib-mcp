@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.1] - 2026-10-26
+
+This release changes nothing on the wire and nothing on the command line. The Claude Code plugin
+now runs the server on your own JDK instead of in Docker, and new server releases reach it without
+a plugin update. The rest is dependency upkeep. **Upgrading:** plugin users need a JDK 25+; everyone
+else needs to do nothing.
+
 ### Changed
 - **The Claude Code plugin runs on your JDK instead of Docker** (plugin version 1.0.0). Its
   `.mcp.json` now starts a small launcher, `plugin/launcher/KotlinLibMcpLauncher.java`, which
@@ -23,6 +30,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   files are deliberately not used: a launch is configured only by the client, through `server.json`
   or the plugin's `.mcp.json`. An option renamed from now on keeps accepting its old name, with a
   warning on stderr, so a client config written against an earlier release keeps working.
+- **kotlinx-serialization 1.11.0 → 1.12.0**, a Temurin 25 JRE base-image digest re-pin, and, in the
+  build only, Gradle 9.8.1 → 9.8.2 and four GitHub Actions bumps.
 
 ### Fixed
 - **`/kotlin-lib:setup` named the wrong Java for the release zip** (Java 21+; it has needed Java
@@ -644,7 +653,8 @@ Initial public release.
 - On-disk cache keyed by `group/artifact/version` under the OS cache directory.
 - Optional **Compose Desktop dashboard** embedding the server (control, logs, cache browser).
 
-[Unreleased]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.9.1...HEAD
+[0.9.1]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.7.0...v0.8.0
 [0.7.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.6.0...v0.7.0
