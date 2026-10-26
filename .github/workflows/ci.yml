@@ -108,20 +108,23 @@ jobs:
             test -f "${d}SKILL.md" || { echo "Skill ${d} has no SKILL.md"; exit 1; }
           done
 
-      # The image pin drifts silently: nothing at runtime notices that the plugin points at
-      # a tag which no longer matches the project version, and users just get an old server.
-      # /release bumps both on a minor release; this asserts it actually happened.
-      - name: Plugin MCP image pin matches the project's <major>.<minor>
+      # The MCP entry must keep resolving the launcher through ${CLAUDE_PLUGIN_ROOT} — a bare
+      # relative path would resolve against the session's working directory — and must keep the
+      # -Xlog options that route the JVM's own logging off stdout, the protocol channel. The
+      # distribution's start script passes the same ones (applicationDefaultJvmArgs).
+      - name: Plugin MCP entry runs the launcher
         run: |
-          version=$(sed -n 's/^version=//p' gradle.properties)
-          expected="${version%.*}"
-          image=$(jq -r '.mcpServers["kotlin-lib"].args[-1]' plugin/.mcp.json)
-          actual="${image##*:}"
-          test "$actual" = "$expected" || {
-            echo "plugin/.mcp.json pins ${image} but gradle.properties is ${version}"
-            echo "expected the image tag to be ${expected}"
-            exit 1; }
-          echo "OK: ${image} matches version ${version}"
+          entry='.mcpServers["kotlin-lib"]'
+          jq -e "${entry}.command == \"\${user_config.java}\"" plugin/.mcp.json > /dev/null
+          jq -e "${entry}.args | index(\"-Xlog:all=warning:stderr\")" plugin/.mcp.json > /dev/null
+          launcher=$(jq -r "${entry}.args[-1]" plugin/.mcp.json)
+          case "$launcher" in
+            '${CLAUDE_PLUGIN_ROOT}/'*) ;;
+            *) echo "the launcher path must start with \${CLAUDE_PLUGIN_ROOT}/: ${launcher}"; exit 1 ;;
+          esac
+          test -f "plugin/${launcher#\$\{CLAUDE_PLUGIN_ROOT\}/}" || {
+            echo "plugin/.mcp.json runs ${launcher}, which is not in plugin/"; exit 1; }
+          echo "OK: plugin/.mcp.json runs ${launcher}"
 
       # Claude Code updates an installed plugin only when plugin.json's `version` changes, so
       # a change under plugin/ without a bump never reaches anyone who already has it. That
@@ -155,6 +158,60 @@ jobs:
         run: |
           claude plugin validate . --strict
           claude plugin validate ./plugin --strict
+
+  # The plugin runs the server through plugin/launcher on the user's own JDK, in the launcher's
+  # JVM — a different road from the Docker image and the start script, with its own ways to break.
+  plugin-launcher:
+    name: Claude Code plugin launcher
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - name: Set up JDK 25
+        uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
+        with:
+          distribution: temurin
+          java-version: 25
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@3f5f9adaf7d9fecd50b5935e54106014257a94e6 # v6.4.0
+        with:
+          cache-read-only: ${{ github.ref != 'refs/heads/main' }}
+
+      # The launcher runs in single-file source mode on the user's machine, where a compile error
+      # surfaces only as an MCP server that fails to connect. `--release 21` keeps it compiling on a
+      # JDK older than the server needs, so there it can still say so instead of failing silently.
+      - name: Compile the launcher for Java 21
+        run: javac --release 21 -Xlint:all -Werror -d "${RUNNER_TEMP}/launcher" plugin/launcher/*.java
+
+      - name: Build server distribution
+        run: ./gradlew :server:installDist
+
+      # The command line is read from plugin/.mcp.json, so this runs what the plugin runs. Loading
+      # the distribution into the launcher's class loader is where a wrong jar order shows up — the
+      # launcher takes it from bin/server, and without the kotlin-compiler hoist the server dies
+      # with NoSuchMethodError before it answers anything.
+      - name: Launcher runs this commit's server, which analyzes a real library and exits
+        run: |
+          mapfile -t args < <(jq -r '.mcpServers["kotlin-lib"].args[]' plugin/.mcp.json \
+            | sed 's|${CLAUDE_PLUGIN_ROOT}|plugin|')
+          KOTLIN_LIB_MCP_SERVER_HOME=server/build/install/server \
+            python3 .github/scripts/analyze-smoke.py java "${args[@]}" --cache-dir "$RUNNER_TEMP/cache"
+
+      # The download path, against the newest published release: resolve `latest`, fetch the zip,
+      # verify it against GitHub's asset digest, unpack, load. `--help` keeps it to a class load.
+      - name: Launcher installs the latest release and starts it
+        run: |
+          mapfile -t args < <(jq -r '.mcpServers["kotlin-lib"].args[]' plugin/.mcp.json \
+            | sed 's|${CLAUDE_PLUGIN_ROOT}|plugin|')
+          data="$RUNNER_TEMP/plugin-data"
+          out=$(CLAUDE_PLUGIN_DATA="$data" java "${args[@]}" --help)
+          grep -q 'kotlin-lib-mcp' <<< "$out" || { echo "no --help output: ${out}"; exit 1; }
+          version=$(cat "$data/latest-release.txt")
+          test -d "$data/dist/${version}/lib" || { echo "no install under ${data}/dist/${version}"; exit 1; }
+          echo "OK: installed and started ${version}"
 
   docker-smoke:
     name: Docker image smoke (JDK 25 runtime)

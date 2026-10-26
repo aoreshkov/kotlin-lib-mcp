@@ -41,11 +41,13 @@ grep -n "version=" gradle.properties
 grep -n '"version"' server.json
 ```
 
-**On a MAJOR or MINOR bump, also repin the plugin.** `plugin/.mcp.json` pins the image to the
-`<major>.<minor>` tag (`ghcr.io/aoreshkov/kotlin-lib-mcp:0.5`), which follows patches on its own
-but not a minor bump. Update that tag and bump `plugin/.claude-plugin/plugin.json` `.version`
-(its own semver, independent of the server's) so installed plugins actually receive the update —
-the community catalog re-pins from the repo automatically. Patch releases need neither.
+**The plugin needs no repin.** Its launcher (`plugin/launcher/KotlinLibMcpLauncher.java`) resolves
+`latest` from the GitHub releases API once a day, so installed plugins pick the new server up on
+their own. Touch the plugin only when the release changes what the launcher relies on — the zip's
+`kotlin-lib-mcp-server-<version>/` root with `lib/` and `bin/server`, the main class
+`app.oreshkov.kotlinlibmcp.server.MainKt`, or the Java feature release (`SERVER_JAVA`) — and then
+bump `plugin/.claude-plugin/plugin.json` `.version` too (its own semver, independent of the
+server's), or installed plugins never receive the change.
 
 ## 3. Update the changelog
 

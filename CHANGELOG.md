@@ -8,10 +8,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Changed
+- **The Claude Code plugin runs on your JDK instead of Docker** (plugin version 1.0.0). Its
+  `.mcp.json` now starts a small launcher, `plugin/launcher/KotlinLibMcpLauncher.java`, which
+  downloads the release zip into the plugin's data directory once, checks it against the SHA-256
+  digest GitHub recorded for the asset, and runs the server in its own JVM. Two options configure
+  it in `/plugin`: `java`, the `java` executable of a JDK 25+ (default: the one on `PATH`; give
+  `<JDK home>/bin/java` to use one that isn't), and `server_version` (`latest`, checked once a
+  day, or a pinned release). New releases now reach plugin users without a plugin update.
+  **Upgrading:** the plugin needs a JDK 25+ and no longer needs Docker. Without a JDK 25, keep
+  the plugin for its skills, turn its server off in `/mcp`, and register the Docker image with
+  `claude mcp add` — the Docker image, the VS Code install buttons and the MCP registry entry are
+  unchanged. `/kotlin-lib:setup` covers both.
 - **cli-kit 0.2.0 → 0.3.0.** The command line and `--help` are unchanged. Its new configuration
   files are deliberately not used: a launch is configured only by the client, through `server.json`
   or the plugin's `.mcp.json`. An option renamed from now on keeps accepting its old name, with a
   warning on stderr, so a client config written against an earlier release keeps working.
+
+### Fixed
+- **`/kotlin-lib:setup` named the wrong Java for the release zip** (Java 21+; it has needed Java
+  25+ since 0.8.0) and listed ten tools of twelve.
 
 ## [0.9.0] - 2026-10-20
 

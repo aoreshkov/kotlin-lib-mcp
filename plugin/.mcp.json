@@ -1,15 +1,16 @@
 {
   "mcpServers": {
     "kotlin-lib": {
-      "command": "docker",
+      "command": "${user_config.java}",
       "args": [
-        "run",
-        "-i",
-        "--rm",
-        "-v",
-        "kotlin-lib-mcp-cache:/home/mcp/.cache",
-        "ghcr.io/aoreshkov/kotlin-lib-mcp:0.9"
-      ]
+        "-Xlog:disable",
+        "-Xlog:all=warning:stderr",
+        "--enable-native-access=ALL-UNNAMED",
+        "${CLAUDE_PLUGIN_ROOT}/launcher/KotlinLibMcpLauncher.java"
+      ],
+      "env": {
+        "KOTLIN_LIB_MCP_SERVER_VERSION": "${user_config.server_version}"
+      }
     }
   }
 }
