@@ -23,8 +23,8 @@ dashboard runs the same server in-process.
 [<img src="https://img.shields.io/badge/VS_Code-Install_Server-0098FF?style=flat-square" alt="Install in VS Code">](https://insiders.vscode.dev/redirect?url=vscode%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522kotlin-lib%2522%252C%2522command%2522%253A%2522docker%2522%252C%2522args%2522%253A%255B%2522run%2522%252C%2522-i%2522%252C%2522--rm%2522%252C%2522-v%2522%252C%2522kotlin-lib-mcp-cache%253A%252Fhome%252Fmcp%252F.cache%2522%252C%2522ghcr.io%252Faoreshkov%252Fkotlin-lib-mcp%2522%255D%257D)
 [<img src="https://img.shields.io/badge/VS_Code_Insiders-Install_Server-24bfa5?style=flat-square" alt="Install in VS Code Insiders">](https://insiders.vscode.dev/redirect?url=vscode-insiders%3Amcp%2Finstall%3F%257B%2522name%2522%253A%2522kotlin-lib%2522%252C%2522command%2522%253A%2522docker%2522%252C%2522args%2522%253A%255B%2522run%2522%252C%2522-i%2522%252C%2522--rm%2522%252C%2522-v%2522%252C%2522kotlin-lib-mcp-cache%253A%252Fhome%252Fmcp%252F.cache%2522%252C%2522ghcr.io%252Faoreshkov%252Fkotlin-lib-mcp%2522%255D%257D)
 
-Those install the Docker image. For Claude Code, IntelliJ IDEA, or to run the release zip without
-Docker, see [Quick start](#quick-start-no-build-required).
+Those install the Docker image. For the Claude Code plugin (which runs on your JDK), IntelliJ IDEA,
+or to run the release zip without Docker, see [Quick start](#quick-start-no-build-required).
 
 <!-- mcp-name: io.github.aoreshkov/kotlin-lib-mcp -->
 
@@ -57,7 +57,9 @@ summaries. This one works from the **published sources jar** — the ground trut
 ## Quick start (no build required)
 
 **Option 1 — Claude Code plugin.** The server plus skills that make Claude reach for it, two
-commands (`/kotlin-lib:api`, `/kotlin-lib:migrate`) and a setup helper. Needs Docker:
+commands (`/kotlin-lib:api`, `/kotlin-lib:migrate`) and a setup helper. Needs a JDK 25+ — the one on
+your `PATH`, or any other set by path in the plugin's `java` option; no Docker. It downloads the
+release zip on first use:
 
 ```
 /plugin marketplace add aoreshkov/kotlin-lib-mcp
@@ -338,8 +340,9 @@ phone-home, no account, and no credential of any kind.
 - **What leaves your machine.** Only requests to the Maven repositories you point it at (Maven
   Central by default, `--repo` to change): the `maven-metadata.xml`, `.pom`/`.module` metadata and
   sources jar for the coordinates you ask about. Those repositories see the coordinate and your IP,
-  under their own privacy policies. Pulling the Docker image likewise talks to GHCR. That is the
-  complete list of outbound traffic.
+  under their own privacy policies. Pulling the Docker image likewise talks to GHCR, and the Claude
+  Code plugin's launcher talks to this repository's GitHub releases (the releases API at most once
+  a day, and a download when there is a new server). That is the complete list of outbound traffic.
 - **What it reads.** Downloaded library sources only. It does not read, index or transmit your
   project's code — it has no access to it.
 - **What it stores, and where.** Downloaded artifacts and the parsed index, on your disk only,
