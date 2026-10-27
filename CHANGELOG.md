@@ -36,6 +36,25 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `fetch-result-v2.json`, and a marker whose extracted sources are missing counts as a miss.
   **Upgrading:** reading a source file of an already cached library downloads its sources once
   more; the old `fetch-result.json` is deleted when that happens.
+- **Visibility is effective visibility.** The members of an `internal` or `private` class were
+  reported as public, so `list_declarations` listed them as public API while `diff_api` left them
+  out. A declaration's visibility is now the narrowest on the way out through its enclosing classes,
+  and an `override` with no modifier of a `protected` member is `protected`. `list_declarations`
+  and `diff_api` read the same answer.
+- **Primary-constructor properties are indexed.** `data class Person(val name: String)` had no
+  `Person.name`, so a data class's properties were missing from `list_declarations` and
+  `get_api_signature`, and `diff_api` could not report one added, removed or retyped. They are now
+  properties, documented by the class's `@property` KDoc tag.
+- **`list_declarations` lists a declaration once.** A multiplatform library's common code is in
+  the cache once per target, and each copy was listed, roughly doubling `totalCount`. Copies are now
+  collapsed before paging, keeping the same copy `diff_api` reports; real overloads stay.
+- **A name ending in "by" keeps its last two letters** in a signature read without type
+  resolution: `class Lobby` read as `class Lob`.
+
+### Changed
+- **The cache index moves to `index-v4.json`.** Libraries cached by an earlier version are analyzed
+  again on their next `fetch_library`, from the sources already on disk, and the older index files
+  are deleted when that happens.
 
 ## [0.9.2] - 2026-10-27
 

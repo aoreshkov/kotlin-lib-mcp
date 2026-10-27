@@ -3,6 +3,7 @@
 package app.oreshkov.kotlinlibmcp.analyze
 
 import app.oreshkov.kotlinlibmcp.model.Deprecation
+import app.oreshkov.kotlinlibmcp.model.Visibility
 import org.jetbrains.kotlin.analysis.api.KaExperimentalApi
 import org.jetbrains.kotlin.analysis.api.KaSession
 import org.jetbrains.kotlin.analysis.api.renderer.declarations.KaDeclarationRenderer
@@ -43,6 +44,8 @@ internal data class RenderedSymbol(
     val supertypes: List<String>,
     val hasErrorTypes: Boolean,
     val deprecation: Deprecation?,
+    /** Effective, not declared (see `EffectiveVisibility.kt`); `null` falls back to PSI. */
+    val visibility: Visibility?,
 )
 
 private val whitespace = Regex("""\s+""")
@@ -115,6 +118,7 @@ internal fun KaSession.renderResolved(symbol: KaDeclarationSymbol): RenderedSymb
         supertypes,
         hasErrorTypes = symbol.referencesErrorType(),
         deprecation = resolvedDeprecation(symbol),
+        visibility = effectiveVisibility(symbol),
     )
 }
 
@@ -132,6 +136,8 @@ internal fun psiSignature(declaration: KtNamedDeclaration): String {
             declaration.initializer ?: declaration.delegate ?: declaration.accessors.firstOrNull()
         is KtDeclarationWithBody -> declaration.bodyBlockExpression ?: declaration.bodyExpression
         is KtClassOrObject -> declaration.body
+        // A primary-constructor property, whose default is its initializer: cut like a property's.
+        is KtParameter -> declaration.defaultValue
         else -> null
     }
     val end = cutElement
@@ -139,8 +145,9 @@ internal fun psiSignature(declaration: KtNamedDeclaration): String {
         ?: raw.length
     return raw.substring(start.coerceIn(0, raw.length), end.coerceIn(start, raw.length))
         .squash()
+        // The cut at `delegate` already leaves `by` outside, so there is no keyword to strip after
+        // it — a `removeSuffix("by")` here only ever took the end off a name (`Lobby` → `Lob`).
         .removeSuffix("=")
-        .removeSuffix("by")
         .trim()
 }
 

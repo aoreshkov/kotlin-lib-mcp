@@ -6,15 +6,17 @@ import app.oreshkov.kotlinlibmcp.model.ApiSymbol
 import app.oreshkov.kotlinlibmcp.model.LibraryIndex
 import app.oreshkov.kotlinlibmcp.model.SymbolKind
 import app.oreshkov.kotlinlibmcp.model.Visibility
+import java.util.Collections
+import java.util.IdentityHashMap
 
 /**
  * The public-API difference between two indexes of one artifact. A pure function over the cached
  * indexes, like [LineDiff], so it reads no source and is tested on in-memory indexes.
  *
- * Each step below exists because the obvious version reports churn that is not API:
- *  - **Effective visibility.** An index records each declaration's *own* modifier, so the members
- *    of an `internal class` read as public. A declaration counts only if it and every enclosing
- *    classifier are public or protected.
+ * A declaration is API when its visibility is public or protected. That is the *effective*
+ * visibility, computed by the analyzer, so the members of an `internal class` are already internal
+ * here and `list_declarations` reads the same field the same way. Each further step exists because
+ * the obvious version reports churn that is not API:
  *  - **Grouped by FQ name, not by index key.** Keys carry a `#n` overload suffix assigned in
  *    file/offset order, which a release that adds one overload or moves a file renumbers.
  *  - **Compared by normalized signature** ([normalizeSignature]), deduplicated per group. A KMP
@@ -47,30 +49,26 @@ internal object ApiSurfaceDiff {
         )
     }
 
-    private fun apiOf(index: LibraryIndex, packageName: String?): Api {
-        val symbols = index.symbolsByFqName.values
-        // A classifier hides its members only when no copy of it is visible: an index can hold the
-        // same class several times over (per target tree, expect and actual).
-        val hiddenClassifiers = symbols
-            .filter { it.kind in CLASSIFIERS }
-            .groupBy { it.fqName }
-            .filterValues { copies -> copies.none { it.visibility in API_VISIBILITY } }
-            .keys
-        return symbols.asSequence()
-            .filter { it.visibility in API_VISIBILITY && !it.isInsideAny(hiddenClassifiers) }
-            .filter { packageName == null || it.packageName == packageName }
-            .groupBy { GroupKey(it.fqName, it.kind in CLASSIFIERS) }
-            .mapValues { (_, group) -> distinctSignatures(group) }
+    /**
+     * [symbols] with each declaration's duplicate copies dropped, in their original order: the
+     * per-target-tree and `expect`/`actual` copies this diff already treats as one declaration, so
+     * that `list_declarations` counts and pages declarations rather than copies. The copy kept is
+     * the one the diff would report.
+     */
+    fun distinctDeclarations(symbols: Collection<ApiSymbol>): List<ApiSymbol> {
+        val kept = Collections.newSetFromMap(IdentityHashMap<ApiSymbol, Boolean>())
+        symbols.groupBy(::groupKey).values.forEach { kept += distinctSignatures(it).values }
+        return symbols.filter { it in kept }
     }
 
-    private fun ApiSymbol.isInsideAny(hidden: Set<String>): Boolean {
-        var end = fqName.lastIndexOf('.')
-        while (end > 0) {
-            if (fqName.substring(0, end) in hidden) return true
-            end = fqName.lastIndexOf('.', end - 1)
-        }
-        return false
-    }
+    private fun apiOf(index: LibraryIndex, packageName: String?): Api =
+        index.symbolsByFqName.values.asSequence()
+            .filter { it.visibility in API_VISIBILITY }
+            .filter { packageName == null || it.packageName == packageName }
+            .groupBy(::groupKey)
+            .mapValues { (_, group) -> distinctSignatures(group) }
+
+    private fun groupKey(symbol: ApiSymbol) = GroupKey(symbol.fqName, symbol.kind in CLASSIFIERS)
 
     private fun distinctSignatures(group: List<ApiSymbol>): Map<String, ApiSymbol> {
         val declared = when {

@@ -221,14 +221,15 @@ class DiffApiServiceTest {
 
     @Test
     fun membersOfANonPublicClassAreNotApi() = runTest {
-        // Each symbol records only its own modifier, so `Hidden.member` reads as public.
+        // The analyzer records *effective* visibility, so `Hidden`'s members arrive internal
+        // although their own signatures say `public`; the diff takes the field at its word.
         val hidden = symbol("com.example.Hidden", "internal class Hidden", SymbolKind.CLASS, Visibility.INTERNAL)
         val shown = symbol("com.example.Shown", "public class Shown", SymbolKind.CLASS)
         val result = diff(
             from = listOf(
                 hidden,
-                symbol("com.example.Hidden.member", "public fun member(): kotlin.Unit"),
-                symbol("com.example.Hidden.Nested.deep", "public fun deep(): kotlin.Unit"),
+                symbol("com.example.Hidden.member", "public fun member(): kotlin.Unit", visibility = Visibility.INTERNAL),
+                symbol("com.example.Hidden.Nested.deep", "public fun deep(): kotlin.Unit", visibility = Visibility.INTERNAL),
                 shown,
                 symbol("com.example.Shown.member", "public fun member(): kotlin.Unit"),
                 symbol("com.example.Shown.secret", "private fun secret(): kotlin.Unit", visibility = Visibility.PRIVATE),

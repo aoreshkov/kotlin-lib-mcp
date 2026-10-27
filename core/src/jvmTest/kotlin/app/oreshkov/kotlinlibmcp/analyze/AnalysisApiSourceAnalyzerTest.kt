@@ -86,7 +86,10 @@ class AnalysisApiSourceAnalyzerTest {
 
         val kdoc = assertNotNull(symbol.kdoc)
         assertEquals("Greets people politely.", kdoc.summary)
-        assertContains(assertNotNull(kdoc.description), "second paragraph")
+        assertEquals(
+            "Implementations decide the salutation.\n\nThis second paragraph is description, not summary.",
+            kdoc.description,
+        )
     }
 
     @Test
@@ -94,6 +97,98 @@ class AnalysisApiSourceAnalyzerTest {
         val symbol = assertNotNull(index.symbolsByFqName["com.example.tiny.HiddenHelper"])
 
         assertEquals(Visibility.INTERNAL, symbol.visibility)
+    }
+
+    private fun visibilityOf(fqName: String): Visibility = assertNotNull(index.symbolsByFqName[fqName], fqName).visibility
+
+    @Test
+    fun aMemberOfAnInternalClassIsInternal() {
+        assertEquals(Visibility.INTERNAL, visibilityOf("com.example.tiny.HiddenHelper.shhh"))
+    }
+
+    @Test
+    fun aMemberOfAPrivateNestedClassIsPrivate() {
+        assertEquals(Visibility.PRIVATE, visibilityOf("com.example.tiny.Envelope.Seal.press"))
+    }
+
+    @Test
+    fun aPublicMemberOfAProtectedNestedClassIsProtected() {
+        assertEquals(Visibility.PROTECTED, visibilityOf("com.example.tiny.Card.Section.render"))
+    }
+
+    /** From another module a subclass still reaches `protected`; nothing reaches `internal`. */
+    @Test
+    fun aProtectedMemberOfAnInternalClassIsInternal() {
+        assertEquals(Visibility.INTERNAL, visibilityOf("com.example.tiny.Draft.scribble"))
+    }
+
+    /** The case only resolution gets right: the `override` carries no modifier to read. */
+    @Test
+    fun anOverrideWithoutAModifierInheritsProtected() {
+        val symbol = assertNotNull(index.symbolsByFqName["com.example.tiny.BirthdayCard.layout"])
+
+        assertFalse(symbol.bestEffort)
+        assertEquals(Visibility.PROTECTED, symbol.visibility)
+    }
+
+    @Test
+    fun indexesPrimaryConstructorPropertiesAsProperties() {
+        val label = assertNotNull(index.symbolsByFqName["com.example.tiny.Placement.label"])
+        val x = assertNotNull(index.symbolsByFqName["com.example.tiny.Placement.x"])
+
+        assertEquals(SymbolKind.PROPERTY, label.kind)
+        assertFalse(label.bestEffort, "expected fully resolved symbol, got: ${label.signature}")
+        assertEquals("public val label: kotlin.String", label.signature)
+        assertEquals(Visibility.PUBLIC, label.visibility)
+        assertEquals("public var x: kotlin.Int", x.signature)
+        assertEquals(Visibility.PRIVATE, visibilityOf("com.example.tiny.Placement.secret"))
+    }
+
+    @Test
+    fun leavesPlainConstructorParametersOut() {
+        assertNull(index.symbolsByFqName["com.example.tiny.Placement.width"])
+    }
+
+    @Test
+    fun readsAConstructorPropertysKDocFromItsClassPropertyTag() {
+        val kdoc = assertNotNull(index.symbolsByFqName["com.example.tiny.Placement.label"]?.kdoc)
+
+        assertEquals("what is printed there.", kdoc.summary)
+        assertEquals("Shown verbatim.", kdoc.description)
+    }
+
+    @Test
+    fun keysOverloadsInSourceOrder() {
+        val first = assertNotNull(index.symbolsByFqName["com.example.tiny.place"])
+        val second = assertNotNull(index.symbolsByFqName["com.example.tiny.place#2"])
+
+        assertEquals("public fun place(label: kotlin.String): com.example.tiny.Placement", first.signature)
+        assertEquals("public fun place(label: kotlin.String, x: kotlin.Int): com.example.tiny.Placement", second.signature)
+        assertNull(index.symbolsByFqName["com.example.tiny.place#3"])
+    }
+
+    @Test
+    fun summarisesADefaultTooLongToInline() {
+        val symbol = assertNotNull(index.symbolsByFqName["com.example.tiny.greetFormally"])
+
+        assertFalse(symbol.bestEffort)
+        assertContains(symbol.signature, "salutation: kotlin.String = ...")
+    }
+
+    @Test
+    fun marksAnInheritedDefaultAsOptional() {
+        val symbol = assertNotNull(index.symbolsByFqName["com.example.tiny.QuietPunctuator.punctuate"])
+
+        assertFalse(symbol.bestEffort)
+        assertContains(symbol.signature, "mark: kotlin.String = ...")
+    }
+
+    @Test
+    fun keepsANameEndingInByOnTheDegradedPath() {
+        val symbol = assertNotNull(index.symbolsByFqName["com.example.tiny.enterLobby"])
+
+        assertTrue(symbol.bestEffort, "unresolvable Widget type should degrade the symbol")
+        assertEquals("public fun enterLobby(widget: Widget): Lobby", symbol.signature)
     }
 
     @Test
