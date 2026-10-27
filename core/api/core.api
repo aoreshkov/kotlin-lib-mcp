@@ -704,6 +704,12 @@ public final class app/oreshkov/kotlinlibmcp/fetch/MavenSourceFetcherImpl : app/
 public final class app/oreshkov/kotlinlibmcp/fetch/MavenSourceFetcherImpl$Companion {
 }
 
+public final class app/oreshkov/kotlinlibmcp/fetch/RepositoryUnavailableException : app/oreshkov/kotlinlibmcp/fetch/FetchException {
+	public fun <init> (ILjava/lang/String;)V
+	public final fun getStatus ()I
+	public final fun getUrl ()Ljava/lang/String;
+}
+
 public final class app/oreshkov/kotlinlibmcp/fetch/SourcesNotFoundException : app/oreshkov/kotlinlibmcp/fetch/FetchException {
 	public fun <init> (Ljava/lang/String;)V
 }

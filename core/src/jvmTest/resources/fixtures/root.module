@@ -71,6 +71,21 @@
       }
     },
     {
+      "name": "androidReleaseSourcesElements-published",
+      "attributes": {
+        "org.gradle.category": "documentation",
+        "org.gradle.docstype": "sources",
+        "org.gradle.usage": "kotlin-runtime",
+        "org.jetbrains.kotlin.platform.type": "androidJvm"
+      },
+      "available-at": {
+        "url": "../../demo-lib-android/1.0.0/demo-lib-android-1.0.0.module",
+        "group": "com.example",
+        "module": "demo-lib-android",
+        "version": "1.0.0"
+      }
+    },
+    {
       "name": "jsSourcesElements-published",
       "attributes": {
         "org.gradle.category": "documentation",

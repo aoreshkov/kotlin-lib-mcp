@@ -170,7 +170,8 @@ private val log = Logger.withTag("Tools")
 /**
  * Exceptions whose message is part of the tool's contract with the model: bad arguments, a library
  * not fetched yet, a regex too expensive to run, a dismissed version picker, and fetch failures
- * (sources missing, checksum mismatch, download too large). [IllegalArgumentException] covers every
+ * (sources missing, checksum mismatch, download too large, repository unavailable — like
+ * sources missing, it names a `--repo` URL, never a local path). [IllegalArgumentException] covers every
  * `require` and argument check in this server. `ZipExtractionException` is deliberately absent: its
  * message names the archive by its absolute path in the cache.
  */
