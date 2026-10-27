@@ -51,6 +51,33 @@ class MavenVersionsTest {
     }
 
     @Test
+    fun earlyAccessBuildsSortBelowTheReleaseTheyPrecede() {
+        assertTrue(MavenVersions.VERSION_COMPARATOR.compare("3.0.0", "3.0.0-eap-852") > 0)
+        assertTrue(MavenVersions.VERSION_COMPARATOR.compare("2.0.0", "2.0.0-dev-1234") > 0)
+        assertTrue(MavenVersions.VERSION_COMPARATOR.compare("1.0.0", "1.0.0-preview1") > 0)
+        assertTrue(MavenVersions.VERSION_COMPARATOR.compare("25", "25-ea+3") > 0)
+        assertTrue(MavenVersions.VERSION_COMPARATOR.compare("1.0.0", "1.0.0-pre.2") > 0)
+        // ...but a later base still wins over an earlier release.
+        assertTrue(MavenVersions.VERSION_COMPARATOR.compare("3.1.0-eap-1", "3.0.0") > 0)
+    }
+
+    @Test
+    fun selectLatestWithPreReleasesPicksTheReleaseOverItsEap() {
+        assertEquals(
+            "3.0.0",
+            MavenVersions.selectLatest(listOf("3.0.0-eap-1", "3.0.0"), includePreReleases = true),
+        )
+    }
+
+    @Test
+    fun shortAlphaBetaQualifiersAreNotStable() {
+        assertFalse(MavenVersions.isStable("2.0b1"))
+        assertFalse(MavenVersions.isStable("2.3.0-b170201"))
+        assertFalse(MavenVersions.isStable("1.0a2"))
+        assertEquals("1.9", MavenVersions.selectLatest(listOf("1.9", "2.0b1")))
+    }
+
+    @Test
     fun selectLatestReturnsNullWhenNoStableRelease() {
         val versions = listOf("1.0.0-alpha1", "1.0.0-beta1")
         assertNull(MavenVersions.selectLatest(versions, includePreReleases = false))
