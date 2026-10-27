@@ -88,7 +88,6 @@ class CliTest {
             "--repo", "https://maven.google.com",
             "--repo", "https://repo.example.com/maven",
             "--max-concurrent-fetches", "4",
-            "--forward-logs-to-client",
             "--otel",
             "--tasks",
         )
@@ -103,7 +102,6 @@ class CliTest {
                     cacheDir = Path.of("klm-cache"),
                     repos = listOf("https://maven.google.com", "https://repo.example.com/maven"),
                     maxConcurrentFetches = 4,
-                    forwardLogsToClient = true,
                     otel = true,
                     tasks = true,
                     transport = "http",
@@ -139,6 +137,17 @@ class CliTest {
         )) {
             assertContains(refused(*args), "requires --transport http", message = args.toList().toString())
         }
+    }
+
+    @Test
+    fun logForwardingIsStdioOnly() {
+        // Over http the forwarder would send every session's logs to every client.
+        assertContains(
+            refused("--transport", "http", "--forward-logs-to-client"),
+            "--forward-logs-to-client requires --transport stdio",
+        )
+        assertEquals(true, accepted("--forward-logs-to-client").config.forwardLogsToClient)
+        assertEquals(true, accepted("--transport", "stdio", "--forward-logs-to-client").config.forwardLogsToClient)
     }
 
     /**

@@ -25,7 +25,16 @@ public object Coordinates {
     /**
      * Directory for an artifact's `maven-metadata.xml` (version listing), which lives one level
      * above the version dirs: `io/ktor/ktor-client-core`.
+     *
+     * The one repository path built from bare strings rather than a [LibraryCoordinate], so it
+     * checks the segments itself: whichever caller passes them, `../x`, `?` or `#` never reach a URL.
+     *
+     * @throws IllegalArgumentException if [group] or [artifact] is not a
+     *   [valid segment][LibraryCoordinate.requireValidSegment].
      */
-    public fun metadataPath(group: String, artifact: String): String =
-        "${group.replace('.', '/')}/$artifact/maven-metadata.xml"
+    public fun metadataPath(group: String, artifact: String): String {
+        LibraryCoordinate.requireValidSegment("group", group)
+        LibraryCoordinate.requireValidSegment("artifact", artifact)
+        return "${group.replace('.', '/')}/$artifact/maven-metadata.xml"
+    }
 }

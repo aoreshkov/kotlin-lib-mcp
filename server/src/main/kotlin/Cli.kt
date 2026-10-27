@@ -1,12 +1,14 @@
 package app.oreshkov.kotlinlibmcp.server
 
 import app.oreshkov.clikit.CommandContext
+import app.oreshkov.clikit.CommandFailure
 import app.oreshkov.clikit.CommandHandler
 import app.oreshkov.clikit.CommandSpec
 import app.oreshkov.clikit.Constraint
 import app.oreshkov.clikit.Converters
 import app.oreshkov.clikit.EnvironmentVariable
 import app.oreshkov.clikit.Example
+import app.oreshkov.clikit.ExitStatus
 import app.oreshkov.clikit.ExperimentalCliKitApi
 import app.oreshkov.clikit.Option
 import app.oreshkov.clikit.OptionValues
@@ -94,8 +96,8 @@ internal object Cli {
     )
     val forwardLogs: Option.Flag = Option.Flag(
         "--forward-logs-to-client",
-        help = "Mirror logs to MCP clients via the (deprecated) logging capability. Off by default: " +
-            "logs go to stderr only, which the spec blesses for all stdio logging.",
+        help = "Mirror logs to MCP clients via the (deprecated) logging capability; stdio only. Off " +
+            "by default: logs go to stderr only, which the spec blesses for all stdio logging.",
     )
     val otel: Option.Flag = Option.Flag(
         "--otel",
@@ -182,6 +184,23 @@ internal object Cli {
     fun program(serve: (CliOptions, CommandContext) -> Int): Program = Program(
         root,
         "$SERVER_NAME ${ServerVersion.value}",
-        mapOf(root to CommandHandler { context -> serve(options(context.values), context) }),
+        mapOf(root to CommandHandler { context -> serve(checked(options(context.values)), context) }),
     )
+
+    /**
+     * The rules a [Constraint] cannot state, as usage errors all the same. `RequiresValue` treats an
+     * absent `--transport` as no match, so "requires stdio" would refuse the default launch.
+     *
+     * Log forwarding is stdio-only because the forwarder sends every record to every session: over
+     * HTTP, one client would read another's task ids and the exception details `guarded` withholds.
+     */
+    private fun checked(options: CliOptions): CliOptions {
+        if (options.transport == TransportKind.HTTP && options.config.forwardLogsToClient) {
+            throw CommandFailure(
+                ExitStatus.USAGE,
+                "$forwardLogs requires --transport stdio: over http it would send every session's logs to every client",
+            )
+        }
+        return options
+    }
 }

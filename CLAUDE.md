@@ -106,7 +106,7 @@ why PNG and why not `https://`; the `icons` traps in the SDK's `add*` overloads 
 
 Logs go to **stderr** by default (the 2025-11-25-blessed channel; `logback.xml`); the deprecated MCP **logging
 capability** (Kermit logs mirror to clients via `attachMcpLogForwarder`; `Logging.kt`) is **opt-in**
-behind `--forward-logs-to-client`. `fetch_library` emits **progress notifications** when the request
+behind `--forward-logs-to-client`, stdio only (on HTTP it would broadcast every session's logs to all). `fetch_library` emits **progress notifications** when the request
 carries a `progressToken`.
 
 **Elicitation** (`elicitation/VersionElicitation.kt`): a version-less `fetch_library` coordinate asks the

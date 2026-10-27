@@ -689,10 +689,11 @@ public class app/oreshkov/kotlinlibmcp/fetch/FetchException : java/lang/RuntimeE
 public final class app/oreshkov/kotlinlibmcp/fetch/MavenSourceFetcherImpl : app/oreshkov/kotlinlibmcp/core/MavenSourceFetcher, java/lang/AutoCloseable {
 	public static final field Companion Lapp/oreshkov/kotlinlibmcp/fetch/MavenSourceFetcherImpl$Companion;
 	public static final field DEFAULT_MAX_DOWNLOAD_BYTES J
+	public static final field DEFAULT_MAX_METADATA_BYTES J
 	public static final field MAVEN_CENTRAL Ljava/lang/String;
 	public static final field UNRESOLVED_VERSION Ljava/lang/String;
-	public fun <init> (Ljava/nio/file/Path;Lio/ktor/client/engine/HttpClientEngine;Lkotlinx/serialization/json/Json;Lapp/oreshkov/kotlinlibmcp/io/ZipExtractor;J)V
-	public synthetic fun <init> (Ljava/nio/file/Path;Lio/ktor/client/engine/HttpClientEngine;Lkotlinx/serialization/json/Json;Lapp/oreshkov/kotlinlibmcp/io/ZipExtractor;JILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/nio/file/Path;Lio/ktor/client/engine/HttpClientEngine;Lkotlinx/serialization/json/Json;Lapp/oreshkov/kotlinlibmcp/io/ZipExtractor;JJ)V
+	public synthetic fun <init> (Ljava/nio/file/Path;Lio/ktor/client/engine/HttpClientEngine;Lkotlinx/serialization/json/Json;Lapp/oreshkov/kotlinlibmcp/io/ZipExtractor;JJILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun close ()V
 	public fun fetch (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun fetchVersionCatalog (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
@@ -704,6 +705,10 @@ public final class app/oreshkov/kotlinlibmcp/fetch/MavenSourceFetcherImpl$Compan
 }
 
 public final class app/oreshkov/kotlinlibmcp/fetch/SourcesNotFoundException : app/oreshkov/kotlinlibmcp/fetch/FetchException {
+	public fun <init> (Ljava/lang/String;)V
+}
+
+public final class app/oreshkov/kotlinlibmcp/fetch/UnsafeArtifactNameException : app/oreshkov/kotlinlibmcp/fetch/FetchException {
 	public fun <init> (Ljava/lang/String;)V
 }
 

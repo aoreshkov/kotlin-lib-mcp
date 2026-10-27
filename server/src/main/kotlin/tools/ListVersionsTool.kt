@@ -40,14 +40,11 @@ fun Server.registerListVersionsTool(service: LibraryService) {
     ) { request ->
         guarded(request, revealInternalErrors = service.exposeLocalPaths) {
             val args = request.args()
-            val parts = args.requireStringArg("coordinate").split(':')
-            require(parts.size in 2..3 && parts.take(2).none(String::isBlank)) {
-                "Invalid coordinate '${parts.joinToString(":")}': expected 'group:artifact[:version]'"
-            }
+            val spec = args.requireStringArg("coordinate").parseCoordinateSpec()
             toolResult(
                 service.listVersions(
-                    group = parts[0].trim(),
-                    artifact = parts[1].trim(),
+                    group = spec.group,
+                    artifact = spec.artifact,
                     maxResults = args.intArg("maxResults") ?: LibraryService.DEFAULT_VERSION_RESULTS,
                     offset = args.intArg("offset") ?: 0,
                 )

@@ -7,6 +7,21 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **Hardened jar file-name handling** when saving downloaded sources jars into the cache.
+- **Response bodies are capped while they stream.** The 200 MB jar cap is now enforced as bytes
+  arrive rather than after the body was already in memory, and `.module`, `.pom` and
+  `maven-metadata.xml` bodies get a cap of their own (10 MB) where they had none.
+- **`list_versions` validates its coordinate** the way every other tool does.
+- **The dashboard's in-process server binds 127.0.0.1 only.** It used to listen on every interface
+  while reporting a loopback endpoint.
+
+### Changed
+- **`--forward-logs-to-client` is stdio-only.** With `--transport http` it is now a usage error
+  (exit 2): the forwarder sends every log record to every session, so on HTTP one client would
+  read another's. **Upgrading:** drop the flag from HTTP launches; stderr and `--otel` are
+  unchanged.
+
 ## [0.9.1] - 2026-10-26
 
 This release changes nothing on the wire and nothing on the command line. The Claude Code plugin

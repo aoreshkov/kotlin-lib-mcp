@@ -36,8 +36,8 @@ Options:
       --max-concurrent-fetches <int>  Libraries that may download and analyze at once; further
                                       fetch_library calls queue [default: 2]
       --forward-logs-to-client        Mirror logs to MCP clients via the (deprecated) logging
-                                      capability. Off by default: logs go to stderr only, which the
-                                      spec blesses for all stdio logging.
+                                      capability; stdio only. Off by default: logs go to stderr
+                                      only, which the spec blesses for all stdio logging.
       --otel                          Export traces for every MCP request over OTLP/HTTP. Off by
                                       default. Configured entirely by the standard OTEL_*
                                       environment variables; defaults to protocol http/protobuf and

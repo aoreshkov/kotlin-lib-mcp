@@ -85,4 +85,12 @@ class CoordinateTest {
             Coordinates.metadataPath("io.ktor", "ktor-client-core"),
         )
     }
+
+    @Test
+    fun metadataPathRejectsSegmentsThatWouldChangeTheUrl() {
+        // Built from bare strings, not a validated LibraryCoordinate, so it must check them itself.
+        for ((group, artifact) in listOf("../../x" to "a", "g" to "..", "g?q=1" to "a", "g" to "a#frag", "g" to "")) {
+            assertFailsWith<IllegalArgumentException>("$group:$artifact") { Coordinates.metadataPath(group, artifact) }
+        }
+    }
 }
