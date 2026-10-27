@@ -8,6 +8,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
+- **Early-access builds no longer outrank the release they precede.** `3.0.0-eap-852` (and
+  `-dev`, `-preview`, `-pre`, `-ea` builds) sorted *above* `3.0.0`, so `get_latest_version`'s
+  pre-release `latest` could name an EAP over the final release, and `list_versions` and the
+  `fetch_library` version picker listed it first. They now sort before `alpha`.
+- **Short `a`/`b` qualifiers count as pre-releases.** `2.0b1` and `2.3.0-b170201` were treated as
+  stable, so the semantic-version fallback (used when `maven-metadata.xml` names no release) could
+  pick a beta as the latest stable version. Stability is now derived from the same qualifier
+  ranking the version ordering uses, so the two cannot disagree.
 - **A repository that fails is no longer taken for one that lacks the file.** Only a 404 means
   "not published there". A 5xx that outlasts the retries, a 429 or a proxy's 403 now ends the call
   with "Repository returned HTTP 503 for …; try again later" instead of "No sources jar found", and

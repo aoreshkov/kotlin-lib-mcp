@@ -9,25 +9,27 @@ package app.oreshkov.kotlinlibmcp.util
 public object MavenVersions {
 
     /**
-     * Qualifier tokens that mark a **pre-release**. Detection is keyword-based (not "any hyphen")
-     * so classifier releases like Guava's `33.x-jre`/`-android` stay stable.
-     */
-    private val PRE_RELEASE_KEYWORDS: Set<String> = setOf(
-        "alpha", "beta", "milestone", "m", "rc", "cr",
-        "snapshot", "dev", "eap", "preview", "pre", "ea",
-    )
-
-    /**
      * Known qualifier ordering (oldest → newest). The empty string is the release itself; anything
      * before it is a pre-release, `sp` is a service-pack after it. Unknown qualifiers sort after all
-     * known ones (Maven-ish), compared lexicographically among themselves.
+     * known ones (Maven-ish), compared lexicographically among themselves — which is what keeps
+     * classifier releases like Guava's `33.x-jre`/`-android` stable.
+     *
+     * Early-access builds (`dev`, then `eap`/`ea`/`preview`/`pre`) rank before `alpha`. Maven's
+     * `ComparableVersion` treats them as unknown, and so as newer than the release they precede
+     * (`3.0.0-eap-852` > `3.0.0`); that is the one place this deliberately departs from it.
      */
     private val KNOWN_QUALIFIERS: List<String> =
-        listOf("alpha", "beta", "milestone", "rc", "snapshot", "", "sp")
+        listOf("dev", "eap", "alpha", "beta", "milestone", "rc", "snapshot", "", "sp")
 
-    /** `true` when [version] carries no pre-release qualifier (a normal stable release). */
+    private val RELEASE_RANK: Int = KNOWN_QUALIFIERS.indexOf("")
+
+    /**
+     * `true` when [version] carries no pre-release qualifier (a normal stable release): no qualifier
+     * ranks below the release. Derived from the comparator's own ranking, so the two cannot disagree
+     * about what a pre-release is.
+     */
     public fun isStable(version: String): Boolean =
-        tokenize(version).none { it in PRE_RELEASE_KEYWORDS }
+        tokenize(version).none { !isNumeric(it) && qualifierRank(it).first < RELEASE_RANK }
 
     /**
      * Orders version strings oldest → newest. Numeric segments compare numerically; a segment with
@@ -91,6 +93,7 @@ public object MavenVersions {
             "b" -> "beta"
             "m" -> "milestone"
             "cr" -> "rc"
+            "ea", "preview", "pre" -> "eap"
             "ga", "final", "release" -> ""
             else -> qualifier
         }
