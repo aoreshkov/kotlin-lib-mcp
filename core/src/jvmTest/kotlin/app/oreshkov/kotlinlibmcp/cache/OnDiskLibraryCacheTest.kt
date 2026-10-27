@@ -11,7 +11,9 @@ import kotlin.io.path.createDirectories
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.deleteRecursively
 import kotlin.io.path.exists
+import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.moveTo
+import kotlin.io.path.name
 import kotlin.io.path.readText
 import kotlin.io.path.writeText
 import kotlin.test.AfterTest
@@ -76,6 +78,16 @@ class OnDiskLibraryCacheTest {
         dir.resolve(CacheLayout.INDEX_FILE).moveTo(dir.resolve("index-v2.json"))
 
         assertNull(cache.get(coordinate))
+    }
+
+    @Test
+    fun writingAnIndexDeletesEarlierGenerations() = runTest {
+        val dir = CacheLayout.versionDir(root, coordinate).createDirectories()
+        CacheLayout.LEGACY_INDEX_FILES.forEach { dir.resolve(it).writeText("{}") }
+
+        cache.putIndex(index)
+
+        assertEquals(listOf(CacheLayout.INDEX_FILE), dir.listDirectoryEntries().map { it.name })
     }
 
     @Test

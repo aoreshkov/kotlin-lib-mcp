@@ -20,7 +20,13 @@ paths:
   `ReplaceWith` from the resolved `kotlin.Deprecated` annotation. `status.message` compiles and
   silently drops every message. `readsAConstantDeprecationMessageThroughResolution` is the test that
   tells the resolved path from the PSI fallback.
+- **Effective visibility is computed in the analyzer; don't re-filter downstream.**
+  `ApiSymbol.visibility` is the narrowest visibility out through the enclosing classes, from the
+  *resolved* symbol (`EffectiveVisibility.kt`) — `KaDeclarationSymbol.visibility` alone reports an
+  `internal class`'s members as PUBLIC, and only resolution sees an `override` inherit `protected`.
+  `list_declarations` and `diff_api` both read the field as-is, so they cannot disagree.
 - **A rendering change must invalidate the cache.** `index.json` holds rendered strings, and a
   coordinate is immutable, so a warm cache would answer with the old rendering forever. Bump
-  `CacheLayout.INDEX_FILE` (`index-v3.json` today) whenever signature rendering or the index shape
-  changes; re-analysis is cheap because the sources are already on disk.
+  `CacheLayout.INDEX_FILE` (`index-v4.json` today) whenever signature rendering or the index shape
+  changes, and list the old name in `LEGACY_INDEX_FILES`; re-analysis is cheap because the sources
+  are already on disk.

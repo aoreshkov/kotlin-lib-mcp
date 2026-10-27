@@ -12,6 +12,7 @@ import java.nio.file.Path
 import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.copyToRecursively
 import kotlin.io.path.createDirectories
+import kotlin.io.path.deleteIfExists
 import kotlin.io.path.deleteRecursively
 import kotlin.io.path.exists
 import kotlin.io.path.isDirectory
@@ -25,7 +26,7 @@ import kotlinx.serialization.json.Json
 /**
  * Shared on-disk layout under the cache root, used by both the cache and the fetcher so a
  * fetch lands directly in its cached location:
- * `<root>/<group>/<artifact>/<version>/{sources/{common,jvm}/, jars/, fetch-result-v2.json, index-v3.json, .fetch.lock}`.
+ * `<root>/<group>/<artifact>/<version>/{sources/{common,jvm}/, jars/, fetch-result-v2.json, index-v4.json, .fetch.lock}`.
  * Group dirs keep their dots (`io.ktor`) so the tree stays a fixed three levels deep and
  * human-browsable (the Phase 08 dashboard lists it).
  *
@@ -48,14 +49,16 @@ internal object CacheLayout {
     /**
      * The parsed index. Its name carries a generation number because the file holds rendered
      * output, not just downloaded bytes: when analysis starts producing different strings for the
-     * same sources — as adding parameter defaults and `public` to signatures (v2) and deprecations (v3) did — every warm
-     * cache would otherwise keep answering with the old rendering forever, since a coordinate is
-     * immutable and nothing else could tell the two apart. Bumping the name makes those entries a
-     * miss, and re-analysis is cheap: the sources are already on disk. **Bump it whenever
-     * `SignatureRenderer` or the index shape changes.** Superseded files are left behind as
-     * garbage; the cache root is disposable.
+     * same sources — as adding parameter defaults and `public` to signatures (v2), deprecations
+     * (v3), and effective visibility plus constructor properties (v4) did — every warm cache would
+     * otherwise keep answering with the old rendering forever, since a coordinate is immutable and
+     * nothing else could tell the two apart. Bumping the name makes those entries a miss, and
+     * re-analysis is cheap: the sources are already on disk. **Bump it whenever
+     * `SignatureRenderer` or the index shape changes**, and add the old name to
+     * [LEGACY_INDEX_FILES], which `putIndex` deletes once the new generation is written.
      */
-    const val INDEX_FILE: String = "index-v3.json"
+    const val INDEX_FILE: String = "index-v4.json"
+    val LEGACY_INDEX_FILES: List<String> = listOf("index.json", "index-v2.json", "index-v3.json")
     const val SOURCES_DIR: String = "sources"
     const val JARS_DIR: String = "jars"
 
@@ -88,8 +91,10 @@ public class OnDiskLibraryCache(
 
     override suspend fun putIndex(index: LibraryIndex): Unit =
         withContext(Dispatchers.IO) {
-            CacheLayout.versionDir(root, index.coordinate).resolve(CacheLayout.INDEX_FILE)
-                .writeTextAtomically(json.encodeToString(index))
+            val versionDir = CacheLayout.versionDir(root, index.coordinate)
+            versionDir.resolve(CacheLayout.INDEX_FILE).writeTextAtomically(json.encodeToString(index))
+            // Never read again, so only a size the dashboard reports and a trap for someone browsing.
+            CacheLayout.LEGACY_INDEX_FILES.forEach { versionDir.resolve(it).deleteIfExists() }
         }
 
     override suspend fun putSources(coordinate: LibraryCoordinate, extractedDir: String): Unit =

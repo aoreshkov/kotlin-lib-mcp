@@ -273,11 +273,15 @@ class LibraryService(
         if (packageName != null && index.packages.none { it.name == packageName }) {
             throw IllegalArgumentException("No package '$packageName' in $coordinate (see list_packages)")
         }
-        val matching = index.symbolsByFqName.values.filter { symbol ->
-            symbol.visibility in wanted &&
-                (packageName == null || symbol.sourceRef?.file?.packageName == packageName) &&
-                (deprecated == null || (symbol.deprecation != null) == deprecated)
-        }
+        // Visibility is the effective one the analyzer computed, the field `diff_api` reads too.
+        // Collapsing after filtering means `totalCount` counts declarations, not per-target copies.
+        val matching = ApiSurfaceDiff.distinctDeclarations(
+            index.symbolsByFqName.values.filter { symbol ->
+                symbol.visibility in wanted &&
+                    (packageName == null || symbol.sourceRef?.file?.packageName == packageName) &&
+                    (deprecated == null || (symbol.deprecation != null) == deprecated)
+            }
+        )
         // Bounded page: a large library must not flood the model's context in one response.
         val cap = maxResults.coerceIn(1, MAX_DECLARATION_RESULTS)
         val start = offset.coerceAtLeast(0)

@@ -9,7 +9,6 @@ import app.oreshkov.kotlinlibmcp.model.PackageInfo
 import app.oreshkov.kotlinlibmcp.model.SourceFileRef
 import app.oreshkov.kotlinlibmcp.model.SourceLocation
 import app.oreshkov.kotlinlibmcp.model.SymbolKind
-import app.oreshkov.kotlinlibmcp.model.Visibility
 import co.touchlab.kermit.Logger
 import com.intellij.openapi.util.Disposer
 import java.nio.file.Path
@@ -17,6 +16,7 @@ import kotlin.io.path.exists
 import kotlin.time.Clock
 import org.jetbrains.kotlin.analysis.api.analyze
 import org.jetbrains.kotlin.analysis.api.standalone.buildStandaloneAnalysisAPISession
+import org.jetbrains.kotlin.analysis.api.symbols.KaValueParameterSymbol
 import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtLibraryModule
 import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtSdkModule
 import org.jetbrains.kotlin.analysis.project.structure.builder.buildKtSourceModule
@@ -30,6 +30,7 @@ import org.jetbrains.kotlin.psi.KtFile
 import org.jetbrains.kotlin.psi.KtNamedDeclaration
 import org.jetbrains.kotlin.psi.KtNamedFunction
 import org.jetbrains.kotlin.psi.KtObjectDeclaration
+import org.jetbrains.kotlin.psi.KtParameter
 import org.jetbrains.kotlin.psi.KtProperty
 import org.jetbrains.kotlin.psi.KtTypeAlias
 import org.jetbrains.kotlin.psi.KtTypeParameterListOwner
@@ -148,7 +149,11 @@ public class AnalysisApiSourceAnalyzer : SourceAnalyzer {
         try {
             analyze(ktFile) {
                 declarations.mapNotNull { declaration ->
-                    runCatching { declaration to renderResolved(declaration.symbol) }
+                    runCatching {
+                        val symbol = declaration.symbol
+                        // A constructor `val`/`var` is indexed as the property it declares, not the parameter.
+                        declaration to renderResolved((symbol as? KaValueParameterSymbol)?.generatedPrimaryConstructorProperty ?: symbol)
+                    }
                         .onFailure { log.d { "Resolution failed for ${declaration.fqName}: $it" } }
                         .getOrNull()
                 }.toMap()
@@ -171,7 +176,7 @@ public class AnalysisApiSourceAnalyzer : SourceAnalyzer {
         return ApiSymbol(
             fqName = fqName,
             kind = kind,
-            visibility = psiVisibility(declaration),
+            visibility = rendered?.visibility ?: psiEffectiveVisibility(declaration),
             signature = if (bestEffort) psiSignature(declaration) else rendered.signature,
             typeParameters = (declaration as? KtTypeParameterListOwner)?.typeParameters?.map { it.text }.orEmpty(),
             supertypes = rendered?.supertypes ?: psiSupertypes(declaration),
@@ -192,7 +197,10 @@ public class AnalysisApiSourceAnalyzer : SourceAnalyzer {
 
     // --- PSI helpers (used both for the happy path and the degraded path) ---
 
-    /** Top-level + nested named declarations; skips locals, enum entries, and anonymous objects. */
+    /**
+     * Top-level + nested named declarations, including primary-constructor `val`/`var` parameters
+     * (the main surface of a data or value class); skips locals, enum entries, and anonymous objects.
+     */
     private fun collectDeclarations(ktFile: KtFile): List<KtNamedDeclaration> {
         val result = mutableListOf<KtNamedDeclaration>()
         fun visit(declarations: List<KtDeclaration>) {
@@ -202,6 +210,7 @@ public class AnalysisApiSourceAnalyzer : SourceAnalyzer {
                     declaration is KtClassOrObject -> {
                         if (declaration.name != null) {
                             result += declaration
+                            result += declaration.primaryConstructorParameters.filter { it.hasValOrVar() && it.name != null }
                             visit(declaration.declarations)
                         }
                     }
@@ -223,16 +232,9 @@ public class AnalysisApiSourceAnalyzer : SourceAnalyzer {
         }
         is KtObjectDeclaration -> SymbolKind.OBJECT
         is KtNamedFunction -> SymbolKind.FUNCTION
-        is KtProperty -> SymbolKind.PROPERTY
+        is KtProperty, is KtParameter -> SymbolKind.PROPERTY
         is KtTypeAlias -> SymbolKind.TYPEALIAS
         else -> null
-    }
-
-    private fun psiVisibility(declaration: KtNamedDeclaration): Visibility = when {
-        declaration.hasModifier(KtTokens.PRIVATE_KEYWORD) -> Visibility.PRIVATE
-        declaration.hasModifier(KtTokens.PROTECTED_KEYWORD) -> Visibility.PROTECTED
-        declaration.hasModifier(KtTokens.INTERNAL_KEYWORD) -> Visibility.INTERNAL
-        else -> Visibility.PUBLIC
     }
 
     private fun modifiersOf(declaration: KtNamedDeclaration): List<String> =

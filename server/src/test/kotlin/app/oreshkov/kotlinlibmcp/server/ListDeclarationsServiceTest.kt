@@ -6,6 +6,8 @@ import app.oreshkov.kotlinlibmcp.model.ApiSymbol
 import app.oreshkov.kotlinlibmcp.model.Deprecation
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.model.LibraryIndex
+import app.oreshkov.kotlinlibmcp.model.SourceFileRef
+import app.oreshkov.kotlinlibmcp.model.SourceLocation
 import app.oreshkov.kotlinlibmcp.model.SymbolKind
 import app.oreshkov.kotlinlibmcp.model.Visibility
 import kotlin.test.Test
@@ -90,5 +92,64 @@ class ListDeclarationsServiceTest {
             serviceWith(3).listDeclarations(coordinate, packageName = "com.exmaple", visibility = null)
         }
         assertEquals("No package 'com.exmaple' in $coordinate (see list_packages)", e.message)
+    }
+
+    /** Keys [symbols] the way the analyzer does: FQ name, then `#2`, `#3`… in the order given. */
+    private fun serviceOf(symbols: List<ApiSymbol>): LibraryService {
+        val keyed = LinkedHashMap<String, ApiSymbol>()
+        for (symbol in symbols) {
+            var key = symbol.fqName
+            var n = 1
+            while (key in keyed) key = "${symbol.fqName}#${++n}"
+            keyed[key] = symbol
+        }
+        return LibraryService(
+            fetcher = FakeFetcher(VersionCatalog(versions = emptyList())),
+            analyzer = UnusedAnalyzer,
+            cache = SingleIndexCache(LibraryIndex(coordinate, symbolsByFqName = keyed, fetchedAt = Instant.fromEpochSeconds(0))),
+        )
+    }
+
+    private fun copy(fqName: String, signature: String, path: String, bestEffort: Boolean = false) = ApiSymbol(
+        fqName = fqName,
+        kind = SymbolKind.FUNCTION,
+        visibility = Visibility.PUBLIC,
+        signature = signature,
+        sourceRef = SourceLocation(SourceFileRef(path, packageName = "com.example"), line = 1, offset = 0),
+        bestEffort = bestEffort,
+    )
+
+    @Test
+    fun listsADeclarationOnceHoweverManyTargetTreesHoldIt() = runTest {
+        // A KMP index holds common sources once per target tree, each copy under its own `#n` key.
+        val result = serviceOf(
+            listOf(
+                copy("com.example.f", "public fun f(): kotlin.Unit", "common/com/example/Api.kt"),
+                copy("com.example.f", "public fun f(): kotlin.Unit", "jvm/com/example/Api.kt"),
+                copy("com.example.f", "public fun f(x: kotlin.Int): kotlin.Unit", "common/com/example/Api.kt"),
+                copy("com.example.g", "public fun g(): kotlin.Unit", "common/com/example/Api.kt"),
+                copy("com.example.g", "public fun g(): kotlin.Unit", "jvm/com/example/Api.kt"),
+            )
+        ).listDeclarations(coordinate, packageName = null, visibility = null, maxResults = 2)
+
+        // The real overload of `f` stays; the per-target copies go, and before paging, not after.
+        assertEquals(3, result.totalCount)
+        assertEquals(
+            listOf("public fun f(): kotlin.Unit", "public fun f(x: kotlin.Int): kotlin.Unit"),
+            result.declarations.map { it.signature },
+        )
+        assertEquals(true, result.truncated)
+    }
+
+    @Test
+    fun keepsTheResolvedCopyOverABestEffortOne() = runTest {
+        val result = serviceOf(
+            listOf(
+                copy("com.example.f", "public fun f(): kotlin.Unit", "common/com/example/Api.kt", bestEffort = true),
+                copy("com.example.f", "public fun f(): kotlin.Unit", "jvm/com/example/Api.kt"),
+            )
+        ).listDeclarations(coordinate, packageName = null, visibility = null)
+
+        assertEquals(listOf("jvm/com/example/Api.kt" to false), result.declarations.map { it.sourceRef?.file?.path to it.bestEffort })
     }
 }
