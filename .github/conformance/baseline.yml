@@ -33,3 +33,7 @@ server:
   - prompts-get-with-args
   - prompts-get-embedded-resource
   - prompts-get-with-image
+  # Not offered over http: the deprecated logging capability is stdio-only (`--forward-logs-to-client`
+  # is refused with `--transport http`, where the forwarder would send every session's logs to every
+  # client), and the suite can only reach the server by URL.
+  - logging-set-level

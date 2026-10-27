@@ -18,10 +18,9 @@ import io.ktor.client.engine.cio.JvmDnsResolver
 import io.ktor.client.plugins.HttpRequestRetry
 import io.ktor.client.plugins.HttpTimeout
 import io.ktor.client.plugins.UserAgent
-import io.ktor.client.request.get
+import io.ktor.client.request.prepareGet
 import io.ktor.client.statement.HttpResponse
 import io.ktor.client.statement.bodyAsChannel
-import io.ktor.client.statement.bodyAsText
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentLength
 import io.ktor.http.isSuccess
@@ -49,8 +48,17 @@ public class SourcesNotFoundException(message: String) : FetchException(message)
 /** A downloaded jar did not match the sha256 published in its Gradle module metadata. */
 public class ChecksumMismatchException(message: String) : FetchException(message)
 
-/** A response body exceeded [MavenSourceFetcherImpl.maxDownloadBytes] (declared or streamed). */
+/**
+ * A response body exceeded its cap, declared or streamed: [MavenSourceFetcherImpl.maxDownloadBytes]
+ * for a jar, [MavenSourceFetcherImpl.maxMetadataBytes] for `.module`, `.pom` or `maven-metadata.xml`.
+ */
 public class DownloadTooLargeException(message: String) : FetchException(message)
+
+/**
+ * Gradle module metadata named a file that is not a plain file name, so saving it under `jars/`
+ * would land somewhere else. The name comes from the repository, not from the caller.
+ */
+public class UnsafeArtifactNameException(message: String) : FetchException(message)
 
 /**
  * [MavenSourceFetcher] backed by a Ktor client.
@@ -75,6 +83,7 @@ public class MavenSourceFetcherImpl(
     private val json: Json = Json { ignoreUnknownKeys = true },
     private val extractor: ZipExtractor = ZipExtractor(),
     private val maxDownloadBytes: Long = DEFAULT_MAX_DOWNLOAD_BYTES,
+    private val maxMetadataBytes: Long = DEFAULT_MAX_METADATA_BYTES,
 ) : MavenSourceFetcher, AutoCloseable {
 
     private val log = Logger.withTag("MavenSourceFetcher")
@@ -234,7 +243,8 @@ public class MavenSourceFetcherImpl(
             val target = if (variant.platformType == KmpTarget.COMMON) KmpTarget.COMMON else KmpTarget.JVM
             when {
                 variant.files.isNotEmpty() -> variant.files.mapTo(plans) { file ->
-                    JarPlan(target, repo + Coordinates.artifactPath(coordinate, file.url), file.name, file.sha256)
+                    val url = repo + Coordinates.artifactPath(coordinate, file.url)
+                    JarPlan(target, url, safeFileName(file.name), file.sha256)
                 }
                 variant.availableAt != null -> {
                     val redirect = variant.availableAt
@@ -263,7 +273,7 @@ public class MavenSourceFetcherImpl(
             it.isSourcesVariant && (it.platformType == platform || it.platformType == KmpTarget.UNKNOWN)
         } ?: return emptyList()
         return variant.files.map { file ->
-            JarPlan(target, repo + Coordinates.artifactPath(companion, file.url), file.name, file.sha256)
+            JarPlan(target, repo + Coordinates.artifactPath(companion, file.url), safeFileName(file.name), file.sha256)
         }
     }
 
@@ -279,12 +289,31 @@ public class MavenSourceFetcherImpl(
 
     /** Downloads one jar into `jars/`, verifying sha256 when published. `null` when absent. */
     private suspend fun downloadJar(plan: JarPlan, versionDir: Path): Path? {
+        val jarsDir = versionDir.resolve(CacheLayout.JARS_DIR).normalize()
+        // safeFileName already ran when planning; checking the destination too means a plan built
+        // any other way still cannot leave jars/.
+        val dest = jarsDir.resolve(safeFileName(plan.fileName)).normalize()
+        if (dest.parent != jarsDir) {
+            throw UnsafeArtifactNameException("Refusing to save '${plan.fileName}' outside the jars directory")
+        }
         val bytes = getBytesOrNull(plan.url) ?: return null
         verifySha256(bytes, plan.sha256, plan.url)
         return withContext(Dispatchers.IO) {
-            val jarsDir = versionDir.resolve(CacheLayout.JARS_DIR).createDirectories()
-            jarsDir.resolve(plan.fileName).also { it.writeBytes(bytes) }
+            jarsDir.createDirectories()
+            dest.also { it.writeBytes(bytes) }
         }
+    }
+
+    /**
+     * [name] when it is a plain file name in Maven's own charset. `.module` metadata is publisher
+     * input: a `files[].name` of `../../x` or an absolute path would otherwise choose where the jar
+     * is written, and the sha256 beside it is no help, because the same file declares it.
+     */
+    private fun safeFileName(name: String): String {
+        if (name == "." || name == ".." || !SAFE_FILE_NAME.matches(name)) {
+            throw UnsafeArtifactNameException("Module metadata names an unsafe artifact file: '$name'")
+        }
+        return name
     }
 
     private fun verifySha256(bytes: ByteArray, expected: String?, url: String) {
@@ -358,42 +387,41 @@ public class MavenSourceFetcherImpl(
 
     // --- HTTP helpers ---
 
-    private suspend fun getTextOrNull(url: String): String? {
-        val response = client.get(url)
-        return when {
-            response.status.isSuccess() -> response.bodyAsText()
-            response.status == HttpStatusCode.NotFound -> null
-            else -> {
-                log.w { "GET $url -> ${response.status}; treating as unavailable" }
-                null
-            }
-        }
-    }
+    /** A `.module`, `.pom` or `maven-metadata.xml` body, read under [maxMetadataBytes]. */
+    private suspend fun getTextOrNull(url: String): String? =
+        getCappedOrNull(url, maxMetadataBytes)?.decodeToString()
 
-    private suspend fun getBytesOrNull(url: String): ByteArray? {
-        val response = client.get(url)
-        return when {
-            response.status.isSuccess() -> readCapped(response, url)
-            response.status == HttpStatusCode.NotFound -> null
-            else -> {
-                log.w { "GET $url -> ${response.status}; treating as unavailable" }
-                null
-            }
-        }
-    }
+    /** A jar, read under [maxDownloadBytes]. */
+    private suspend fun getBytesOrNull(url: String): ByteArray? = getCappedOrNull(url, maxDownloadBytes)
 
     /**
-     * Reads the body into memory with a [maxDownloadBytes] budget: rejects early on a too-large
-     * declared `Content-Length`, then streams and aborts the moment the running total exceeds the
-     * cap, so a huge (or `Content-Length`-lying) artifact can't OOM the JVM before extraction limits
-     * apply.
+     * The body of [url] read under [cap], or `null` when the repository does not have it.
+     *
+     * `prepareGet(...).execute { }`, not `get(...)`: a plain `get` returns only after Ktor has saved
+     * the whole body in memory, so a cap counted on that response protects nothing. Inside `execute`
+     * the body is still the network stream.
      */
-    private suspend fun readCapped(response: HttpResponse, url: String): ByteArray {
+    private suspend fun getCappedOrNull(url: String, cap: Long): ByteArray? =
+        client.prepareGet(url).execute { response ->
+            when {
+                response.status.isSuccess() -> readCapped(response, url, cap)
+                response.status == HttpStatusCode.NotFound -> null
+                else -> {
+                    log.w { "GET $url -> ${response.status}; treating as unavailable" }
+                    null
+                }
+            }
+        }
+
+    /**
+     * Reads the streaming body into memory with a [cap] budget: rejects early on a too-large
+     * declared `Content-Length`, then aborts the moment the running total exceeds the cap, so a huge
+     * (or `Content-Length`-lying) body can't OOM the JVM before extraction limits apply.
+     */
+    private suspend fun readCapped(response: HttpResponse, url: String, cap: Long): ByteArray {
         response.contentLength()?.let { declared ->
-            if (declared > maxDownloadBytes) {
-                throw DownloadTooLargeException(
-                    "$url declares $declared bytes, over the ${maxDownloadBytes}-byte download cap",
-                )
+            if (declared > cap) {
+                throw DownloadTooLargeException("$url declares $declared bytes, over the $cap-byte download cap")
             }
         }
         val channel = response.bodyAsChannel()
@@ -405,10 +433,8 @@ public class MavenSourceFetcherImpl(
                 while (!buffer.exhausted()) {
                     val chunk = buffer.readByteArray()
                     total += chunk.size
-                    if (total > maxDownloadBytes) {
-                        throw DownloadTooLargeException(
-                            "$url exceeds the ${maxDownloadBytes}-byte download cap",
-                        )
+                    if (total > cap) {
+                        throw DownloadTooLargeException("$url exceeds the $cap-byte download cap")
                     }
                     out.write(chunk)
                 }
@@ -438,6 +464,15 @@ public class MavenSourceFetcherImpl(
         /** Default per-artifact download ceiling; roomy for real sources jars, guards against OOM. */
         public const val DEFAULT_MAX_DOWNLOAD_BYTES: Long = 200L * 1024 * 1024
 
+        /**
+         * Default ceiling for a `.module`, `.pom` or `maven-metadata.xml` body. Real ones are at most
+         * a few hundred KB; this only stops a hostile repository streaming one until the timeout.
+         */
+        public const val DEFAULT_MAX_METADATA_BYTES: Long = 10L * 1024 * 1024
+
         private const val READ_CHUNK_BYTES: Long = 64L * 1024
+
+        /** Maven's coordinate charset, as in [LibraryCoordinate.requireValidSegment]: no separators. */
+        private val SAFE_FILE_NAME = Regex("[A-Za-z0-9._+-]+")
     }
 }

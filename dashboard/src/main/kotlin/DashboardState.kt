@@ -3,6 +3,7 @@ package app.oreshkov.kotlinlibmcp.dashboard
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.server.McpServerFactory
 import app.oreshkov.kotlinlibmcp.server.McpServerHandle
+import app.oreshkov.kotlinlibmcp.server.transport.LOOPBACK_HOST
 import co.touchlab.kermit.Logger
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
@@ -45,8 +46,10 @@ class DashboardState(private val scope: CoroutineScope) {
 
     fun startServer(port: Int) {
         if (engine != null) return
-        engine = embeddedServer(CIO, port = port) { mcpStreamableHttp { handle.server } }.start(wait = false)
-        val endpoint = "http://127.0.0.1:$port/mcp"
+        // Without `host` Ktor binds every interface, and this endpoint has no authentication.
+        engine = embeddedServer(CIO, port = port, host = LOOPBACK_HOST) { mcpStreamableHttp { handle.server } }
+            .start(wait = false)
+        val endpoint = "http://$LOOPBACK_HOST:$port/mcp"
         serverStatus.value = ServerStatus.Running(endpoint)
         log.i { "In-process MCP server listening on $endpoint" }
     }

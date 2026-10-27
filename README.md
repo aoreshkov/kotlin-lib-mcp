@@ -143,7 +143,7 @@ CLI flags — `server --help` lists them all with their defaults, the `OTEL_*` v
 examples: `--transport stdio|http`; `--port`, `--host`, `--allowed-host` and `--allowed-origin`,
 which apply to the http transport only, so passing one with stdio is a usage error; `--cache-dir`;
 `--repo` (repeatable, on top of Maven Central); `--max-concurrent-fetches`; and the opt-ins
-`--forward-logs-to-client`, `--otel` (see [Telemetry](#telemetry)) and `--tasks` (see
+`--forward-logs-to-client` (stdio only), `--otel` (see [Telemetry](#telemetry)) and `--tasks` (see
 [Tasks](#tasks)). `--version` prints the server's version. A command-line mistake exits 2 and an
 internal error 70 (`sysexits.h`). SIGTERM or Ctrl-C stops the server cleanly within 5 seconds:
 task records are saved and buffered traces flushed before the process ends.
@@ -182,7 +182,8 @@ see the same payload.
 client sends a `progressToken`. Logs go to **stderr** by default (which the spec blesses for all
 stdio logging); the deprecated MCP **logging capability** — mirroring logs to clients as
 `notifications/message` (respecting `logging/setLevel`) — is **opt-in** via `--forward-logs-to-client`,
-for stdio clients that surface MCP log messages but drop stderr.
+for stdio clients that surface MCP log messages but drop stderr. It is refused with `--transport http`,
+where every session would receive every other session's logs.
 
 ### Elicitation
 

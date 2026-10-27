@@ -13,17 +13,28 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.utils.io.ByteReadChannel
+import io.ktor.utils.io.writeFully
+import io.ktor.utils.io.writer
 import java.nio.file.Path
+import java.util.concurrent.atomic.AtomicLong
 import kotlin.io.path.ExperimentalPathApi
+import kotlin.io.path.createDirectories
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.deleteRecursively
 import kotlin.io.path.exists
+import kotlin.io.path.isRegularFile
+import kotlin.io.path.walk
 import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonPrimitive
 
 class MavenSourceFetcherTest {
 
@@ -41,8 +52,12 @@ class MavenSourceFetcherTest {
         mapOf("com/example/Hello.kt" to "package com.example\n\nactual fun hello(): String = \"jvm\"\n"),
     )
 
+    /** Runs the writers behind [meteredEngine]'s bodies; real threads, so a body really streams. */
+    private val producers = CoroutineScope(SupervisorJob() + Dispatchers.IO)
+
     @AfterTest
     fun cleanup() {
+        producers.cancel()
         tempDirs.forEach { it.deleteRecursively() }
     }
 
@@ -199,6 +214,103 @@ class MavenSourceFetcherTest {
     }
 
     @Test
+    fun stopsReadingAJarBodyOnceItPassesTheCap() = runTest {
+        val plain = LibraryCoordinate("com.example", "plain-lib", "2.0.0")
+        val produced = AtomicLong()
+        val engine = meteredEngine("${repo}com/example/plain-lib/2.0.0/plain-lib-2.0.0-sources.jar", produced)
+        MavenSourceFetcherImpl(cacheDir = newCacheDir(), engine = engine, maxDownloadBytes = 4096).use { fetcher ->
+            assertFailsWith<DownloadTooLargeException> { fetcher.fetch(plain, listOf(repo)) }
+        }
+        // Throwing is not the point; *when* it throws is. A body Ktor buffered before the cap was
+        // counted throws the same exception after the whole METERED_BODY_BYTES were read.
+        assertTrue(produced.get() < READ_AHEAD_ALLOWANCE, "read ${produced.get()} bytes of a capped body")
+    }
+
+    @Test
+    fun capsModuleMetadataBodiesToo() = runTest {
+        val produced = AtomicLong()
+        val engine = meteredEngine("${repo}com/example/demo-lib/1.0.0/demo-lib-1.0.0.module", produced)
+        MavenSourceFetcherImpl(cacheDir = newCacheDir(), engine = engine, maxMetadataBytes = 4096).use { fetcher ->
+            assertFailsWith<DownloadTooLargeException> { fetcher.fetch(coordinate, listOf(repo)) }
+        }
+        assertTrue(produced.get() < READ_AHEAD_ALLOWANCE, "read ${produced.get()} bytes of a capped body")
+    }
+
+    @Test
+    fun refusesModuleFileNamesThatLeaveTheJarsDirectory() = runTest {
+        val root = createTempDirectory("klm-escape-test").also(tempDirs::add)
+        val cacheDir = root.resolve("cache").createDirectories()
+        val names = listOf(
+            // jars/ sits six levels below root: jars → 1.0.0 → demo-lib → example → com → cache → root.
+            "../../../../../../escape.jar",
+            root.resolve("absolute-escape.jar").toString(),
+        )
+        for (name in names) {
+            val engine = mockRepoEngine(
+                mapOf(
+                    "${repo}com/example/demo-lib/1.0.0/demo-lib-1.0.0.module" to moduleNamingFile(name).toByteArray(),
+                    "${repo}com/example/demo-lib/1.0.0/escape.jar" to commonJar,
+                ),
+            )
+            fetcher(engine, cacheDir).use { fetcher ->
+                assertFailsWith<UnsafeArtifactNameException>(name) { fetcher.fetch(coordinate, listOf(repo)) }
+            }
+            assertEquals(emptyList(), root.walk().filter { it.isRegularFile() }.toList(), "written for $name")
+        }
+    }
+
+    @Test
+    fun refusesAnUnsafeGroupBeforeAnyRequest() = runTest {
+        val engine = mockRepoEngine(emptyMap())
+        fetcher(engine).use { fetcher ->
+            for (group in listOf("../../x", "com.example?q=1", "com.example#frag")) {
+                assertFailsWith<IllegalArgumentException>(group) {
+                    fetcher.fetchVersionCatalog(group, "demo-lib", listOf(repo))
+                }
+            }
+        }
+        assertEquals(emptyList(), engine.requestHistory.map { it.url.toString() })
+    }
+
+    /** A sources-only `.module` whose single file is declared under [fileName] and served as `escape.jar`. */
+    private fun moduleNamingFile(fileName: String): String = """
+        {
+          "formatVersion": "1.1",
+          "variants": [
+            {
+              "name": "metadataSourcesElements",
+              "attributes": {
+                "org.gradle.category": "documentation",
+                "org.gradle.docstype": "sources",
+                "org.jetbrains.kotlin.platform.type": "common"
+              },
+              "files": [ { "name": ${JsonPrimitive(fileName)}, "url": "escape.jar" } ]
+            }
+          ]
+        }
+    """.trimIndent()
+
+    /**
+     * Serves [url] a body of [METERED_BODY_BYTES] produced only as fast as it is read, counting what
+     * was handed over in [produced]; everything else is a 404.
+     */
+    private fun meteredEngine(url: String, produced: AtomicLong): MockEngine = MockEngine { request ->
+        if (request.url.toString() == url) {
+            val body = producers.writer {
+                val chunk = ByteArray(8 * 1024)
+                while (produced.get() < METERED_BODY_BYTES) {
+                    channel.writeFully(chunk)
+                    channel.flush()
+                    produced.addAndGet(chunk.size.toLong())
+                }
+            }.channel
+            respond(body, HttpStatusCode.OK)
+        } else {
+            respond(ByteReadChannel(ByteArray(0)), HttpStatusCode.NotFound)
+        }
+    }
+
+    @Test
     fun listVersionsParsesMavenMetadataNewestFirst() = runTest {
         val engine = mockRepoEngine(
             mapOf("${repo}com/example/demo-lib/maven-metadata.xml" to fixture("maven-metadata.xml").toByteArray()),
@@ -282,5 +394,16 @@ class MavenSourceFetcherTest {
             // dep-b is claimed at depth 1, so dep-a's own dep-b edge is deduplicated.
             assertEquals(emptyList(), children.getValue("dep-a").children)
         }
+    }
+
+    private companion object {
+        const val METERED_BODY_BYTES: Long = 32L * 1024 * 1024
+
+        /**
+         * What a capped read may pull before it stops: the cap, one 64 KB read chunk, and the ~1 MB
+         * a Ktor channel lets a writer run ahead. Far below [METERED_BODY_BYTES], which is what a
+         * buffered read takes.
+         */
+        const val READ_AHEAD_ALLOWANCE: Long = 4L * 1024 * 1024
     }
 }

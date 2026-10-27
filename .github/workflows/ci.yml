@@ -318,11 +318,9 @@ jobs:
       - name: Install the conformance suite
         run: npm ci --prefix .github/conformance --ignore-scripts --no-audit --no-fund
 
-      # `--forward-logs-to-client` turns the opt-in logging capability on, so `logging-set-level`
-      # is exercised rather than baselined away.
       - name: Start the server over Streamable HTTP
         run: |
-          server/build/install/server/bin/server --transport http --port 3000 --forward-logs-to-client \
+          server/build/install/server/bin/server --transport http --port 3000 \
             --cache-dir "$RUNNER_TEMP/cache" > "$RUNNER_TEMP/server.log" 2>&1 &
           for _ in $(seq 1 60); do
             curl -s -o /dev/null http://127.0.0.1:3000/mcp && exit 0

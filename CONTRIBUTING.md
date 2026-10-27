@@ -24,7 +24,7 @@ against the server over Streamable HTTP. To run it the same way locally (needs N
 ```sh
 ./gradlew :server:installDist
 npm ci --prefix .github/conformance --ignore-scripts
-server/build/install/server/bin/server --transport http --port 3000 --forward-logs-to-client &
+server/build/install/server/bin/server --transport http --port 3000 &
 .github/conformance/node_modules/.bin/conformance server --url http://127.0.0.1:3000/mcp \
   --expected-failures .github/conformance/baseline.yml
 ```

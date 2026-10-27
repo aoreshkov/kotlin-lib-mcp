@@ -184,6 +184,10 @@ class McpServerHandle(
 object McpServerFactory {
 
     fun create(config: ServerConfig = ServerConfig()): McpServerHandle {
+        // The CLI refuses this combination; checked here too for anyone building a config by hand.
+        require(!config.forwardLogsToClient || sharesFilesystemWithClient(config.transport)) {
+            "forwardLogsToClient is stdio-only: the forwarder sends every record to every session"
+        }
         routeKermitToSlf4j()
         // Before any handler can run, so the very first request is traced.
         val otelSdk = if (config.otel) startTelemetry(config.transport) else null
