@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.9.2] - 2026-10-27
+
+This release hardens how the server handles what it downloads and how it listens. Nothing changes
+on the wire. **Upgrading:** one combination of options is now refused: `--forward-logs-to-client`
+with `--transport http` (see *Changed*). Everyone else needs to do nothing.
+
 ### Security
 - **Hardened jar file-name handling** when saving downloaded sources jars into the cache.
 - **Response bodies are capped while they stream.** The 200 MB jar cap is now enforced as bytes
@@ -668,7 +674,8 @@ Initial public release.
 - On-disk cache keyed by `group/artifact/version` under the OS cache directory.
 - Optional **Compose Desktop dashboard** embedding the server (control, logs, cache browser).
 
-[Unreleased]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.9.1...HEAD
+[Unreleased]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.9.2...HEAD
+[0.9.2]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.8.0...v0.9.0
 [0.8.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.7.0...v0.8.0
