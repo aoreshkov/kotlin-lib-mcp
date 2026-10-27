@@ -6,6 +6,7 @@ import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequest
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequestParams
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.CreateTaskResult
+import io.modelcontextprotocol.kotlin.sdk.types.ElicitRequestURLParams
 import io.modelcontextprotocol.kotlin.sdk.types.TaskMetadata
 import io.modelcontextprotocol.kotlin.sdk.types.TaskStatus
 import io.modelcontextprotocol.kotlin.sdk.types.TaskStatusNotification
@@ -14,11 +15,14 @@ import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import io.modelcontextprotocol.kotlin.sdk.types.Tool
 import io.modelcontextprotocol.kotlin.sdk.types.ToolExecution
 import io.modelcontextprotocol.kotlin.sdk.types.ToolSchema
+import io.modelcontextprotocol.kotlin.sdk.types.UrlElicitationRequiredException
 import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
+import kotlin.test.assertNull
+import kotlin.test.assertSame
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
@@ -136,6 +140,24 @@ class TaskDispatchTest {
         store.close()
     }
 
+    @Test
+    fun aUrlElicitationRequirementPropagatesInsteadOfBecomingAnErrorResult() = runTest {
+        val store = store(testScheduler)
+        val required = UrlElicitationRequiredException(
+            listOf(ElicitRequestURLParams(message = "Sign in", elicitationId = "e1", url = "https://example.com/auth"))
+        )
+        val needsUrl = registered("needsUrl", taskSupport = null) { throw required }
+
+        // It is an McpException, so the protocol layer answers JSON-RPC -32042 with the URLs in
+        // `data`. Caught by the generic `Exception` arm instead, the client would get an isError text
+        // and never see the URL it has to open.
+        val thrown = assertFailsWith<UrlElicitationRequiredException> {
+            dispatchToolCall(mapOf("needsUrl" to needsUrl), FakeConnection(), store, call("needsUrl"))
+        }
+        assertSame(required, thrown)
+        store.close()
+    }
+
     // --- the task branch ---
 
     @Test
@@ -161,7 +183,7 @@ class TaskDispatchTest {
     }
 
     @Test
-    fun taskStatusNotificationsCarryTheRelatedTaskMeta() = runTest {
+    fun taskStatusNotificationsNameTheTaskOnlyInTheirParams() = runTest {
         val store = store(testScheduler)
         val connection = FakeConnection()
 
@@ -175,11 +197,13 @@ class TaskDispatchTest {
             listOf(TaskStatus.Working, TaskStatus.Completed),
             statuses.map { it.params?.status },
         )
-        // The spec's one unprefixed-key carve-out, so a client can correlate out-of-band messages
-        // with the task they belong to.
-        val meta = statuses.last().params?.meta
-        assertContains(meta.toString(), "io.modelcontextprotocol/related-task")
-        assertContains(meta.toString(), created.task.taskId)
+        // 2025-11-25, Task Notifications: the notification "SHOULD NOT include the
+        // io.modelcontextprotocol/related-task metadata, as the task ID is already present in the
+        // notification parameters". The key belongs on tasks/result instead (TaskHandlerInstallationTest).
+        statuses.forEach { status ->
+            assertEquals(created.task.taskId, status.params?.taskId)
+            assertNull(status.params?.meta, "a status notification must not repeat the task id in _meta")
+        }
         store.close()
     }
 

@@ -1,5 +1,6 @@
 package app.oreshkov.kotlinlibmcp.server.tasks
 
+import app.oreshkov.kotlinlibmcp.server.runCatchingCancellable
 import co.touchlab.kermit.Logger
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.McpJson
@@ -72,7 +73,7 @@ class TaskRecordStore(private val dir: Path) {
      * the target in place.
      */
     internal fun save(record: PersistedTask) {
-        runCatching {
+        runCatchingCancellable {
             dir.createDirectories()
             val target = fileFor(record.taskId)
             val temp = dir.resolve("${record.taskId}.json.tmp")
@@ -93,11 +94,11 @@ class TaskRecordStore(private val dir: Path) {
     /** Every readable record on disk. Unparseable files are dropped, not raised. */
     internal fun loadAll(): List<PersistedTask> {
         if (!dir.exists()) return emptyList()
-        return runCatching {
+        return runCatchingCancellable {
             dir.listDirectoryEntries("*.json").mapNotNull { file ->
-                runCatching { McpJson.decodeFromString<PersistedTask>(file.readText()) }
+                runCatchingCancellable { McpJson.decodeFromString<PersistedTask>(file.readText()) }
                     .onFailure { log.w(it) { "Corrupt task record at $file; discarding" } }
-                    .onFailure { runCatching { file.deleteIfExists() } }
+                    .onFailure { runCatchingCancellable { file.deleteIfExists() } }
                     .getOrNull()
                     ?.takeIf { it.taskId == file.nameWithoutExtension }
             }
@@ -106,13 +107,13 @@ class TaskRecordStore(private val dir: Path) {
 
     /** Removes [taskId]'s record; a no-op if it was never written. */
     internal fun delete(taskId: String) {
-        runCatching { fileFor(taskId).deleteIfExists() }
+        runCatchingCancellable { fileFor(taskId).deleteIfExists() }
             .onFailure { log.w(it) { "Could not delete task record $taskId" } }
     }
 
     /** Clears any `.tmp` left by a crash mid-write, so they cannot accumulate. */
     internal fun sweepTempFiles() {
-        runCatching {
+        runCatchingCancellable {
             if (!dir.exists()) return
             dir.listDirectoryEntries().filter { it.extension == "tmp" }.forEach { it.deleteIfExists() }
         }.onFailure { log.d(it) { "Could not sweep temp task records under $dir" } }
@@ -127,4 +128,4 @@ internal fun CallToolResult.toPersistedJson(): JsonObject =
 
 /** The inverse of [toPersistedJson]; `null` when the stored payload will not decode. */
 internal fun JsonElement.toCallToolResultOrNull(): CallToolResult? =
-    runCatching { McpJson.decodeFromJsonElement(CallToolResult.serializer(), this) }.getOrNull()
+    runCatchingCancellable { McpJson.decodeFromJsonElement(CallToolResult.serializer(), this) }.getOrNull()

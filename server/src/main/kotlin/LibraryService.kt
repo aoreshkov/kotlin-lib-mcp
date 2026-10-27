@@ -380,17 +380,32 @@ class LibraryService(
         )
     }
 
+    /**
+     * Matching lines of [coordinate]'s sources, paged like every other listing: [offset] matches are
+     * skipped, at most [maxResults] returned.
+     *
+     * **Counting has a ceiling.** Every match is counted so `totalCount` can say how far paging goes,
+     * which means the scan no longer stops once the page is full. A query as broad as `val` matches
+     * hundreds of thousands of lines in a large library, though, so counting stops at
+     * [MAX_SEARCH_MATCHES_COUNTED]: past it `totalCount` is a lower bound and `totalCountCapped` is
+     * set, and the scan ends there rather than reading the rest of the library to count it. Matches
+     * past the ceiling cannot be paged to, so `truncated` stays strictly "advancing `offset` returns
+     * more" — otherwise a client paging until `truncated` is false would never stop.
+     */
     suspend fun searchSource(
         coordinate: LibraryCoordinate,
         query: String,
         regex: Boolean,
         maxResults: Int,
+        offset: Int = 0,
     ): SearchResults {
         val index = index(coordinate)
-        val cap = maxResults.coerceIn(1, MAX_SEARCH_RESULTS)
+        val start = offset.coerceAtLeast(0)
+        val end = start.toLong() + maxResults.coerceIn(1, MAX_SEARCH_RESULTS)
         val pattern = if (regex) compileSearchPattern(query) else null
         val hits = mutableListOf<SearchHit>()
-        var truncated = false
+        var matched = 0
+        var capped = false
         // Resolved once for the whole scan, not once per file: every `fetch` re-reads and
         // re-deserializes the on-disk cache marker even on a warm hit, so resolving it inside
         // the loop cost one file read + one JSON parse per source file in the library.
@@ -401,17 +416,43 @@ class LibraryService(
             for ((lineIndex, line) in lines.withIndex()) {
                 val matches = when (pattern) {
                     null -> line.contains(query)
-                    else -> pattern.containsMatchIn(BoundedCharSequence(line, query, MATCH_BUDGET_PER_LINE))
+                    else -> pattern.matchesWithinBudget(line, query)
                 }
                 if (!matches) continue
-                if (hits.size == cap) {
-                    truncated = true
+                if (matched == MAX_SEARCH_MATCHES_COUNTED) {
+                    capped = true
                     break@outer
                 }
-                hits += SearchHit(path = file.path, line = lineIndex + 1, snippet = line.trim().take(200))
+                if (matched >= start && matched < end) {
+                    hits += SearchHit(path = file.path, line = lineIndex + 1, snippet = line.trim().take(200))
+                }
+                matched++
             }
         }
-        return SearchResults(query = query, hits = hits, truncated = truncated)
+        return SearchResults(
+            query = query,
+            hits = hits,
+            totalCount = matched,
+            totalCountCapped = capped,
+            truncated = end < matched,
+        )
+    }
+
+    /**
+     * [Regex.containsMatchIn] with both of the ways a caller's pattern can run away turned into the
+     * same correctable error.
+     *
+     * [BoundedCharSequence] bounds the *time* a backtracking pattern burns. Recursion depth is the
+     * other axis: `java.util.regex` matches alternation and group repetition recursively, so
+     * `(.|x)*` against a long generated line overflows the stack well inside the character budget.
+     * A [StackOverflowError] is an `Error`, so `guarded` — rightly — does not catch it, and it would
+     * reach the client as a protocol failure rather than an `isError` result the model can act on.
+     * It is caught here, at the one call that can raise it on caller input, and nowhere broader.
+     */
+    private fun Regex.matchesWithinBudget(line: String, query: String): Boolean = try {
+        containsMatchIn(BoundedCharSequence(line, query, MATCH_BUDGET_PER_LINE))
+    } catch (_: StackOverflowError) {
+        throw SearchPatternTooExpensiveException(query)
     }
 
     /**
@@ -429,6 +470,10 @@ class LibraryService(
      * records no hash or size to shortcut it. That is bounded by [MAX_DIFF_SCAN_FILES] — past it
      * the caller is asked to narrow with [pathFilter] rather than being served a slow answer — and
      * hunks are then computed only for the page actually returned.
+     *
+     * **Size.** Hunk text is capped per file ([MAX_DIFF_CHARS_PER_FILE], alongside the line budget)
+     * and per page ([MAX_DIFF_CHARS_PER_PAGE]); a file over either keeps its counts and is marked
+     * `diffOmitted`.
      *
      * Added and removed files carry their line counts but no hunks: emitting a whole new file is
      * the unbounded thing this tool exists to avoid, and `get_source` already serves it.
@@ -475,6 +520,16 @@ class LibraryService(
         val start = offset.coerceAtLeast(0)
         val page = changes.drop(start).take(maxResults.coerceIn(1, MAX_DIFF_FILES))
         val context = contextLines.coerceIn(0, MAX_DIFF_CONTEXT)
+        // The page's character budget is spent in order. A file that no longer fits keeps its place
+        // and its counts, with `diffOmitted`, rather than ending the page early: paging stays plain
+        // `offset += maxResults` like every other tool, and narrowing `path` to that one file gets
+        // its hunks on a page of its own.
+        var pageChars = 0
+        val files = page.map { (path, change) ->
+            val budget = minOf(MAX_DIFF_CHARS_PER_FILE, MAX_DIFF_CHARS_PER_PAGE - pageChars)
+            fileDiff(path, change, fromRoot, toRoot, fromFiles[path], toFiles[path], context, budget)
+                .also { pageChars += it.hunks.sumOf(String::length) }
+        }
         return VersionDiff(
             group = group,
             artifact = artifact,
@@ -483,9 +538,7 @@ class LibraryService(
             filesAdded = added.size,
             filesRemoved = removed.size,
             filesModified = modified.size,
-            files = page.map { (path, change) ->
-                fileDiff(path, change, fromRoot, toRoot, fromFiles[path], toFiles[path], context)
-            },
+            files = files,
             truncated = start + page.size < changes.size,
         )
     }
@@ -606,6 +659,7 @@ class LibraryService(
         fromPath: String?,
         toPath: String?,
         contextLines: Int,
+        maxChars: Int,
     ): FileDiff = when (change) {
         FileChange.ADDED -> FileDiff(
             path = path,
@@ -631,13 +685,19 @@ class LibraryService(
                     diffOmitted = true,
                 )
                 else -> {
-                    // Per-file budget: one pathological file must not consume the whole page.
+                    // Per-file budget, in lines *and* characters: one pathological file must not
+                    // consume the whole page, and one changed minified line is a single line that
+                    // can run to megabytes. Measured before joining, so an oversized hunk is never
+                    // copied just to be dropped.
                     val kept = mutableListOf<String>()
                     var lines = 0
+                    var chars = 0
                     for (hunk in diff.hunks) {
-                        if (lines + hunk.lines.size > MAX_DIFF_LINES_PER_FILE) break
+                        val hunkChars = hunk.header.length + hunk.lines.sumOf { it.length + 1 }
+                        if (lines + hunk.lines.size > MAX_DIFF_LINES_PER_FILE || chars + hunkChars > maxChars) break
                         kept += (listOf(hunk.header) + hunk.lines).joinToString("\n")
                         lines += hunk.lines.size
+                        chars += hunkChars
                     }
                     FileDiff(
                         path = path,
@@ -834,7 +894,7 @@ class LibraryService(
         require(query.length <= MAX_SEARCH_PATTERN_LENGTH) {
             "Regular expression is too long (${query.length} characters, limit $MAX_SEARCH_PATTERN_LENGTH)"
         }
-        return runCatching { Regex(query) }.getOrElse {
+        return runCatchingCancellable { Regex(query) }.getOrElse {
             throw IllegalArgumentException("Invalid regular expression '$query': ${it.message}")
         }
     }
@@ -883,10 +943,11 @@ class LibraryService(
      *
      * Resolution failure is swallowed on purpose: this is a convenience field on an otherwise
      * successful fetch, and a library that is cached and analyzed is still perfectly usable through
-     * every other tool if its on-disk root cannot be named right now.
+     * every other tool if its on-disk root cannot be named right now. Cancellation is not a failure
+     * and is re-thrown: a withdrawn `fetch_library` must stop here, not go on to build a result.
      */
     private suspend fun localSourceRoot(coordinate: LibraryCoordinate): String? =
-        if (!exposeLocalPaths) null else runCatching { sourceRoot(coordinate).toString() }.getOrNull()
+        if (!exposeLocalPaths) null else runCatchingCancellable { sourceRoot(coordinate).toString() }.getOrNull()
 
     /**
      * Limits and defaults. `internal` rather than private because the tools declare the same numbers
@@ -896,6 +957,13 @@ class LibraryService(
     internal companion object {
         const val DEFAULT_SEARCH_RESULTS = 50
         const val MAX_SEARCH_RESULTS = 200
+
+        /**
+         * How many `search_source` matches are counted before the scan gives up on an exact
+         * `totalCount`. Fifty full pages: enough that any search worth paging through is counted
+         * exactly, while a query that matches most of a library stops costing a full scan.
+         */
+        const val MAX_SEARCH_MATCHES_COUNTED = 10_000
 
         /** Upper bound on a caller-supplied regex; far above any pattern a search needs. */
         const val MAX_SEARCH_PATTERN_LENGTH = 1_000
@@ -926,6 +994,16 @@ class LibraryService(
 
         /** Per-file hunk budget, so one heavily-rewritten file cannot consume the whole page. */
         const val MAX_DIFF_LINES_PER_FILE = 400
+
+        /**
+         * Hunk text per file and per page, in characters. The line budget above is not a size cap:
+         * a changed line of a minified or generated source is one line of any length, sent once as
+         * `-` and once as `+`. The page cap equals [MAX_SOURCE_CHARS], so a `diff_versions` page
+         * costs no more than a `get_source` page — doubled on the wire either way, since `toolResult`
+         * sends text and `structuredContent`. The file cap is 400 lines of ordinary 100-column code.
+         */
+        const val MAX_DIFF_CHARS_PER_FILE = 40_000
+        const val MAX_DIFF_CHARS_PER_PAGE = 100_000
 
         /**
          * Changes per `diff_api` page. A change is at most two signatures and a deprecation —

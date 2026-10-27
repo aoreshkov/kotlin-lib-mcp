@@ -16,6 +16,7 @@ import io.modelcontextprotocol.kotlin.sdk.types.CompleteRequestParams.Argument
 import io.modelcontextprotocol.kotlin.sdk.types.CompleteResult
 import io.modelcontextprotocol.kotlin.sdk.types.EmptyJsonObject
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
+import io.modelcontextprotocol.kotlin.sdk.types.JSONRPCRequest
 import io.modelcontextprotocol.kotlin.sdk.types.RequestId
 import io.modelcontextprotocol.kotlin.sdk.types.ResourceTemplateReference
 import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
@@ -24,9 +25,12 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.time.Instant
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.test.StandardTestDispatcher
+import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
 
@@ -170,34 +174,41 @@ class LibraryCompletionsTest {
 
     // --- registration: the handler has to reach every session, not just the newest ---
 
+    private fun TestScope.completionServer(): Server = Server(
+        serverInfo = Implementation(name = "test", version = "0"),
+        options = ServerOptions(
+            capabilities = ServerCapabilities(completions = EmptyJsonObject),
+            handlerCoroutineContext = StandardTestDispatcher(testScheduler),
+        ),
+    )
+
+    /** `completion/complete` for the index template's `group` variable, with JSON-RPC id 2. */
+    private fun groupCompletion(prefix: String): JSONRPCRequest = CompleteRequest(
+        CompleteRequestParams(
+            argument = Argument("group", prefix),
+            ref = ResourceTemplateReference(uri = LIBRARY_INDEX_URI_TEMPLATE),
+        )
+    ).toJSON().copy(id = RequestId(2L))
+
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun everySessionAnswersCompletionComplete() = runTest {
-        val server = Server(
-            serverInfo = Implementation(name = "test", version = "0"),
-            options = ServerOptions(
-                capabilities = ServerCapabilities(completions = EmptyJsonObject),
-                handlerCoroutineContext = StandardTestDispatcher(testScheduler),
-            ),
-        )
-        server.registerLibraryCompletions(FakeCache(cached))
+        val server = completionServer()
 
+        // Both sessions exist before the handler is registered, so one registration has to reach
+        // both — the interleaving SessionSetupTest.configuresEverySessionNotJustTheNewest uses. With
+        // the sessions created afterwards each would be the newest when its onConnect fired, and a
+        // `sessions.values.last()` shortcut would pass this test.
         val alice = FakeTransport()
         val aliceSession = server.createSession(alice)
         val bob = FakeTransport()
         val bobSession = server.createSession(bob)
+        server.registerLibraryCompletions(FakeCache(cached))
         alice.handshake()
         bob.handshake()
 
-        val request = CompleteRequest(
-            CompleteRequestParams(
-                argument = Argument("group", "io"),
-                ref = ResourceTemplateReference(uri = LIBRARY_INDEX_URI_TEMPLATE),
-            )
-        ).toJSON()
-
-        alice.deliver(request.copy(id = RequestId(2L)))
-        bob.deliver(request.copy(id = RequestId(2L)))
+        alice.deliver(groupCompletion("io"))
+        bob.deliver(groupCompletion("io"))
         runCurrent()
 
         // A session left unconfigured would answer -32601 Method not found instead, and its client
@@ -211,16 +222,72 @@ class LibraryCompletionsTest {
         bobSession.close()
     }
 
+    // --- the handler's own bounds and failure handling ---
+
+    /** Answers one [groupCompletion] for [prefix] from a fresh session over [cache]. */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private suspend fun TestScope.answerGroupCompletion(cache: LibraryCache, prefix: String = ""): FakeTransport {
+        val server = completionServer()
+        server.registerLibraryCompletions(cache)
+        val transport = FakeTransport()
+        val session = server.createSession(transport)
+        transport.handshake()
+        transport.deliver(groupCompletion(prefix))
+        runCurrent()
+        session.close()
+        return transport
+    }
+
+    private fun FakeTransport.completion(): CompleteResult.Completion =
+        assertIs<CompleteResult>(assertNotNull(responseTo(2), "no completion response").result).completion
+
+    @Test
+    fun pastAHundredValuesTheListIsCappedAndTheOverflowReported() = runTest {
+        // MCP caps a completion at 100 values; `total` and `hasMore` are how a client learns the
+        // rest exist and the user should keep typing.
+        val groups = (1..150).map { LibraryCoordinate("g%03d".format(it), "a", "1.0") }
+
+        val completion = answerGroupCompletion(FakeCache(groups)).completion()
+
+        assertEquals(groups.take(100).map { it.group }, completion.values)
+        assertEquals(150, completion.total, "total counts every match, not the capped page")
+        assertEquals(true, completion.hasMore)
+    }
+
+    @Test
+    fun exactlyAHundredValuesHaveNothingMore() = runTest {
+        val groups = (1..100).map { LibraryCoordinate("g%03d".format(it), "a", "1.0") }
+
+        val completion = answerGroupCompletion(FakeCache(groups)).completion()
+
+        assertEquals(100, completion.values.size)
+        assertEquals(100, completion.total)
+        assertEquals(false, completion.hasMore, "a full page is not an overflow")
+    }
+
+    @Test
+    fun aFailingCacheYieldsAnEmptyCompletionRatherThanAnError() = runTest {
+        val transport = answerGroupCompletion(ThrowingCache(IllegalStateException("corrupt cache")))
+
+        assertNull(transport.errorTo(2), "autocomplete must never fail the client's request")
+        assertEquals(emptyList(), transport.completion().values)
+    }
+
+    @Test
+    fun aCancellationIsNotAnsweredWithAnEmptyCompletion() = runTest {
+        // A peer-cancelled request gets no response either way: the SDK suppresses it once the
+        // handler's job is cancelled. What is observable is a cancellation the handler must not turn
+        // into an ordinary answer — swallowed, it came back as an empty completion; re-thrown, the
+        // SDK owns it (here, a cancellation escaping a live job, it answers with a JSON-RPC error).
+        val transport = answerGroupCompletion(ThrowingCache(CancellationException("withdrawn")))
+
+        assertNull(transport.responseTo(2), "a cancelled completion was answered as if it had found nothing")
+    }
+
     @OptIn(ExperimentalCoroutinesApi::class)
     @Test
     fun thePackageTemplateIsRoutedToPackageCompletions() = runTest {
-        val server = Server(
-            serverInfo = Implementation(name = "test", version = "0"),
-            options = ServerOptions(
-                capabilities = ServerCapabilities(completions = EmptyJsonObject),
-                handlerCoroutineContext = StandardTestDispatcher(testScheduler),
-            ),
-        )
+        val server = completionServer()
         server.registerLibraryCompletions(FakeCache(cached, packages = mapOf(ktorCore351 to listOf("io.ktor.client"))))
         val transport = FakeTransport()
         val session = server.createSession(transport)
@@ -242,6 +309,16 @@ class LibraryCompletionsTest {
         assertEquals(listOf("io.ktor.client"), assertIs<CompleteResult>(result.result).completion.values)
         session.close()
     }
+}
+
+/** A cache whose every read throws [error]. */
+private class ThrowingCache(private val error: Throwable) : LibraryCache {
+    override suspend fun get(coordinate: LibraryCoordinate): LibraryIndex? = throw error
+    override suspend fun putIndex(index: LibraryIndex) = Unit
+    override suspend fun putSources(coordinate: LibraryCoordinate, extractedDir: String) = Unit
+    override suspend fun list(): List<LibraryCoordinate> = throw error
+    override suspend fun clear(coordinate: LibraryCoordinate) = Unit
+    override suspend fun size(): Long = 0
 }
 
 /** In-memory cache serving canned coordinates and (optionally) per-coordinate package lists. */

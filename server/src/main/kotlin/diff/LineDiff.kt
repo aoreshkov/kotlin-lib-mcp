@@ -127,12 +127,14 @@ internal object LineDiff {
             if (op.tag != '-') toLine++
         }
 
-        // Merge runs of changes whose context windows touch, so adjacent edits share one hunk.
+        // Merge runs of changes whose context windows overlap or touch, so adjacent edits share one
+        // hunk: the unchanged lines between them (`index - end - 1`) fit in the two windows. Without
+        // the `- 1`, zero context split every multi-line change into one hunk per line.
         val groups = mutableListOf<IntRange>()
         var start = changed.first()
         var end = changed.first()
         for (index in changed.drop(1)) {
-            if (index - end <= contextLines * 2) end = index else {
+            if (index - end - 1 <= contextLines * 2) end = index else {
                 groups += start..end
                 start = index
                 end = index
@@ -144,11 +146,16 @@ internal object LineDiff {
             val first = maxOf(0, group.first - contextLines)
             val last = minOf(ops.size - 1, group.last + contextLines)
             val slice = ops.subList(first, last + 1)
+            val fromCount = slice.count { it.tag != '+' }
+            val toCount = slice.count { it.tag != '-' }
             Hunk(
-                fromStart = fromLineAt[first],
-                fromCount = slice.count { it.tag != '+' },
-                toStart = toLineAt[first],
-                toCount = slice.count { it.tag != '-' },
+                // An empty side names the line *after which* the change sits, not the first line
+                // of a range: `@@ -1,0 +2,2 @@` inserts after old line 1. Only reachable with no
+                // context, but `git apply --unidiff-zero` and `patch` both read it this way.
+                fromStart = if (fromCount == 0) fromLineAt[first] - 1 else fromLineAt[first],
+                fromCount = fromCount,
+                toStart = if (toCount == 0) toLineAt[first] - 1 else toLineAt[first],
+                toCount = toCount,
                 lines = slice.map { "${it.tag}${it.text}" },
             )
         }

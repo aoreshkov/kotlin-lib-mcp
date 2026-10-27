@@ -105,12 +105,21 @@ public data class SearchHit(
     val snippet: String,
 )
 
-/** `search_source`. [truncated] is `true` when more hits existed than the bounded result cap. */
+/**
+ * `search_source` — a bounded page of matching lines. [totalCount] is how many lines matched, and
+ * [truncated] is `true` when more matched than the page returned (advance `offset` to read on).
+ *
+ * Counting stops at a server-side ceiling so a query matching most of a library does not cost a full
+ * scan; [totalCountCapped] is then `true`, [totalCount] is a lower bound, and the matches past the
+ * ceiling are not reachable by paging — narrow the query instead.
+ */
 @Serializable
 @SerialName("SearchResults")
 public data class SearchResults(
     val query: String,
     val hits: List<SearchHit> = emptyList(),
+    val totalCount: Int = 0,
+    val totalCountCapped: Boolean = false,
     val truncated: Boolean = false,
 )
 
@@ -165,8 +174,10 @@ public enum class FileChange {
  * client can render or re-apply it. It is empty when nothing needs showing — an added or removed
  * file, or [diffOmitted] — while [addedLines] and [removedLines] stay meaningful either way.
  *
- * [diffOmitted] means the file changed but is too large or too wholly rewritten to diff within the
- * server's bounds; read it with `get_source` if the detail matters.
+ * [diffOmitted] means some or all of the hunks were left out: the file is too large or too wholly
+ * rewritten to diff, its hunks exceed the per-file size budget (a changed minified line counts in
+ * full), or the page's budget ran out before it. Narrow `path` to that file for a page of its own,
+ * or read it with `get_source`.
  */
 @Serializable
 @SerialName("FileDiff")

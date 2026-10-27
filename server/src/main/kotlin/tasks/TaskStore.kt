@@ -1,5 +1,6 @@
 package app.oreshkov.kotlinlibmcp.server.tasks
 
+import app.oreshkov.kotlinlibmcp.server.runCatchingCancellable
 import co.touchlab.kermit.Logger
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.Task
@@ -242,7 +243,7 @@ class TaskStore(
         var recovered = 0
         var interrupted = 0
         for (persisted in store.loadAll()) {
-            val createdAt = runCatching { Instant.parse(persisted.createdAt) }.getOrNull()
+            val createdAt = runCatchingCancellable { Instant.parse(persisted.createdAt) }.getOrNull()
             if (createdAt == null || createdAt.plusMillis(persisted.ttlMs) < cutoff) {
                 store.delete(persisted.taskId)
                 continue
@@ -261,7 +262,7 @@ class TaskStore(
                 status = if (wasRunning) TaskStatus.Failed else persisted.status
                 statusMessage =
                     if (wasRunning) "Server restarted while this task was running" else persisted.statusMessage
-                lastUpdatedAt = runCatching { Instant.parse(persisted.lastUpdatedAt) }.getOrDefault(createdAt)
+                lastUpdatedAt = runCatchingCancellable { Instant.parse(persisted.lastUpdatedAt) }.getOrDefault(createdAt)
                 result = persisted.result?.toCallToolResultOrNull()
                 // Everything restored is terminal, so no tasks/result call can park on it.
                 finished.complete(Unit)
@@ -305,7 +306,7 @@ class TaskStore(
         record.job = scope.launch {
             // The first status is published from inside the job so a caller that awaits the very
             // first notification cannot race the CreateTaskResult it is about to receive.
-            runCatching { run.onStatus(initial) }
+            runCatchingCancellable { run.onStatus(initial) }
             val outcome = try {
                 // The body runs with a [TaskContext] in scope so that work which needs something
                 // from the client — an elicitation — can say so without any of the layers in
@@ -471,7 +472,7 @@ class TaskStore(
             }
         }
         // A client that has already disconnected must not turn into a failed task.
-        runCatching { onStatus(snapshot) }
+        runCatchingCancellable { onStatus(snapshot) }
     }
 
     /**
@@ -488,7 +489,7 @@ class TaskStore(
             record.snapshot()
         }
         persist(record)
-        runCatching { record.onStatus(snapshot) }
+        runCatchingCancellable { record.onStatus(snapshot) }
     }
 
     /**

@@ -36,7 +36,7 @@ All other tools fail until it has run for that coordinate.
 | The exact signature of one symbol | `get_api_signature` (`fqName`) |
 | What it does / params / `@throws` | `get_kdoc` (`fqName`) |
 | How it's actually implemented | `get_source` (`fqName` or `path`) |
-| Where a thing is used or defined | `search_source` (`query`, `regex`) |
+| Where a thing is used or defined | `search_source` (`query`, `regex`, `maxResults`, `offset`) |
 | What it drags onto the classpath | `get_dependencies` (`depth` 1–5) |
 | Which versions exist / newest stable | `list_versions`, `get_latest_version` |
 
