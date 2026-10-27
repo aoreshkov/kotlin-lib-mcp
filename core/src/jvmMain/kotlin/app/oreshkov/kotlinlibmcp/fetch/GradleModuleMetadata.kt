@@ -84,14 +84,26 @@ internal val GmmVariant.isLibraryVariant: Boolean
 
 /**
  * KMP target of a variant. Plain JVM libraries carry no
- * `org.jetbrains.kotlin.platform.type` attribute and map to [KmpTarget.UNKNOWN].
+ * `org.jetbrains.kotlin.platform.type` attribute and map to [KmpTarget.UNKNOWN]. Android maps to
+ * [KmpTarget.JVM] too, which is why planning prefers a true `jvm` variant: see [isAndroidJvm].
  */
 internal val GmmVariant.platformType: KmpTarget
-    get() = when (attr("org.jetbrains.kotlin.platform.type")) {
+    get() = when (attr(PLATFORM_TYPE)) {
         "common" -> KmpTarget.COMMON
-        "jvm", "androidJvm" -> KmpTarget.JVM
+        "jvm", ANDROID_JVM -> KmpTarget.JVM
         "js" -> KmpTarget.JS
         "native" -> KmpTarget.NATIVE
         "wasm" -> KmpTarget.WASM
         else -> KmpTarget.UNKNOWN
     }
+
+/**
+ * An Android variant, which [platformType] reports as [KmpTarget.JVM]. A library publishing both
+ * would otherwise have both jars extracted into the one `sources/jvm` tree, with Android actuals
+ * labelled JVM beside the real ones.
+ */
+internal val GmmVariant.isAndroidJvm: Boolean
+    get() = attr(PLATFORM_TYPE) == ANDROID_JVM
+
+private const val PLATFORM_TYPE = "org.jetbrains.kotlin.platform.type"
+private const val ANDROID_JVM = "androidJvm"

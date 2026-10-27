@@ -7,6 +7,28 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+- **A repository that fails is no longer taken for one that lacks the file.** Only a 404 means
+  "not published there". A 5xx that outlasts the retries, a 429 or a proxy's 403 now ends the call
+  with "Repository returned HTTP 503 for …; try again later" instead of "No sources jar found", and
+  caches nothing, so the next call tries again. Before, a failure on one KMP target could cache a
+  fetch with that target missing, permanently. With several `--repo`s, a failing one is skipped
+  for the next; its error is reported only if no other repository has the file. `list_versions`
+  and `get_dependencies` follow the same rule.
+- **Libraries publishing both Android and JVM sources** are read from the JVM jar only. Both used
+  to be extracted into one `jvm` tree, Android actuals labelled as JVM. Android sources are still
+  used when a library has no JVM ones.
+- **A withdrawn `fetch_library` stops extracting** within one 64 KB buffer instead of finishing the
+  archive (up to 500 MB) in the background.
+- **Servers sharing a cache directory no longer corrupt each other's fetches.** Jars, the fetch
+  marker and the index are written to a temporary file and moved into place, and a fetch writes
+  under a lock on its version directory (`.fetch.lock`), so a Claude Code and a Claude Desktop
+  server can share the default cache.
+- **A moved cache directory works.** The fetch marker no longer records absolute paths; it is now
+  `fetch-result-v2.json`, and a marker whose extracted sources are missing counts as a miss.
+  **Upgrading:** reading a source file of an already cached library downloads its sources once
+  more; the old `fetch-result.json` is deleted when that happens.
+
 ## [0.9.2] - 2026-10-27
 
 This release hardens how the server handles what it downloads and how it listens. Nothing changes

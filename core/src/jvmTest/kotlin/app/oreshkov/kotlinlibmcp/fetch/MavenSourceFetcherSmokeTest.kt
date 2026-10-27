@@ -41,7 +41,7 @@ class MavenSourceFetcherSmokeTest {
                     "extracted .kt files expected under sources/jvm",
                 )
 
-                // Second call must be served from the fetch-result.json marker.
+                // Second call must be served from the fetch marker.
                 assertEquals(result, fetcher.fetch(coordinate, emptyList()))
 
                 val versions = fetcher.listVersions("io.ktor", "ktor-client-core", emptyList())

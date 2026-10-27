@@ -2,6 +2,7 @@
 
 package app.oreshkov.kotlinlibmcp.fetch
 
+import app.oreshkov.kotlinlibmcp.cache.CacheLayout
 import app.oreshkov.kotlinlibmcp.fixture
 import app.oreshkov.kotlinlibmcp.mockRepoEngine
 import app.oreshkov.kotlinlibmcp.model.KmpTarget
@@ -9,30 +10,45 @@ import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.zipBytes
 import io.ktor.client.engine.mock.MockEngine
 import io.ktor.client.engine.mock.respond
+import io.ktor.client.engine.mock.respondError
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import io.ktor.utils.io.ByteReadChannel
 import io.ktor.utils.io.writeFully
 import io.ktor.utils.io.writer
+import java.nio.channels.FileChannel
 import java.nio.file.Path
+import java.nio.file.StandardOpenOption.CREATE
+import java.nio.file.StandardOpenOption.WRITE
+import java.util.concurrent.atomic.AtomicBoolean
+import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
 import kotlin.io.path.ExperimentalPathApi
+import kotlin.io.path.copyToRecursively
 import kotlin.io.path.createDirectories
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.deleteRecursively
 import kotlin.io.path.exists
 import kotlin.io.path.isRegularFile
+import kotlin.io.path.moveTo
+import kotlin.io.path.name
 import kotlin.io.path.walk
+import kotlin.io.path.writeText
 import kotlin.test.AfterTest
 import kotlin.test.Test
+import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.test.runTest
 import kotlinx.serialization.json.JsonPrimitive
 
@@ -40,7 +56,16 @@ class MavenSourceFetcherTest {
 
     private val repo = "https://repo.test/maven2/"
     private val coordinate = LibraryCoordinate("com.example", "demo-lib", "1.0.0")
+    private val plain = LibraryCoordinate("com.example", "plain-lib", "2.0.0")
     private val tempDirs = mutableListOf<Path>()
+
+    private val rootModuleUrl = "${repo}com/example/demo-lib/1.0.0/demo-lib-1.0.0.module"
+    private val commonJarUrl = "${repo}com/example/demo-lib/1.0.0/demo-lib-1.0.0-sources.jar"
+    private val jvmModuleUrl = "${repo}com/example/demo-lib-jvm/1.0.0/demo-lib-jvm-1.0.0.module"
+    private val jvmJarUrl = "${repo}com/example/demo-lib-jvm/1.0.0/demo-lib-jvm-1.0.0-sources.jar"
+    private val androidModuleUrl = "${repo}com/example/demo-lib-android/1.0.0/demo-lib-android-1.0.0.module"
+    private val androidJarUrl = "${repo}com/example/demo-lib-android/1.0.0/demo-lib-android-1.0.0-sources.jar"
+    private val plainJarUrl = "${repo}com/example/plain-lib/2.0.0/plain-lib-2.0.0-sources.jar"
 
     private val commonJar = zipBytes(
         mapOf(
@@ -50,6 +75,17 @@ class MavenSourceFetcherTest {
     )
     private val jvmJar = zipBytes(
         mapOf("com/example/Hello.kt" to "package com.example\n\nactual fun hello(): String = \"jvm\"\n"),
+    )
+    private val androidJar = zipBytes(
+        mapOf("com/example/AndroidHello.kt" to "package com.example\n\nactual fun hello(): String = \"android\"\n"),
+    )
+
+    /** demo-lib as a KMP library publishes it: root `.module`, common jar, JVM companion. */
+    private val kmpRoutes = mapOf(
+        rootModuleUrl to fixture("root.module").toByteArray(),
+        commonJarUrl to commonJar,
+        jvmModuleUrl to fixture("jvm.module").toByteArray(),
+        jvmJarUrl to jvmJar,
     )
 
     /** Runs the writers behind [meteredEngine]'s bodies; real threads, so a body really streams. */
@@ -105,9 +141,8 @@ class MavenSourceFetcherTest {
 
     @Test
     fun fallsBackToPlainSourcesJarForOrdinaryJvmLibraries() = runTest {
-        val plain = LibraryCoordinate("com.example", "plain-lib", "2.0.0")
         val engine = mockRepoEngine(
-            mapOf("${repo}com/example/plain-lib/2.0.0/plain-lib-2.0.0-sources.jar" to jvmJar),
+            mapOf(plainJarUrl to jvmJar),
         )
         fetcher(engine).use { fetcher ->
             val result = fetcher.fetch(plain, listOf(repo))
@@ -182,12 +217,12 @@ class MavenSourceFetcherTest {
 
     @Test
     fun rejectsDownloadWhenContentLengthExceedsCap() = runTest {
-        val plain = LibraryCoordinate("com.example", "plain-lib", "2.0.0")
-        val url = "${repo}com/example/plain-lib/2.0.0/plain-lib-2.0.0-sources.jar"
+        // The body itself is tiny: only the declared length is over the cap, so nothing but the
+        // Content-Length check can be what rejects it.
         val engine = MockEngine { request ->
-            if (request.url.toString() == url) {
+            if (request.url.toString() == plainJarUrl) {
                 respond(
-                    content = ByteArray(1_000_000),
+                    content = ByteArray(10),
                     status = HttpStatusCode.OK,
                     headers = headersOf(HttpHeaders.ContentLength, "1000000"),
                 )
@@ -196,17 +231,17 @@ class MavenSourceFetcherTest {
             }
         }
         MavenSourceFetcherImpl(cacheDir = newCacheDir(), engine = engine, maxDownloadBytes = 4096).use { fetcher ->
-            assertFailsWith<DownloadTooLargeException> { fetcher.fetch(plain, listOf(repo)) }
+            val failure = assertFailsWith<DownloadTooLargeException> { fetcher.fetch(plain, listOf(repo)) }
+            assertContains(failure.message.orEmpty(), "declares 1000000 bytes")
         }
     }
 
     @Test
     fun rejectsStreamedDownloadExceedingCapWithoutContentLength() = runTest {
-        val plain = LibraryCoordinate("com.example", "plain-lib", "2.0.0")
         // mockRepoEngine serves a raw channel with no Content-Length, so the cap must be enforced
         // by counting streamed bytes (guards against a lying/absent Content-Length).
         val engine = mockRepoEngine(
-            mapOf("${repo}com/example/plain-lib/2.0.0/plain-lib-2.0.0-sources.jar" to ByteArray(1_000_000)),
+            mapOf(plainJarUrl to ByteArray(1_000_000)),
         )
         MavenSourceFetcherImpl(cacheDir = newCacheDir(), engine = engine, maxDownloadBytes = 4096).use { fetcher ->
             assertFailsWith<DownloadTooLargeException> { fetcher.fetch(plain, listOf(repo)) }
@@ -215,9 +250,8 @@ class MavenSourceFetcherTest {
 
     @Test
     fun stopsReadingAJarBodyOnceItPassesTheCap() = runTest {
-        val plain = LibraryCoordinate("com.example", "plain-lib", "2.0.0")
         val produced = AtomicLong()
-        val engine = meteredEngine("${repo}com/example/plain-lib/2.0.0/plain-lib-2.0.0-sources.jar", produced)
+        val engine = meteredEngine(plainJarUrl, produced)
         MavenSourceFetcherImpl(cacheDir = newCacheDir(), engine = engine, maxDownloadBytes = 4096).use { fetcher ->
             assertFailsWith<DownloadTooLargeException> { fetcher.fetch(plain, listOf(repo)) }
         }
@@ -271,6 +305,232 @@ class MavenSourceFetcherTest {
         }
         assertEquals(emptyList(), engine.requestHistory.map { it.url.toString() })
     }
+
+    @Test
+    fun retriesAServerErrorAndThenSucceeds() = runTest {
+        val jarRequests = AtomicInteger()
+        val engine = engineWith(mapOf(plainJarUrl to jvmJar)) { url ->
+            HttpStatusCode.ServiceUnavailable.takeIf { url == plainJarUrl && jarRequests.incrementAndGet() == 1 }
+        }
+        fetcher(engine).use { fetcher ->
+            val result = fetcher.fetch(plain, listOf(repo))
+
+            assertEquals(listOf("jvm/com/example/Hello.kt"), result.files.map { it.path })
+            assertEquals(2, jarRequests.get(), "the 503 is retried, once")
+        }
+    }
+
+    @Test
+    fun aFailedTargetCachesNothingAndTheNextFetchRetries() = runTest {
+        val cacheDir = newCacheDir()
+        val jvmJarDown = AtomicBoolean(true)
+        val engine = engineWith(kmpRoutes) { url ->
+            HttpStatusCode.ServiceUnavailable.takeIf { url == jvmJarUrl && jvmJarDown.get() }
+        }
+        fetcher(engine, cacheDir).use { fetcher ->
+            // Read as "absent", the 503 would have produced a COMMON-only result and cached it for good.
+            val failure = assertFailsWith<RepositoryUnavailableException> { fetcher.fetch(coordinate, listOf(repo)) }
+            assertEquals(503, failure.status)
+            assertEquals(jvmJarUrl, failure.url)
+            assertEquals(emptyList(), cacheDir.walk().filter { it.isRegularFile() }.toList(), "a failed fetch writes nothing")
+
+            jvmJarDown.set(false)
+            val result = fetcher.fetch(coordinate, listOf(repo))
+
+            assertEquals(listOf(KmpTarget.COMMON, KmpTarget.JVM), result.resolvedTargets)
+        }
+    }
+
+    @Test
+    fun aForbiddenModuleIsReportedNotTakenForAbsent() = runTest {
+        // The filename fallback would find this jar; a 403 must not send the fetch looking for it.
+        val engine = engineWith(mapOf(commonJarUrl to commonJar)) { url ->
+            HttpStatusCode.Forbidden.takeIf { url == rootModuleUrl }
+        }
+        fetcher(engine).use { fetcher ->
+            val failure = assertFailsWith<RepositoryUnavailableException> { fetcher.fetch(coordinate, listOf(repo)) }
+
+            assertEquals(403, failure.status)
+            assertContains(failure.message.orEmpty(), "HTTP 403 for $rootModuleUrl")
+        }
+    }
+
+    @Test
+    fun anUnavailableRepositoryIsSkippedForTheNext() = runTest {
+        val mirror = "https://mirror.test/maven2/"
+        // 429 rather than 503: it is not retried, so the test does not sit out the backoff.
+        val engine = engineWith(mapOf("${mirror}com/example/plain-lib/2.0.0/plain-lib-2.0.0-sources.jar" to jvmJar)) { url ->
+            HttpStatusCode.TooManyRequests.takeIf { url.startsWith(repo) }
+        }
+        fetcher(engine).use { fetcher ->
+            val result = fetcher.fetch(plain, listOf(repo, mirror))
+
+            assertEquals(listOf("jvm/com/example/Hello.kt"), result.files.map { it.path })
+        }
+    }
+
+    @Test
+    fun listVersionsReportsAnUnavailableRepositoryInsteadOfNoVersions() = runTest {
+        val engine = engineWith(emptyMap()) { HttpStatusCode.TooManyRequests }
+        fetcher(engine).use { fetcher ->
+            val failure = assertFailsWith<RepositoryUnavailableException> {
+                fetcher.listVersions("com.example", "demo-lib", listOf(repo))
+            }
+            assertEquals(429, failure.status)
+        }
+    }
+
+    @Test
+    fun prefersJvmSourcesOverAndroidWhenAModulePublishesBoth() = runTest {
+        val engine = mockRepoEngine(
+            kmpRoutes + mapOf(
+                androidModuleUrl to sourcesModule("androidJvm", "demo-lib-android-1.0.0-sources.jar").toByteArray(),
+                androidJarUrl to androidJar,
+            ),
+        )
+        fetcher(engine).use { fetcher ->
+            val result = fetcher.fetch(coordinate, listOf(repo))
+
+            assertEquals(
+                listOf("common/com/example/Common.kt", "jvm/com/example/Hello.kt"),
+                result.files.map { it.path }.sorted(),
+            )
+            assertTrue(engine.requestHistory.none { it.url.toString().contains("demo-lib-android") })
+        }
+    }
+
+    @Test
+    fun takesAndroidSourcesForJvmWhenThereAreNoJvmOnes() = runTest {
+        val androidOnly = """
+            {
+              "formatVersion": "1.1",
+              "variants": [
+                ${sourcesVariant("common", """"files": [ { "name": "demo-lib-1.0.0-sources.jar", "url": "demo-lib-1.0.0-sources.jar" } ]""")},
+                ${sourcesVariant("androidJvm", """"available-at": { "group": "com.example", "module": "demo-lib-android", "version": "1.0.0" }""")}
+              ]
+            }
+        """.trimIndent()
+        val engine = mockRepoEngine(
+            mapOf(
+                rootModuleUrl to androidOnly.toByteArray(),
+                commonJarUrl to commonJar,
+                androidModuleUrl to sourcesModule("androidJvm", "demo-lib-android-1.0.0-sources.jar").toByteArray(),
+                androidJarUrl to androidJar,
+            ),
+        )
+        fetcher(engine).use { fetcher ->
+            val result = fetcher.fetch(coordinate, listOf(repo))
+
+            assertEquals(listOf(KmpTarget.COMMON, KmpTarget.JVM), result.resolvedTargets)
+            assertContains(result.files.map { it.path }, "jvm/com/example/AndroidHello.kt")
+        }
+    }
+
+    @Test
+    fun aMovedCacheIsServedFromWhereItIsNow() = runTest {
+        val root = createTempDirectory("klm-moved-cache").also(tempDirs::add)
+        val before = root.resolve("before")
+        fetcher(mockRepoEngine(kmpRoutes), before).use { it.fetch(coordinate, listOf(repo)) }
+        val after = before.moveTo(root.resolve("after"))
+
+        val offline = mockRepoEngine(emptyMap())
+        fetcher(offline, after).use { fetcher ->
+            val result = fetcher.fetch(coordinate, listOf(repo))
+
+            assertEquals(emptyList(), offline.requestHistory, "served from the marker")
+            assertTrue(Path.of(result.extractedDir).startsWith(after), result.extractedDir)
+            assertTrue(Path.of(result.extractedDir).resolve("jvm/com/example/Hello.kt").exists())
+            assertTrue(result.downloadedJars.all { Path.of(it).startsWith(after) && Path.of(it).exists() })
+        }
+    }
+
+    @Test
+    fun aMarkerWhoseSourcesAreGoneIsAMiss() = runTest {
+        val cacheDir = newCacheDir()
+        val versionDir = cacheDir.resolve("com.example/demo-lib/1.0.0")
+        val engine = mockRepoEngine(kmpRoutes)
+        fetcher(engine, cacheDir).use { fetcher ->
+            val first = fetcher.fetch(coordinate, listOf(repo))
+            Path.of(first.extractedDir).deleteRecursively()
+            versionDir.resolve("fetch-result.json").writeText("{}") // what an older server left
+            val requestsBefore = engine.requestHistory.size
+
+            val second = fetcher.fetch(coordinate, listOf(repo))
+
+            assertTrue(engine.requestHistory.size > requestsBefore, "must refetch")
+            assertEquals(first, second)
+            assertTrue(Path.of(second.extractedDir).resolve("jvm/com/example/Hello.kt").exists())
+            assertFalse(versionDir.resolve("fetch-result.json").exists(), "the pre-v2 marker is cleared")
+            assertEquals(emptyList(), cacheDir.walk().filter { it.name.endsWith(".tmp") }.toList())
+        }
+    }
+
+    @Test
+    fun waitsForAnotherWriterAndTakesWhatItCached() = runBlocking {
+        // What "the other server" caches: a complete fetch of plain-lib, made in a cache of its own.
+        val elsewhere = newCacheDir()
+        fetcher(mockRepoEngine(mapOf(plainJarUrl to jvmJar)), elsewhere).use { it.fetch(plain, listOf(repo)) }
+        val theirs = elsewhere.resolve("com.example/plain-lib/2.0.0")
+
+        val cacheDir = newCacheDir()
+        val versionDir = cacheDir.resolve("com.example/plain-lib/2.0.0").createDirectories()
+        // This server downloads a different jar, so its own result is told apart from theirs.
+        val engine = mockRepoEngine(mapOf(plainJarUrl to zipBytes(mapOf("com/example/Other.kt" to "package com.example\n"))))
+        val held = FileChannel.open(versionDir.resolve(CacheLayout.FETCH_LOCK_FILE), CREATE, WRITE)
+        held.lock()
+        val fetch = async(Dispatchers.IO) { fetcher(engine, cacheDir).use { it.fetch(plain, listOf(repo)) } }
+        try {
+            while (engine.requestHistory.none { it.url.toString() == plainJarUrl }) delay(10)
+            delay(500)
+            assertFalse(fetch.isCompleted, "wrote while another writer held the lock")
+
+            for (name in listOf(CacheLayout.FETCH_RESULT_FILE, CacheLayout.SOURCES_DIR, CacheLayout.JARS_DIR)) {
+                theirs.resolve(name).copyToRecursively(versionDir.resolve(name), followLinks = false)
+            }
+        } finally {
+            held.close()
+        }
+
+        val result = fetch.await()
+
+        assertEquals(listOf("jvm/com/example/Hello.kt"), result.files.map { it.path })
+        assertFalse(versionDir.resolve("sources/jvm/com/example/Other.kt").exists())
+    }
+
+    /**
+     * Like [mockRepoEngine], except [failWith] answers first: a non-null status is returned in place
+     * of the route.
+     */
+    private fun engineWith(routes: Map<String, ByteArray>, failWith: (String) -> HttpStatusCode?): MockEngine =
+        MockEngine { request ->
+            val url = request.url.toString()
+            val failure = failWith(url)
+            val body = routes[url]
+            when {
+                failure != null -> respondError(failure)
+                body != null -> respond(ByteReadChannel(body), HttpStatusCode.OK)
+                else -> respondError(HttpStatusCode.NotFound)
+            }
+        }
+
+    /** A sources variant for KMP platform [platform]; [location] is its `files` or `available-at` member. */
+    private fun sourcesVariant(platform: String, location: String): String = """
+        {
+          "name": "${platform}SourcesElements",
+          "attributes": {
+            "org.gradle.category": "documentation",
+            "org.gradle.docstype": "sources",
+            "org.jetbrains.kotlin.platform.type": "$platform"
+          },
+          $location
+        }
+    """.trimIndent()
+
+    /** A `.module` with one sources variant for [platform], whose jar [fileName] sits beside it. */
+    private fun sourcesModule(platform: String, fileName: String): String =
+        """{ "formatVersion": "1.1", "variants": [ ${
+            sourcesVariant(platform, """"files": [ { "name": "$fileName", "url": "$fileName" } ]""")
+        } ] }"""
 
     /** A sources-only `.module` whose single file is declared under [fileName] and served as `escape.jar`. */
     private fun moduleNamingFile(fileName: String): String = """

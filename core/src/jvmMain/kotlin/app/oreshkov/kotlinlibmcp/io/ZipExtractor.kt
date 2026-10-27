@@ -9,7 +9,9 @@ import kotlin.io.path.inputStream
 import kotlin.io.path.invariantSeparatorsPathString
 import kotlin.io.path.outputStream
 import kotlin.io.path.relativeTo
+import kotlin.coroutines.CoroutineContext
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 
 /** Thrown when an archive is rejected (path traversal, entry/size limits) or unreadable. */
@@ -29,6 +31,10 @@ public class ZipExtractor(
     /**
      * Extracts [archive] into [targetDir] (created if absent) and returns the extracted files'
      * paths relative to [targetDir], `/`-separated.
+     *
+     * Cancellable: every copied chunk checks for cancellation, so a withdrawn fetch stops writing
+     * within one buffer instead of finishing the archive (up to [maxTotalBytes]) on an IO thread
+     * nobody is waiting for, while the caller's fetch gate stays held.
      *
      * @throws ZipExtractionException on a traversal attempt or when limits are exceeded.
      */
@@ -57,7 +63,7 @@ public class ZipExtractor(
                         dest.parent?.createDirectories()
                         // Enforce the byte budget *during* the copy: a single highly-compressed
                         // entry must not stream in full before the cap is checked (zip-bomb).
-                        dest.outputStream().use { out -> totalBytes += copyBounded(zip, out, totalBytes, archive) }
+                        dest.outputStream().use { out -> totalBytes += copyBounded(zip, out, totalBytes, archive, coroutineContext) }
                         extracted += dest.relativeTo(root).invariantSeparatorsPathString
                     }
                     zip.closeEntry()
@@ -72,10 +78,19 @@ public class ZipExtractor(
      * ([alreadyWritten] + bytes copied here) would exceed [maxTotalBytes] — before the offending
      * chunk is written, so an over-budget entry never fully lands on disk. Returns bytes written.
      */
-    private fun copyBounded(source: InputStream, target: OutputStream, alreadyWritten: Long, archive: Path): Long {
+    private fun copyBounded(
+        source: InputStream,
+        target: OutputStream,
+        alreadyWritten: Long,
+        archive: Path,
+        context: CoroutineContext,
+    ): Long {
         val buffer = ByteArray(COPY_BUFFER_BYTES)
         var written = 0L
         while (true) {
+            // Per chunk, not per entry: one entry may be hundreds of MB (it only has to fit
+            // maxTotalBytes). Every file entry, even an empty one, passes here at least once.
+            context.ensureActive()
             val read = source.read(buffer)
             if (read < 0) break
             if (alreadyWritten + written + read > maxTotalBytes) {

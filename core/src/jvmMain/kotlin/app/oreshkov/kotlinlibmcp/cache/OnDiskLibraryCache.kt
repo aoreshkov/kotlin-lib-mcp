@@ -3,6 +3,7 @@
 package app.oreshkov.kotlinlibmcp.cache
 
 import app.oreshkov.kotlinlibmcp.core.LibraryCache
+import app.oreshkov.kotlinlibmcp.io.writeTextAtomically
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.model.LibraryIndex
 import co.touchlab.kermit.Logger
@@ -17,7 +18,6 @@ import kotlin.io.path.isDirectory
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.name
 import kotlin.io.path.readText
-import kotlin.io.path.writeText
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.json.Json
@@ -25,12 +25,25 @@ import kotlinx.serialization.json.Json
 /**
  * Shared on-disk layout under the cache root, used by both the cache and the fetcher so a
  * fetch lands directly in its cached location:
- * `<root>/<group>/<artifact>/<version>/{sources/{common,jvm}/, jars/, fetch-result.json, index-v3.json}`.
+ * `<root>/<group>/<artifact>/<version>/{sources/{common,jvm}/, jars/, fetch-result-v2.json, index-v3.json, .fetch.lock}`.
  * Group dirs keep their dots (`io.ktor`) so the tree stays a fixed three levels deep and
  * human-browsable (the Phase 08 dashboard lists it).
+ *
+ * The root is shared by every server process on the machine, so each file is written atomically
+ * (`writeAtomically`), and a fetch writes under [FETCH_LOCK_FILE].
  */
 internal object CacheLayout {
-    const val FETCH_RESULT_FILE: String = "fetch-result.json"
+    /**
+     * The fetcher's marker: a fetch whose sources are extracted. v2 holds no paths; the first
+     * format stored absolute ones and trusted them on a hit, so a moved cache read from the old
+     * root forever. The new name makes those markers a miss, and the fetcher deletes the
+     * [LEGACY_FETCH_RESULT_FILE] it replaces.
+     */
+    const val FETCH_RESULT_FILE: String = "fetch-result-v2.json"
+    const val LEGACY_FETCH_RESULT_FILE: String = "fetch-result.json"
+
+    /** Locked while a fetch writes into the version directory; never deleted, since that races. */
+    const val FETCH_LOCK_FILE: String = ".fetch.lock"
 
     /**
      * The parsed index. Its name carries a generation number because the file holds rendered
@@ -75,8 +88,8 @@ public class OnDiskLibraryCache(
 
     override suspend fun putIndex(index: LibraryIndex): Unit =
         withContext(Dispatchers.IO) {
-            val dir = CacheLayout.versionDir(root, index.coordinate).createDirectories()
-            dir.resolve(CacheLayout.INDEX_FILE).writeText(json.encodeToString(index))
+            CacheLayout.versionDir(root, index.coordinate).resolve(CacheLayout.INDEX_FILE)
+                .writeTextAtomically(json.encodeToString(index))
         }
 
     override suspend fun putSources(coordinate: LibraryCoordinate, extractedDir: String): Unit =
