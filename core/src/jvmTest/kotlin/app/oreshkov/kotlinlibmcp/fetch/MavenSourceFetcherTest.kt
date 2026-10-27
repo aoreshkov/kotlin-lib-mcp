@@ -397,13 +397,15 @@ class MavenSourceFetcherTest {
     }
 
     private companion object {
-        const val METERED_BODY_BYTES: Long = 32L * 1024 * 1024
+        const val METERED_BODY_BYTES: Long = 64L * 1024 * 1024
 
         /**
-         * What a capped read may pull before it stops: the cap, one 64 KB read chunk, and the ~1 MB
-         * a Ktor channel lets a writer run ahead. Far below [METERED_BODY_BYTES], which is what a
-         * buffered read takes.
+         * What the producer may hand over before a capped read stops it. The read itself stops
+         * within one 64 KB chunk of the cap, and Ktor's cleanup cancels the body rather than draining
+         * it. But the writer keeps filling the channel buffers between it and the reader until that
+         * cancel lands, and how far it gets is thread timing: 4.5 MB on a Windows CI runner. A
+         * buffered read takes all of [METERED_BODY_BYTES], so the margin both ways stays wide.
          */
-        const val READ_AHEAD_ALLOWANCE: Long = 4L * 1024 * 1024
+        const val READ_AHEAD_ALLOWANCE: Long = 16L * 1024 * 1024
     }
 }
