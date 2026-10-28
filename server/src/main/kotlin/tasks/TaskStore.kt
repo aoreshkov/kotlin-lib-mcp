@@ -249,6 +249,10 @@ class TaskContext internal constructor(
  * Persistence is per-process-tree, not shared: a second replica reading a different directory
  * cannot answer `tasks/get` for a task this one started. Multi-replica needs shared storage *and* a
  * real authorization context, neither of which this server has.
+ *
+ * Several servers *may* share one directory (every stdio session launches its own, on the default
+ * cache dir), but they do not share tasks: each restores only records whose server has gone, and
+ * leaves a live one's alone. [TaskRecordStore] says how it tells them apart.
  */
 class TaskStore(
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
@@ -276,7 +280,7 @@ class TaskStore(
         val cutoff = now()
         var recovered = 0
         var interrupted = 0
-        for (persisted in store.loadAll()) {
+        for (persisted in store.loadRecoverable()) {
             val createdAt = runCatchingCancellable { Instant.parse(persisted.createdAt) }.getOrNull()
             if (createdAt == null || createdAt.plusMillis(persisted.ttlMs) < cutoff) {
                 store.delete(persisted.taskId)
@@ -484,6 +488,8 @@ class TaskStore(
         }
         scope.cancel()
         records.clear()
+        // Last: every record is final on disk, so a server sharing the directory may now recover them.
+        recordStore?.close()
     }
 
     // --- internals ---

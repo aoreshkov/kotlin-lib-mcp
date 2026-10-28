@@ -7,9 +7,11 @@ import io.modelcontextprotocol.kotlin.sdk.types.TaskStatus
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import java.nio.file.Path
 import java.time.Instant
+import java.util.UUID
 import java.util.concurrent.CountDownLatch
 import kotlin.concurrent.thread
 import kotlin.io.path.createTempDirectory
+import kotlin.io.path.exists
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.writeText
 import kotlin.test.AfterTest
@@ -17,11 +19,14 @@ import kotlin.test.Test
 import kotlin.test.assertContains
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
+import kotlin.test.fail
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
 
 /**
@@ -56,11 +61,15 @@ class TaskPersistenceTest {
     private fun tempDir(): Path = createTempDirectory("task-store-test").also { dirs.add(it) }
 
     /** A store writing into [dir], as `McpServerFactory` builds it. */
-    private fun store(dir: Path, now: () -> Instant = Instant::now): TaskStore =
+    private fun store(
+        dir: Path,
+        recordStore: TaskRecordStore = TaskRecordStore(dir),
+        now: () -> Instant = Instant::now,
+    ): TaskStore =
         TaskStore(
             scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
             now = now,
-            recordStore = TaskRecordStore(dir),
+            recordStore = recordStore,
         ).also { stores.add(it) }
 
     private fun ok(text: String = "done") = CallToolResult(content = listOf(TextContent(text)))
@@ -108,7 +117,8 @@ class TaskPersistenceTest {
     fun aTaskInterruptedByACrashComesBackFailed(): Unit = runBlocking {
         val dir = tempDir()
         val never = CompletableDeferred<Unit>()
-        val first = store(dir)
+        val firstDisk = TaskRecordStore(dir)
+        val first = store(dir, recordStore = firstDisk)
         // `start` persists before the body runs, so the record is on disk while still `working`.
         val started = first.start(alice, job { never.await(); ok() })
         assertEquals(TaskStatus.Working, first.get(alice, started.taskId).status)
@@ -118,6 +128,9 @@ class TaskPersistenceTest {
         // block until the TTL expired on a task that cannot complete. `first` is deliberately left
         // open — closing it is what a *graceful* shutdown does, and it writes a terminal state
         // (see [aGracefulShutdownFailsInFlightTasksOnDisk]); `cleanUp` closes it after the asserts.
+        // Only its lock goes, as the OS drops a dead process's locks: a held one marks a live server
+        // (see [aServerInAnotherProcessKeepsItsTasksUntilItDies]).
+        firstDisk.close()
         val second = store(dir)
         val restored = second.get(alice, started.taskId)
         assertEquals(TaskStatus.Failed, restored.status)
@@ -146,6 +159,64 @@ class TaskPersistenceTest {
         assertEquals(TaskStatus.Failed, restored.status)
         assertContains(restored.statusMessage.orEmpty(), "shut down")
         assertFailsWith<TaskNotReadyException> { second.payload(alice, started.taskId) }
+    }
+
+    @Test
+    fun aServerSharingTheDirectoryLeavesALiveServersTasksAlone(): Unit = runBlocking {
+        // Every stdio session launches its own server on the default cache dir, so a second one
+        // starting must not take the first one's running task for a crash survivor.
+        val dir = tempDir()
+        val never = CompletableDeferred<Unit>()
+        val firstDisk = TaskRecordStore(dir)
+        val first = store(dir, recordStore = firstDisk)
+        val running = first.start(alice, job { never.await(); ok("finished later") })
+        val inFlight = dir.resolve("${firstDisk.instance}.${running.taskId}.1.json.tmp").apply { writeText("{") }
+        val abandoned = dir.resolve("${UUID.randomUUID()}.${running.taskId}.2.json.tmp").apply { writeText("{") }
+
+        val second = store(dir)
+        assertFailsWith<UnknownTaskException> { second.get(alice, running.taskId) }
+        assertEquals(TaskStatus.Working, TaskRecordStore(dir).loadAll().single().status)
+        assertTrue(inFlight.exists(), "a live server's save in flight was swept")
+        assertFalse(abandoned.exists(), "a gone server's temp file was left behind")
+
+        // And the first server's own saves still land.
+        never.complete(Unit)
+        first.payload(alice, running.taskId)
+        assertEquals(TaskStatus.Completed, TaskRecordStore(dir).loadAll().single().status)
+    }
+
+    /**
+     * The same, across a real process boundary, where the lock answers differently than inside
+     * one JVM (`tryLock` returns `null` instead of throwing) and a crash is a kill, not a call: the
+     * child server holds a running task until it is killed, then a new server must recover it.
+     */
+    @Test
+    fun aServerInAnotherProcessKeepsItsTasksUntilItDies(): Unit = runBlocking {
+        val dir = tempDir()
+        val java = ProcessHandle.current().info().command().orElseThrow()
+        val other = ProcessBuilder(
+            java, "-cp", System.getProperty("java.class.path"), SharedDirectoryServer::class.java.name, "$dir",
+        ).redirectError(ProcessBuilder.Redirect.INHERIT).start()
+        try {
+            val taskId = other.inputReader().lineSequence().firstOrNull { UUID_LINE.matches(it) }
+                ?: fail("the other server exited without starting a task")
+            val instance = TaskRecordStore(dir).loadAll().single().instance
+            val inFlight = dir.resolve("$instance.$taskId.1.json.tmp").apply { writeText("{") }
+
+            val alongside = store(dir)
+            assertFailsWith<UnknownTaskException> { alongside.get(alice, taskId) }
+            assertEquals(TaskStatus.Working, TaskRecordStore(dir).loadAll().single().status)
+            assertTrue(inFlight.exists(), "a live server's save in flight was swept")
+
+            other.destroyForcibly().waitFor() // a crash: the OS drops the dead server's lock
+            val restarted = store(dir).get(alice, taskId)
+            assertEquals(TaskStatus.Failed, restarted.status)
+            assertContains(restarted.statusMessage.orEmpty(), "restart")
+            assertFalse(inFlight.exists(), "a crashed server's temp file was left behind")
+            assertFalse(dir.resolve("$instance.lock").exists(), "a crashed server's lock file was left behind")
+        } finally {
+            other.destroyForcibly().waitFor()
+        }
     }
 
     @Test
@@ -280,5 +351,27 @@ class TaskPersistenceTest {
         // The dashboard and every pre-existing test build the store this way; it must stay purely
         // in memory rather than quietly writing to the default cache root.
         assertTrue(dir.listDirectoryEntries().isEmpty())
+    }
+
+    private companion object {
+        val UUID_LINE = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+    }
+}
+
+/**
+ * The other server in [TaskPersistenceTest.aServerInAnotherProcessKeepsItsTasksUntilItDies]: run in
+ * its own JVM over the directory in `args[0]`, it starts one task that never finishes, prints its
+ * id, and waits to be killed.
+ */
+internal object SharedDirectoryServer {
+    @JvmStatic
+    fun main(args: Array<String>) {
+        val store = TaskStore(recordStore = TaskRecordStore(Path.of(args[0])))
+        val started = runBlocking {
+            store.start("other-server", TaskRun("fetch_library", TaskMetadata(ttl = 600_000)) { awaitCancellation() })
+        }
+        println(started.taskId)
+        System.out.flush()
+        Thread.sleep(Long.MAX_VALUE)
     }
 }

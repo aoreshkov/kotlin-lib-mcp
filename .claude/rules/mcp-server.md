@@ -164,7 +164,8 @@ For the same reason **`close()` writes the terminal state itself**, marking ever
 possibly after the JVM exited — so the same task came back `cancelled` or `failed` depending on
 thread timing (a real CI flake). `TaskPersistenceTest` pins both halves: the graceful path through
 `close()`, and the crash path (a record left `working` on disk, no `close()`) through `restore()`;
-neither test may simulate a crash by calling `close()`. A record that is already terminal but whose
+neither test may simulate a crash by calling `TaskStore.close()` (the crash test closes only the
+`TaskRecordStore`, which drops the lock as the OS would). A record that is already terminal but whose
 write is still in flight on the job's thread gets written by `close()` too (`!finished.isCompleted`),
 so `close()` never returns ahead of a state another thread decided.
 
@@ -179,6 +180,16 @@ record are serialized by `TaskRecord.writeLock`, with the snapshot taken *inside
 save always carries the latest state. The job catches `Throwable`, records `failed`, then re-throws
 only a fatal `VirtualMachineError` (not `StackOverflowError`). `TaskStoreRaceTest` races all of this
 on real threads, and each of its tests has been seen to fail with its guard removed.
+
+**Several live servers share one `tasks/` directory** — every stdio session launches its own on the
+default cache dir — so "a previous process" means *a server that is gone*, never just "a record I did
+not write". Each `TaskRecordStore` stamps its `instance` id on every record and temp file and holds an
+OS `FileChannel` lock on `<instance>.lock` while open (claimed on first save, released by
+`TaskStore.close()` *after* the final writes). `restore()` reads `loadRecoverable()`, not `loadAll()`,
+and `sweepTempFiles()` skips a live instance's files: failing a live server's `working` record or
+deleting its in-flight temp breaks a task that is still running. Inside one JVM a held lock throws
+`OverlappingFileLockException` instead of returning `null`, and both mean *live*; the two paths are
+pinned separately, the cross-process one by a test that kills a child JVM.
 
 **Dispatch concurrency is the SDK's job now (0.15.0):** `Protocol` launches inbound requests and
 notifications on a per-connection handler scope once `notifications/initialized` has arrived,
