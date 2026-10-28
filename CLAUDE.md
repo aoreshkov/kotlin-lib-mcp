@@ -59,7 +59,7 @@ changes are also checked by CI's `conformance` job — the official MCP conforma
 ## Tech stack (versions live ONLY in `gradle/libs.versions.toml`)
 
 - JDK **25** (Gradle toolchain, `jdk` in the catalog; CI `setup-java` and the Docker base image match)
-- Kotlin **2.4.x** · MCP `io.modelcontextprotocol:kotlin-sdk-server:0.15.0` · Ktor **3.5.x**
+- Kotlin **2.4.x** · MCP `io.modelcontextprotocol:kotlin-sdk-server:0.16.0` · Ktor **3.5.x**
 - kotlinx-serialization-json · kotlinx-coroutines
 - Source parsing: Kotlin **Analysis API (standalone mode)** — must be version-matched to Kotlin
 - Compose Multiplatform (Desktop)
@@ -175,9 +175,10 @@ place so a rename is a single edit.
 We target **2025-11-25**, because that is what the Kotlin SDK declares
 (`LATEST_PROTOCOL_VERSION`). Spec revision **2026-07-28** is stable, but the SDK has released none
 of it on the wire: as of **2026-10-28** the newest release is 0.16.0 (2026-10-27), which still
-declares 2025-11-25 and adds only experimental, unused SEP-2575 discovery types. This repo is still
-on 0.15.0; 0.16.0 changes `mcpStreamableHttp`'s signature (idle-session expiry, `maxSessions`), so
-it is a bump of its own. Work has started upstream — the stateless lifecycle is an open PR
+declares 2025-11-25 and adds only experimental, unused SEP-2575 discovery types. This repo is on
+0.16.0, whose one decision for us is HTTP idle-session expiry: `SESSION_IDLE_TIMEOUT` in
+`transport/HttpTransport.kt` is tied to the task TTL ceiling, because tasks are session-owned.
+Work has started upstream — the stateless lifecycle is an open PR
 (`modelcontextprotocol/kotlin-sdk#985`) — and the SDK's milestones set the order: **0.17.0** puts
 2026-07-28 on the wire (per-request `_meta` envelope, `subscriptions/listen`, SEP-2243 headers),
 **0.18.0** brings MRTR, **0.20.0** moves the Ktor integration (`mcpStreamableHttp`) into a separate

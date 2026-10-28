@@ -144,7 +144,10 @@ the sweep from the shortcut; keep it green.
 **Tasks are owned by a session.** One `TaskStore` serves every session, so every client-facing
 operation takes the caller's `sessionId` as `owner` and filters by it — `dispatchToolCall` takes it
 from `ClientConnection.sessionId`, the `tasks/…` handlers from `ServerSession.sessionId`, and they
-are the same id by construction. A `taskId` belonging to another session raises the *same*
+are the same id by construction. Since kotlin-sdk 0.16.0 an idle HTTP session *expires*, which
+strands its tasks, so `SESSION_IDLE_TIMEOUT` (`HttpTransport.kt`) must never drop below
+`MAX_TTL_MS` — raise the TTL ceiling and the timeout follows; `HttpSessionLifetimeTest` pins it.
+A `taskId` belonging to another session raises the *same*
 `UnknownTaskException` as one that never existed; keep it that way, or the error becomes an oracle
 for other sessions' ids. This is invisible with a single stdio client and load-bearing on HTTP,
 where `mcpStreamableHttp` creates a session per connection and `tasks/result` returns whole tool
