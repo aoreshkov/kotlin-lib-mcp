@@ -168,8 +168,8 @@ class CliTest {
      * The engine stops in `runHttpServer`'s `finally`, *before* `close()`, so a closed port alone
      * would not show that `close()` ran. A task still in flight does: `close()` is what writes it to
      * disk as `failed`. Its `fetch_library` points at a repository that accepts the connection and
-     * never answers, so the task is certain to be running when the interrupt comes, without the
-     * test touching the network.
+     * never answers, and is the only repository searched (`--no-maven-central`), so the task is
+     * certain to be running when the interrupt comes, without the test touching the network.
      */
     @Test
     fun interruptReturnsOnlyOnceTheServerHasClosed() {
@@ -181,7 +181,7 @@ class CliTest {
             val program = thread(name = "cli-test-server") {
                 result = Cli.program(::serve).record(
                     "--transport", "http", "--port", "$port", "--cache-dir", "$cacheDir", "--tasks",
-                    "--repo", "http://127.0.0.1:${silentRepo.localPort}/",
+                    "--repo", "http://127.0.0.1:${silentRepo.localPort}/", "--no-maven-central",
                     io = io,
                 )
             }
