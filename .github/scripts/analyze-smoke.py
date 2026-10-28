@@ -11,7 +11,8 @@ resolution), so this drives the shipped server over MCP the way a client does:
 1. fetch_library on a real artifact from Maven Central (download, extract, analyze, cache);
 2. get_api_signature on a declaration whose rendering proves the type was *resolved* — a
    fully-qualified `kotlin.Boolean`, not the `bestEffort` text fallback's bare `Boolean`;
-3. close stdin and require the process to exit by itself, as MCP's stdio shutdown expects.
+3. close stdin and require the process to exit by itself, as MCP's stdio shutdown expects, with
+   nothing but protocol frames on stdout up to the very end.
 
 Server stderr passes through to this script's stderr, so a failure shows the server's own log.
 """
@@ -55,7 +56,8 @@ def main() -> None:
                     responses[message["id"]] = message
                     arrived.notify_all()
 
-    threading.Thread(target=read_stdout, daemon=True).start()
+    reader = threading.Thread(target=read_stdout, daemon=True)
+    reader.start()
 
     def send(message: dict) -> None:
         server.stdin.write(json.dumps(message) + "\n")
@@ -106,6 +108,13 @@ def main() -> None:
         fail(f"the server did not exit within {EXIT_TIMEOUT_S}s of its stdin closing")
     if code != 0:
         fail(f"the server exited with status {code}")
+    # Whatever the server wrote while shutting down is checked too, so drain stdout to its end
+    # first: a stray line printed after the last response corrupts a real client just the same.
+    reader.join(EXIT_TIMEOUT_S)
+    if reader.is_alive():
+        fail(f"stdout stayed open {EXIT_TIMEOUT_S}s after the server exited")
+    if "corrupt" in responses:
+        fail(f"non-JSON-RPC output on stdout: {responses['corrupt']!r}")
     print("OK: analyzed a real library and exited cleanly when the client disconnected")
 
 

@@ -13,7 +13,7 @@ LABEL org.opencontainers.image.source="https://github.com/aoreshkov/kotlin-lib-m
 # The cache directory must exist *and* be owned by `mcp` before the VOLUME below: Docker
 # seeds a fresh volume from the image's directory, permissions included, but auto-creates
 # the mount point root-owned when the path is missing — which would leave the non-root
-# process unable to write its own cache. Guarded by the docker-smoke CI job.
+# process unable to write its own cache. Guarded by .github/scripts/image-smoke.sh.
 RUN useradd --create-home mcp \
  && install -d -o mcp -g mcp /home/mcp/.cache
 USER mcp
