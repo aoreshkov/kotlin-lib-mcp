@@ -7,10 +7,14 @@ argument-hint: "[new version, e.g. 0.3.0]"
 
 # Cut a release
 
-The release workflow (`.github/workflows/release.yml`) is triggered by a `v*` tag and its
-**first step is a hard version-match guard**: if the tag doesn't match the version in both
-source-of-truth files, the whole release (GitHub release + GHCR image + MCP registry
-publish) fails. This skill makes the two files agree *before* the tag is pushed.
+The release workflow (`.github/workflows/release.yml`) is triggered by a `v*` tag. Its first
+job, `verify`, is the gate: a **hard version-match guard** (the tag must match the version in
+both source-of-truth files), then `./gradlew build`, then a real fetch-and-analyze session on
+the release distribution through the plugin launcher. Both publishing jobs, `github-release`
+(the zip) and `docker` (GHCR), have `needs: [verify]`, and `publish-mcp-registry` needs both, so
+a failure there publishes nothing. `docker` also runs `.github/scripts/image-smoke.sh` on a
+locally loaded image before it pushes any tag. This skill makes the two files agree *before*
+the tag is pushed.
 
 > The advertised MCP `Implementation` version is **not** a third file to bump: it is
 > build-derived from `gradle.properties` (`server/build.gradle.kts` bakes `project.version`
@@ -34,7 +38,7 @@ The tag guard checks these exact patterns (keep the formatting identical):
    Note: the workflow later also rewrites `server.json` `.version` and `.packages[0].identifier`
    from the tag, but the guard still requires the committed value to match, so set it here.
 
-Miss either and the release job aborts at the guard step. Grep to confirm both:
+Miss either and `verify` fails at the guard step, before anything is published. Grep to confirm both:
 
 ```
 grep -n "version=" gradle.properties
@@ -80,8 +84,8 @@ echo "guard OK" || echo "guard WOULD FAIL"
 ## 6. Commit and (on explicit request) tag
 
 Commit the version bump + changelog. **Only if the user explicitly asks**, create and push the
-`v<VERSION>` tag — pushing the tag triggers the live release, GHCR push, and MCP registry
-publish. Otherwise stop after the commit and report that the tag is ready to push.
+`v<VERSION>` tag — pushing the tag triggers `verify` and then the live release, GHCR push, and
+MCP registry publish. Otherwise stop after the commit and report that the tag is ready to push.
 
 Use an **annotated** tag so the release carries a message and a tagger date
 (`git tag -a v<VERSION> -m "Release v<VERSION>"`), not a lightweight tag. Never re-point or

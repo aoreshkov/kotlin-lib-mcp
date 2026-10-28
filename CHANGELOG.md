@@ -94,6 +94,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   collapsed before paging, keeping the same copy `diff_api` reports; real overloads stay.
 - **A name ending in "by" keeps its last two letters** in a signature read without type
   resolution: `class Lobby` read as `class Lob`.
+- **A release publishes nothing until it has passed its checks.** The GHCR image was built and
+  pushed alongside the job that ran the tests and the tag/version check, so a tag on a failing
+  commit, or one that did not match the project version, still published `latest`. Now the zip and
+  the image both wait for a job that runs the version check, the build and tests, and a real
+  library analysis through the plugin launcher. The image also passes CI's image smoke test, run on
+  a locally loaded build, before any tag is pushed.
 
 ### Changed
 - **The cache index moves to `index-v4.json`.** Libraries cached by an earlier version are analyzed
