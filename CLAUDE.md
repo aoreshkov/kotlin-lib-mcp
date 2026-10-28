@@ -136,7 +136,9 @@ via `Protocol.setRequestHandler`; the non-task path must stay identical to the S
 and **owned by the session that created them**, so on HTTP each connection sees only its own. A
 record recovered after a restart is *orphaned* — its session is gone, so it is reachable by exact
 `taskId` from any caller but never returned by `tasks/list`; that split is the spec's model for a
-server with no authorization context, and the reasoning is in the `TaskStore` KDoc. A task still
+server with no authorization context, and the reasoning is in the `TaskStore` KDoc. Several live
+servers may share `<cacheDir>/tasks` (one per stdio session); each recovers only the records of a
+server that is *gone*, told apart by a per-instance OS file lock (`TaskRecordStore` KDoc). A task still
 running at shutdown ends up `failed` either way: `close()` marks and persists it on the calling
 thread before cancelling the scope, and `restore()` maps a record a *crash* left `working` (so
 `close()` never ran) the same way — leaving that to the cancelled job would race both the restart

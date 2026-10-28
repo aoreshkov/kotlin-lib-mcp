@@ -5,10 +5,17 @@ import co.touchlab.kermit.Logger
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
 import io.modelcontextprotocol.kotlin.sdk.types.McpJson
 import io.modelcontextprotocol.kotlin.sdk.types.TaskStatus
+import java.io.Closeable
+import java.nio.channels.FileChannel
+import java.nio.channels.OverlappingFileLockException
 import java.nio.file.AtomicMoveNotSupportedException
 import java.nio.file.Files
+import java.nio.file.NoSuchFileException
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
+import java.nio.file.StandardOpenOption.CREATE
+import java.nio.file.StandardOpenOption.WRITE
+import java.util.UUID
 import kotlin.io.path.createDirectories
 import kotlin.io.path.deleteIfExists
 import kotlin.io.path.exists
@@ -44,6 +51,11 @@ internal data class PersistedTask(
     val lastUpdatedAt: String = "",
     val ttlMs: Long = 0,
     val result: JsonElement? = null,
+    /**
+     * [TaskRecordStore.instance] of the server that last wrote this record. Empty in a file written
+     * before records were stamped, which reads as a server that is gone.
+     */
+    val instance: String = "",
 )
 
 /**
@@ -58,14 +70,100 @@ internal data class PersistedTask(
  * **Corruption degrades to a miss**, as in the library cache: a file that will not parse is logged
  * and skipped, never fatal. A task record is not worth failing a server start over.
  *
+ * ### Several servers, one directory
+ *
+ * Every Claude Code session launches its own stdio server, and they all default to the same cache
+ * directory, so with `--tasks` several live servers can share [dir]. Each must recover only what a
+ * server that is *gone* left behind: failing another live server's `working` record, or sweeping
+ * its in-flight temp file, breaks a task that is still running.
+ *
+ * So each store has an [instance] id, stamped on every record and temp file it writes, and holds an
+ * exclusive OS lock on `<instance>.lock` from [claim] until [close] — the same `FileChannel` lock
+ * core's fetcher takes on a version directory. The OS drops the lock when the process dies, however
+ * it dies, so a crashed server reads as gone the moment it is, with no heartbeat or timeout to
+ * tune. [loadRecoverable] and [sweepTempFiles] skip whatever a live instance owns.
+ *
+ * A recovering server adopts a dead server's interrupted record by saving it, which re-stamps it;
+ * its finished records keep the dead id, so every server started later can still reach them by id.
+ *
  * All IO is caller-scheduled — [TaskStore] calls these off its own scope on [kotlinx.coroutines.Dispatchers.IO].
  *
  * `open` so a test can hold a [save] in flight: that is the only way to open, on demand, the window
  * between a task turning terminal in memory and reaching disk, which `TaskStore.close` must wait out.
  */
-open class TaskRecordStore(private val dir: Path) {
+open class TaskRecordStore(private val dir: Path) : Closeable {
 
     private val log = Logger.withTag("TaskRecordStore")
+
+    /** This server's id among those sharing [dir]; random, so never reused by a later server. */
+    internal val instance: String = UUID.randomUUID().toString()
+
+    /** Holds the lock on [instance]'s lock file while open; closing it releases the lock. */
+    private var lock: FileChannel? = null
+    private var closed = false
+
+    /**
+     * Tells every server sharing [dir] that this one is alive, by locking `<instance>.lock` until
+     * [close]. [save] calls it before every write, so a record is never stamped by an instance that
+     * has not claimed; it is idempotent, and a no-op once closed.
+     *
+     * A filesystem that cannot lock leaves this server looking gone to the others, which then
+     * recover its records as every server did before instances existed. That is logged, not fatal.
+     */
+    @Synchronized
+    private fun claim() {
+        if (lock != null || closed) return
+        runCatchingCancellable {
+            dir.createDirectories()
+            val channel = FileChannel.open(lockFile(instance), CREATE, WRITE)
+            // A fresh random name, so nobody else can hold it; null would mean locking is broken.
+            if (channel.tryLock() == null) channel.close() else lock = channel
+        }.onFailure { log.w(it) { "Could not lock $dir; a server sharing it may recover this one's tasks" } }
+    }
+
+    /** Releases the claim: from here on this server reads as gone, so its records are recoverable. */
+    @Synchronized
+    override fun close() {
+        closed = true
+        val channel = lock ?: return
+        lock = null
+        runCatchingCancellable {
+            channel.close()
+            lockFile(instance).deleteIfExists()
+        }.onFailure { log.d(it) { "Could not remove this server's lock file under $dir" } }
+    }
+
+    /**
+     * Whether the server stamped [other] is still running: its lock file exists and is locked.
+     *
+     * A lock this JVM holds throws [OverlappingFileLockException] rather than returning `null`;
+     * that is another store in this process, and just as live. A lock file nobody holds is a
+     * crashed server's, and is removed here. Anything that is not a well-formed id (an unstamped or
+     * pre-instance record, a legacy temp file named after its task, a tampered field) reads as gone
+     * without touching the filesystem, so a record cannot point this at an arbitrary path.
+     */
+    private fun isLive(other: String): Boolean {
+        if (other == instance) return true
+        if (!INSTANCE_ID.matches(other)) return false
+        val file = lockFile(other)
+        return runCatchingCancellable {
+            val channel = try {
+                FileChannel.open(file, WRITE)
+            } catch (_: NoSuchFileException) {
+                return@runCatchingCancellable false
+            }
+            val acquired = channel.use {
+                try {
+                    it.tryLock() != null // released again as the channel closes
+                } catch (_: OverlappingFileLockException) {
+                    false
+                }
+            }
+            if (acquired) file.deleteIfExists()
+            !acquired
+        }.onFailure { log.d(it) { "Could not tell whether server $other is running; treating it as gone" } }
+            .getOrDefault(false)
+    }
 
     /**
      * Writes [record], replacing any previous version.
@@ -81,12 +179,14 @@ open class TaskRecordStore(private val dir: Path) {
      * serializes the saves of one task, so this is the second of two guards, not the only one.
      */
     internal open fun save(record: PersistedTask) {
+        claim()
         runCatchingCancellable {
             dir.createDirectories()
             val target = fileFor(record.taskId)
-            val temp = Files.createTempFile(dir, "${record.taskId}.", ".json.tmp")
+            // Named for this instance first, so [sweepTempFiles] can tell whose it is.
+            val temp = Files.createTempFile(dir, "$instance.${record.taskId}.", ".json.tmp")
             try {
-                temp.writeText(McpJson.encodeToString(record))
+                temp.writeText(McpJson.encodeToString(record.copy(instance = instance)))
                 try {
                     Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
                 } catch (e: AtomicMoveNotSupportedException) {
@@ -104,7 +204,16 @@ open class TaskRecordStore(private val dir: Path) {
         }
     }
 
-    /** Every readable record on disk. Unparseable files are dropped, not raised. */
+    /**
+     * The records no running server owns: what a starting server may restore, fail and expire. See
+     * the class KDoc. Each other instance is checked once.
+     */
+    internal fun loadRecoverable(): List<PersistedTask> {
+        val live = HashMap<String, Boolean>()
+        return loadAll().filterNot { live.getOrPut(it.instance) { isLive(it.instance) } }
+    }
+
+    /** Every readable record on disk, whoever owns it. Unparseable files are dropped, not raised. */
     internal fun loadAll(): List<PersistedTask> {
         if (!dir.exists()) return emptyList()
         return runCatchingCancellable {
@@ -124,15 +233,31 @@ open class TaskRecordStore(private val dir: Path) {
             .onFailure { log.w(it) { "Could not delete task record $taskId" } }
     }
 
-    /** Clears any `.tmp` left by a crash mid-write, so they cannot accumulate. */
+    /**
+     * Clears any `.tmp` left by a crash mid-write, so they cannot accumulate — but only a gone
+     * server's: a live one's may be a save in flight, and deleting it would fail that save.
+     */
     internal fun sweepTempFiles() {
         runCatchingCancellable {
             if (!dir.exists()) return
-            dir.listDirectoryEntries().filter { it.extension == "tmp" }.forEach { it.deleteIfExists() }
+            val live = HashMap<String, Boolean>()
+            dir.listDirectoryEntries()
+                .filter { it.extension == "tmp" }
+                .filterNot { file ->
+                    val owner = file.fileName.toString().substringBefore('.')
+                    live.getOrPut(owner) { isLive(owner) }
+                }
+                .forEach { it.deleteIfExists() }
         }.onFailure { log.d(it) { "Could not sweep temp task records under $dir" } }
     }
 
     private fun fileFor(taskId: String): Path = dir.resolve("$taskId.json")
+
+    private fun lockFile(instance: String): Path = dir.resolve("$instance.lock")
+
+    private companion object {
+        val INSTANCE_ID = Regex("[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
+    }
 }
 
 /** Encodes a finished tool result for [PersistedTask.result] through the on-the-wire JSON path. */

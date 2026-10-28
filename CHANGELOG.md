@@ -44,6 +44,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   out, and `tasks/result` blocked for up to an hour.
 - **Concurrent saves of one task record can no longer corrupt it** (with `--tasks`). They shared
   one temp file, so a restart could find a damaged record and discard the task.
+- **Servers sharing a cache directory no longer break each other's tasks** (with `--tasks`). Every
+  Claude Code session starts its own server on the default cache directory, and each one that
+  started took the others' running tasks for crash survivors: it marked them `failed` on disk and
+  deleted their in-flight saves. A server now recovers only the records of a server that is gone,
+  told apart by an OS file lock each one holds while it runs.
 - **A withdrawn `completion/complete` or `fetch_library` stops.** Both caught the cancellation as an
   ordinary failure: autocomplete answered with an empty list, and a cancelled `fetch_library` went
   on to build its result.

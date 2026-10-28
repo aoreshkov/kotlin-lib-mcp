@@ -218,7 +218,9 @@ Pass **`--tasks`** to accept task-augmented `tools/call` for `fetch_library` (SE
 Task records are **persisted** under `<cache-dir>/tasks`, so a completed task and its result are
 still retrievable after the server restarts. A task that was still running when the server stopped
 comes back as `failed` — its work did not survive, only the record did. Records are dropped once
-their TTL elapses (10 minutes by default, 1 hour maximum).
+their TTL elapses (10 minutes by default, 1 hour maximum). Servers sharing a cache directory, such
+as one per Claude Code session, keep their tasks apart: a server picks up only the records of a
+server that has stopped, never those of one still running.
 
 > **Task IDs are bearer tokens for tasks that outlive their session.** A task belongs to the MCP
 > session that created it, and while that session is connected no other session can read, list or
