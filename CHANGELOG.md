@@ -100,6 +100,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   the image both wait for a job that runs the version check, the build and tests, and a real
   library analysis through the plugin launcher. The image also passes CI's image smoke test, run on
   a locally loaded build, before any tag is pushed.
+- **`--transport http` on a port already in use fails with the bind error.** It logged nothing and
+  exited with status 130, as if interrupted by Ctrl-C. It now logs the `BindException` and exits
+  with status 70.
+- **Dashboard: starting the server on a busy port reports the error.** The `BindException` was
+  thrown out of the button's click handler, and the status stayed "stopped" with no message. The
+  status line now shows the error, and the port can be changed and tried again.
+- **Dashboard: Start, Stop and closing the window no longer freeze it.** The server started and
+  stopped on the UI thread, and a stop waits for open connections for up to two seconds.
+- **Dashboard: the in-process server uses the headless server's HTTP setup.** It gains the SSE
+  heartbeat and the `--transport http` defaults, including not telling clients local paths or
+  internal error details.
+- **Dashboard: `:dashboard:run` and the packaged app start.** Both put `kotlin-compiler`'s stale
+  bundled copies of `kotlinx-collections-immutable` and OpenTelemetry ahead of the real jars, so
+  building the server failed with `NoSuchMethodError`.
+- **Dashboard: the cache list stays current.** A slow refresh could replace a newer listing, so a
+  cleared entry came back. A clear that failed, such as on a file Windows still had open, stopped
+  "Clear all" at that entry, skipped the refresh and logged nothing.
+- **Dashboard: the log pane stays where you scrolled.** It jumped to the bottom on every new line.
 
 ### Changed
 - **The cache index moves to `index-v4.json`.** Libraries cached by an earlier version are analyzed

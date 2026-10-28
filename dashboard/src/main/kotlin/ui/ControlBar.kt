@@ -25,6 +25,7 @@ import app.oreshkov.kotlinlibmcp.dashboard.ServerStatus
 fun ControlBar(state: DashboardState) {
     val status by state.serverStatus.collectAsState()
     var portText by remember { mutableStateOf("3000") }
+    val startable = status is ServerStatus.Stopped || status is ServerStatus.Failed
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -36,19 +37,31 @@ fun ControlBar(state: DashboardState) {
             onValueChange = { portText = it },
             label = { Text("Port") },
             singleLine = true,
-            enabled = status is ServerStatus.Stopped,
+            enabled = startable,
             modifier = Modifier.width(120.dp),
         )
         when (val s = status) {
-            is ServerStatus.Stopped -> {
+            is ServerStatus.Stopped, is ServerStatus.Failed -> {
                 Button(
                     onClick = { portText.toIntOrNull()?.takeIf { it in 1..65535 }?.let(state::startServer) },
                 ) { Text("Start server") }
-                Text("stopped", style = MaterialTheme.typography.body2)
+                if (s is ServerStatus.Failed) {
+                    Text(s.message, style = MaterialTheme.typography.body2, color = MaterialTheme.colors.error)
+                } else {
+                    Text("stopped", style = MaterialTheme.typography.body2)
+                }
+            }
+            is ServerStatus.Starting -> {
+                Button(onClick = {}, enabled = false) { Text("Start server") }
+                Text("starting on port ${s.port} …", style = MaterialTheme.typography.body2)
             }
             is ServerStatus.Running -> {
-                Button(onClick = state::stopServer) { Text("Stop server") }
+                Button(onClick = { state.stopServer() }) { Text("Stop server") }
                 Text("running at ${s.endpoint}", style = MaterialTheme.typography.body2)
+            }
+            is ServerStatus.Stopping -> {
+                Button(onClick = {}, enabled = false) { Text("Stop server") }
+                Text("stopping …", style = MaterialTheme.typography.body2)
             }
         }
     }
