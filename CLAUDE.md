@@ -17,11 +17,13 @@ Desktop dashboard runs the same server in-process for control, logs, and cache b
 - `dashboard/` — **Compose Desktop** control panel (optional). Embeds `server`, and takes its HTTP
   engine from `createHttpEngine` (`transport/HttpTransport.kt`) so `mcpStreamableHttp` is wired in
   exactly one file. Keep it that way, or the SDK's 0.20.0 Ktor split breaks a file the map below misses.
-- `tools/` — **asset generator**, never shipped: the SEP-973 icon PNGs. Its *output* does ship —
+- `tools/` — **asset generator**, never shipped: the SEP-973 icon PNGs, and `assets/icon.svg` (the
+  brand mark in `server.json`) from the same geometry as the `server` glyph. Its *output* does ship —
   `server/src/main/resources/icons/` is read by `icons/Icons.kt` and rides inline in every
   `tools/list` — so the glyph geometry in `GenerateIcons.kt` is product source, not repo artwork.
-  Nothing depends on the module; `./gradlew build` compiles it only so it cannot rot.
-  `./gradlew :tools:generateIcons`.
+  Nothing depends on the module. Edit the geometry, never the outputs, then
+  `./gradlew :tools:generateIcons`: `GenerateIconsTest` (in `./gradlew build`) fails while a
+  committed PNG or the SVG differs from what the generator draws, or a PNG has no glyph.
 
 `server` and `dashboard` both depend on `core`. `server` runs without Compose.
 

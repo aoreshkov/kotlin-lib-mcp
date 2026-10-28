@@ -16,8 +16,8 @@ import java.util.Base64
  *    container image, with no fetch at all.
  *  - **PNG, not SVG.** Icon-rendering clients MUST support `image/png`; `image/svg+xml` is only a
  *    SHOULD and the spec warns that SVG may carry executable content, so clients may sanitize or
- *    drop it. `assets/icon.svg` stays the vector brand asset (server.json, README); the protocol
- *    ships the format every client can render.
+ *    drop it. `assets/icon.svg` stays the vector brand asset (server.json, README), generated from
+ *    the same geometry as [Glyph.Server]; the protocol ships the format every client can render.
  *
  * The bytes are inline in every `tools/list`, so the glyphs are kept small (~600 B each, ~800 B
  * base64) — see `tools/src/main/kotlin/GenerateIcons.kt` (`./gradlew :tools:generateIcons`), which
