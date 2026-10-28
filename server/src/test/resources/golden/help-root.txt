@@ -16,6 +16,9 @@ Examples:
   # Cache elsewhere, and also search Google's Maven repository
   server --cache-dir /tmp/klm --repo https://maven.google.com
 
+  # Search only a company mirror that proxies Maven Central
+  server --repo https://nexus.example.com/repository/maven-public --no-maven-central
+
   # Accept task-augmented fetch_library calls
   server --tasks
 
@@ -32,7 +35,9 @@ Options:
                                       Without it, DNS-rebinding protection admits localhost only.
       --allowed-origin <url>          Extra Origin the http transport accepts; repeatable
       --cache-dir <path>              Cache directory [default: OS cache dir + /kotlin-lib-mcp]
-      --repo <url>                    Extra Maven repository, besides Maven Central; repeatable
+      --repo <url>                    Extra Maven repository, after Maven Central; repeatable
+      --no-maven-central              Search only the --repo repositories: for a mirror that proxies
+                                      Maven Central
       --max-concurrent-fetches <int>  Libraries that may download and analyze at once; further
                                       fetch_library calls queue [default: 2]
       --forward-logs-to-client        Mirror logs to MCP clients via the (deprecated) logging
@@ -63,5 +68,6 @@ Notes:
   --host requires --transport http
   --allowed-host requires --transport http
   --allowed-origin requires --transport http
+  --no-maven-central requires --repo
 
 Documentation: https://github.com/aoreshkov/kotlin-lib-mcp

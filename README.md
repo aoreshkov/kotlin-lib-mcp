@@ -142,7 +142,8 @@ docker run --rm -p 127.0.0.1:3000:3000 -v kotlin-lib-mcp-cache:/home/mcp/.cache 
 CLI flags — `server --help` lists them all with their defaults, the `OTEL_*` variables and
 examples: `--transport stdio|http`; `--port`, `--host`, `--allowed-host` and `--allowed-origin`,
 which apply to the http transport only, so passing one with stdio is a usage error; `--cache-dir`;
-`--repo` (repeatable, on top of Maven Central); `--max-concurrent-fetches`; and the opt-ins
+`--repo` (repeatable, searched after Maven Central) and `--no-maven-central` (only the `--repo`
+repositories, for a mirror that proxies Central); `--max-concurrent-fetches`; and the opt-ins
 `--forward-logs-to-client` (stdio only), `--otel` (see [Telemetry](#telemetry)) and `--tasks` (see
 [Tasks](#tasks)). `--version` prints the server's version. A command-line mistake exits 2 and an
 internal error 70 (`sysexits.h`). SIGTERM or Ctrl-C stops the server cleanly within 5 seconds:
@@ -339,8 +340,8 @@ subdirectory of the same root.
 phone-home, no account, and no credential of any kind.
 
 - **What leaves your machine.** Only requests to the Maven repositories you point it at (Maven
-  Central by default, `--repo` to change): the `maven-metadata.xml`, `.pom`/`.module` metadata and
-  sources jar for the coordinates you ask about. Those repositories see the coordinate and your IP,
+  Central, plus any `--repo`; `--no-maven-central` drops Central): the `maven-metadata.xml`,
+  `.pom`/`.module` metadata and sources jar for the coordinates you ask about. Those repositories see the coordinate and your IP,
   under their own privacy policies. Pulling the Docker image likewise talks to GHCR, and the Claude
   Code plugin's launcher talks to this repository's GitHub releases (the releases API at most once
   a day, and a download when there is a new server). That is the complete list of outbound traffic.
