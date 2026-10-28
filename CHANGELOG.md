@@ -28,6 +28,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **`tasks/result` carries `io.modelcontextprotocol/related-task` in its `_meta`** (with
   `--tasks`), as the 2025-11-25 spec requires, merged with any `_meta` the tool set.
   `notifications/tasks/status` no longer repeats it, since the spec says it should not.
+- **A finished task stays finished** (with `--tasks`). A task body that completed or failed just
+  as `tasks/cancel` or a shutdown landed could overwrite `cancelled`, or the shutdown's `failed`,
+  so `tasks/get` contradicted what `tasks/cancel` had answered. A shutdown could likewise relabel a
+  task that had just completed as killed by it. Terminal statuses now never change, as the spec
+  requires, and the record on disk always matches.
+- **A task whose tool throws an `Error` fails instead of hanging** (with `--tasks`). A
+  `NoSuchMethodError` or `ExceptionInInitializerError` left the task `working` until its TTL ran
+  out, and `tasks/result` blocked for up to an hour.
+- **Concurrent saves of one task record can no longer corrupt it** (with `--tasks`). They shared
+  one temp file, so a restart could find a damaged record and discard the task.
 - **A withdrawn `completion/complete` or `fetch_library` stops.** Both caught the cancellation as an
   ordinary failure: autocomplete answered with an empty list, and a cancelled `fetch_library` went
   on to build its result.

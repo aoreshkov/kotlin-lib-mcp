@@ -162,10 +162,23 @@ For the same reason **`close()` writes the terminal state itself**, marking ever
 `failed` on the calling thread *before* `scope.cancel()`. Left to the job's own
 `CancellationException` path it lands from a `Dispatchers.Default` thread — after `close()` returned,
 possibly after the JVM exited — so the same task came back `cancelled` or `failed` depending on
-thread timing (a real CI flake). Marking first also makes `publish`'s `if (!record.terminal)` guard
-swallow the late `cancelled`. `TaskPersistenceTest` pins both halves: the graceful path through
+thread timing (a real CI flake). `TaskPersistenceTest` pins both halves: the graceful path through
 `close()`, and the crash path (a record left `working` on disk, no `close()`) through `restore()`;
-neither test may simulate a crash by calling `close()`.
+neither test may simulate a crash by calling `close()`. A record that is already terminal but whose
+write is still in flight on the job's thread gets written by `close()` too (`!finished.isCompleted`),
+so `close()` never returns ahead of a state another thread decided.
+
+**Terminal is final, enforced in one place.** Every status write goes through `update(record, to)`,
+which checks `canTransition(from, to)` *in the same critical section* as the write and does nothing
+— no file, no notification — when it refuses. That one check is what keeps a body that finishes, or
+throws while unwinding, from overwriting `cancelled` or `close()`'s `failed`, and keeps `close()` from
+relabelling a task that completed a moment earlier. Never write `record.status` outside it, and never
+split the "is it terminal?" check from the write. `tasks/cancel` marks the record *before* cancelling
+the job ("MUST transition the task to cancelled status before sending the response"). Saves of one
+record are serialized by `TaskRecord.writeLock`, with the snapshot taken *inside* it, so the last
+save always carries the latest state. The job catches `Throwable`, records `failed`, then re-throws
+only a fatal `VirtualMachineError` (not `StackOverflowError`). `TaskStoreRaceTest` races all of this
+on real threads, and each of its tests has been seen to fail with its guard removed.
 
 **Dispatch concurrency is the SDK's job now (0.15.0):** `Protocol` launches inbound requests and
 notifications on a per-connection handler scope once `notifications/initialized` has arrived,

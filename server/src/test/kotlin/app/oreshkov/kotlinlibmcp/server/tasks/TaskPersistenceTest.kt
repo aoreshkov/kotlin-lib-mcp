@@ -7,6 +7,8 @@ import io.modelcontextprotocol.kotlin.sdk.types.TaskStatus
 import io.modelcontextprotocol.kotlin.sdk.types.TextContent
 import java.nio.file.Path
 import java.time.Instant
+import java.util.concurrent.CountDownLatch
+import kotlin.concurrent.thread
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.writeText
@@ -144,6 +146,44 @@ class TaskPersistenceTest {
         assertEquals(TaskStatus.Failed, restored.status)
         assertContains(restored.statusMessage.orEmpty(), "shut down")
         assertFailsWith<TaskNotReadyException> { second.payload(alice, started.taskId) }
+    }
+
+    @Test
+    fun aShutdownWaitsForACompletionStillOnItsWayToDisk(): Unit = runBlocking {
+        val dir = tempDir()
+        val saving = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        // Holds the job's save of its terminal state open: the task is `completed` in memory but not
+        // yet on disk, the window close() can otherwise land in.
+        val slowDisk = object : TaskRecordStore(dir) {
+            override fun save(record: PersistedTask) {
+                if (record.status == TaskStatus.Completed) {
+                    saving.countDown()
+                    release.await()
+                }
+                super.save(record)
+            }
+        }
+        val first = TaskStore(
+            scope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+            recordStore = slowDisk,
+        ).also { stores.add(it) }
+        val started = first.start(alice, job { ok() })
+        saving.await()
+
+        // Already terminal, so close() leaves the status alone. But it must not return before that
+        // status is on disk either, or a restart in between recovers the task as `working` and
+        // fails it.
+        val closer = thread { first.close() }
+        try {
+            closer.join(500)
+            assertTrue(closer.isAlive, "close() returned while the task's final state was still being written")
+        } finally {
+            release.countDown()
+            closer.join()
+        }
+
+        assertEquals(TaskStatus.Completed, store(dir).get(alice, started.taskId).status)
     }
 
     @Test

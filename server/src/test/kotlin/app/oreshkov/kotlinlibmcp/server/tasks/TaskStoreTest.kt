@@ -14,6 +14,7 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
 import kotlinx.coroutines.ExperimentalCoroutinesApi
@@ -138,6 +139,109 @@ class TaskStoreTest {
         assertContains(task.statusMessage.orEmpty(), "analysis exploded")
         // No payload was ever produced, so tasks/result has nothing to hand back.
         assertFailsWith<TaskNotReadyException> { store.payload(S1, started.taskId) }
+        store.close()
+    }
+
+    @Test
+    fun anErrorFromTheBodyFailsTheTaskInsteadOfStrandingIt() = runTest {
+        val store = TestScopeStore(CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)))
+
+        // What a mis-ordered kotlin-compiler classpath throws: an Error, not an Exception.
+        val started = store.start(S1, taskRun { throw NoSuchMethodError("Attributes.empty()") })
+        advanceUntilIdle()
+
+        // Left `working`, every tasks/result on it would park until the TTL ran out.
+        val task = store.get(S1, started.taskId)
+        assertEquals(TaskStatus.Failed, task.status)
+        assertContains(task.statusMessage.orEmpty(), "Attributes.empty()")
+        assertFailsWith<TaskNotReadyException> { store.payload(S1, started.taskId) }
+        store.close()
+    }
+
+    @Test
+    fun aFatalVmErrorIsRecordedAsFailedAndThenRethrown() = runTest {
+        val escaped = mutableListOf<Throwable>()
+        val store = TestScopeStore(
+            CoroutineScope(
+                SupervisorJob() + StandardTestDispatcher(testScheduler) +
+                    CoroutineExceptionHandler { _, e -> escaped += e },
+            ),
+        )
+
+        val oom = store.start(S1, taskRun { throw OutOfMemoryError("test heap") })
+        val overflow = store.start(S1, taskRun { throw StackOverflowError("test regex") })
+        advanceUntilIdle()
+
+        // Both are recorded, so no client waits on a task that can never finish...
+        assertEquals(TaskStatus.Failed, store.get(S1, oom.taskId).status)
+        assertEquals(TaskStatus.Failed, store.get(S1, overflow.taskId).status)
+        // ...but only the OOM goes on to the scope: swallowing it would hide a JVM that is no
+        // longer fit to serve. A StackOverflowError has unwound and is specific to one input.
+        assertEquals(listOf("test heap"), escaped.map { it.message })
+        store.close()
+    }
+
+    @Test
+    fun theTaskStateMachineIsTheSpecLifecycle() {
+        val live = listOf(TaskStatus.Working, TaskStatus.InputRequired)
+        val terminal = listOf(TaskStatus.Completed, TaskStatus.Failed, TaskStatus.Cancelled)
+        // The table is exhaustive, so a status the SDK adds later has to be placed deliberately.
+        assertEquals(TaskStatus.entries.toSet(), (live + terminal).toSet())
+
+        for (from in TaskStatus.entries) for (to in TaskStatus.entries) {
+            // "From working: may move to input_required, completed, failed, or cancelled. From
+            // input_required: may move to working, completed, failed, or cancelled." Terminal
+            // statuses "MUST NOT transition to any other status".
+            val expected = from in live && to != from
+            assertEquals(expected, canTransition(from, to), "$from -> $to")
+        }
+    }
+
+    @Test
+    fun aBodyThatFailsWhileUnwindingCannotOverwriteCancelled() = runTest {
+        val store = TestScopeStore(CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)))
+        val never = CompletableDeferred<Unit>()
+
+        // Cancellation unwinds the body, and its cleanup throws on the way out — a stream that
+        // fails to close, say. The task's job then ends in that exception, not in a cancellation.
+        val started = store.start(
+            S1,
+            taskRun {
+                try {
+                    never.await()
+                    ok()
+                } finally {
+                    throw IllegalStateException("cleanup failed")
+                }
+            },
+        )
+        advanceUntilIdle()
+
+        assertEquals(TaskStatus.Cancelled, store.cancel(S1, started.taskId).status)
+        advanceUntilIdle()
+
+        // "Once a task is cancelled, it MUST remain in cancelled status even if execution
+        // continues to completion or fails." The client was told `cancelled`; tasks/get agrees.
+        val task = store.get(S1, started.taskId)
+        assertEquals(TaskStatus.Cancelled, task.status)
+        assertEquals("Cancelled by client request", task.statusMessage)
+        store.close()
+    }
+
+    @Test
+    fun cancellingNotifiesTheCancelledStatusOnce() = runTest {
+        val store = TestScopeStore(CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)))
+        val never = CompletableDeferred<Unit>()
+        val seen = mutableListOf<TaskStatus>()
+
+        val started = store.start(S1, taskRun(onStatus = { seen += it.status }) { never.await(); ok() })
+        advanceUntilIdle()
+        store.cancel(S1, started.taskId)
+        advanceUntilIdle()
+
+        // The job is cancelled before it could report it, so the store does; and the job's own
+        // cancellation path, finding the task already terminal, must not report it a second time.
+        assertEquals(listOf(TaskStatus.Working, TaskStatus.Cancelled), seen)
         store.close()
     }
 
