@@ -23,12 +23,14 @@
 
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.UncheckedIOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.net.URI;
 import java.net.URL;
 import java.net.URLClassLoader;
 import java.net.http.HttpClient;
+import java.net.http.HttpHeaders;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
@@ -40,10 +42,14 @@ import java.nio.file.StandardCopyOption;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.security.MessageDigest;
 import java.time.Duration;
+import java.time.Instant;
+import java.time.ZoneOffset;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Optional;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -56,6 +62,8 @@ public final class KotlinLibMcpLauncher {
     private static final String REPO = "aoreshkov/kotlin-lib-mcp";
     private static final String MAIN_CLASS = "app.oreshkov.kotlinlibmcp.server.MainKt";
     private static final String USER_AGENT = "kotlin-lib-mcp-plugin-launcher";
+    /** The GitHub REST API version this launcher reads release JSON as. */
+    private static final String GITHUB_API_VERSION = "2026-03-10";
     /** The Java feature release current servers are compiled for. */
     private static final int SERVER_JAVA = 25;
     /** The last server release that runs on Java 21. */
@@ -66,6 +74,8 @@ public final class KotlinLibMcpLauncher {
     private static final Duration HTTP_TIMEOUT = Duration.ofSeconds(60);
     /** An unpack directory this old belongs to no running launcher: unpacking takes seconds. */
     private static final Duration ABANDONED_AFTER = Duration.ofHours(1);
+    private static final DateTimeFormatter RETRY_AT =
+            DateTimeFormatter.ofPattern("HH:mm 'UTC'").withZone(ZoneOffset.UTC);
 
     private static final Pattern TAG_NAME = Pattern.compile("\"tag_name\"\\s*:\\s*\"v?([^\"]+)\"");
     private static final Pattern DIGEST = Pattern.compile("\"digest\"\\s*:\\s*\"sha256:([0-9a-fA-F]{64})\"");
@@ -78,8 +88,12 @@ public final class KotlinLibMcpLauncher {
         // testable without a network.
         String home = envOrDefault("KOTLIN_LIB_MCP_SERVER_HOME", "");
         Path dist;
+        List<URL> classpath;
         try {
             dist = home.isEmpty() ? resolveDistribution() : Path.of(home);
+            // Inside the try too: a KOTLIN_LIB_MCP_SERVER_HOME that is not a distribution is as
+            // much the user's to fix as a bad pin.
+            classpath = classpath(dist);
         } catch (Exception e) {
             // Bootstrap failures are the user's problem to fix, not a bug report: Claude Code shows
             // this server as failed and the reason is whatever we last wrote to stderr. A stack
@@ -87,7 +101,7 @@ public final class KotlinLibMcpLauncher {
             fail(describe(e));
             return;
         }
-        launch(dist, args);
+        launch(dist, classpath, args);
     }
 
     // ---------------------------------------------------------------------------------------
@@ -124,9 +138,8 @@ public final class KotlinLibMcpLauncher {
             } catch (IOException | InterruptedException e) {
                 String installed = newestInstalled(distRoot);
                 if (installed == null) {
-                    throw new IOException("Could not reach the GitHub releases API to find the latest"
-                            + " kotlin-lib-mcp server, and no version is installed yet. Check the"
-                            + " network, or pin a version in /plugin (kotlin-lib plugin config).", e);
+                    throw new IOException("No kotlin-lib-mcp server is installed yet. "
+                            + gitHubTrouble("find the latest release", e), e);
                 }
                 warn("could not check for the latest release (" + e + "); using installed " + installed);
                 return distRoot.resolve(installed);
@@ -150,6 +163,7 @@ public final class KotlinLibMcpLauncher {
                         + "; using installed " + installed);
                 return distRoot.resolve(installed);
             }
+            pruneSuperseded(distRoot, version, stagingRoot);
         }
         // Remembered only once it is installed: a marker naming a version that failed to install
         // would otherwise be trusted for a whole TTL.
@@ -173,7 +187,7 @@ public final class KotlinLibMcpLauncher {
 
     /** The newest released version, asked of the GitHub API. */
     private static String fetchLatest() throws IOException, InterruptedException {
-        String body = new String(get(URI.create(api("releases/latest"))), StandardCharsets.UTF_8);
+        String body = api("releases/latest");
         Matcher m = TAG_NAME.matcher(body);
         if (!m.find()) throw new IOException("No tag_name in the GitHub releases response");
         String version = m.group(1);
@@ -192,12 +206,28 @@ public final class KotlinLibMcpLauncher {
             throws IOException, InterruptedException {
         String body;
         try {
-            body = new String(get(URI.create(api("releases/tags/v" + version))), StandardCharsets.UTF_8);
+            body = api("releases/tags/v" + version);
         } catch (IOException e) {
-            throw new IOException("No release v" + version + " of kotlin-lib-mcp on GitHub. Pin a"
+            throw releaseLookupFailure(version, e);
+        }
+        return digestOf(body, version, asset);
+    }
+
+    /**
+     * What to report when release {@code v<version>} could not be read. Only a 404 says the release
+     * does not exist: offline, or over GitHub's rate limit, a pin that is fine must not be blamed.
+     */
+    static IOException releaseLookupFailure(String version, IOException e) {
+        if (e instanceof HttpStatusException http && http.status == 404) {
+            return new IOException("No release v" + version + " of kotlin-lib-mcp on GitHub. Pin a"
                     + " version listed at https://github.com/" + REPO + "/releases, or set it back"
                     + " to 'latest', in /plugin (kotlin-lib plugin config).", e);
         }
+        return new IOException(gitHubTrouble("look up release v" + version, e), e);
+    }
+
+    /** The SHA-256 the release JSON {@code body} lists for {@code asset}. */
+    static String digestOf(String body, String version, String asset) throws IOException {
         // Each asset object carries its name, then its digest, then its browser_download_url, so
         // the digest that belongs to this asset is the first one between its name and that URL.
         int name = body.indexOf("\"" + asset + "\"");
@@ -215,21 +245,59 @@ public final class KotlinLibMcpLauncher {
     }
 
     /** The newest finished install under {@code distRoot}. Only a directory named as a version counts. */
-    private static String newestInstalled(Path distRoot) {
-        if (!Files.isDirectory(distRoot)) return null;
+    static String newestInstalled(Path distRoot) {
+        List<String> installed = installedVersions(distRoot);
+        return installed.isEmpty() ? null : installed.get(0);
+    }
+
+    /** The finished installs under {@code distRoot}, newest first. Only directories named as a version count. */
+    private static List<String> installedVersions(Path distRoot) {
+        if (!Files.isDirectory(distRoot)) return List.of();
         try (Stream<Path> entries = Files.list(distRoot)) {
             return entries.filter(KotlinLibMcpLauncher::isInstalled)
                     .map(p -> p.getFileName().toString())
                     .filter(name -> VERSION.matcher(name).matches())
-                    .max(Comparator.comparing(KotlinLibMcpLauncher::versionKey))
-                    .orElse(null);
-        } catch (IOException e) {
-            return null;
+                    .sorted(Comparator.comparing(KotlinLibMcpLauncher::versionKey, Comparator.reverseOrder()))
+                    .toList();
+        } catch (IOException | UncheckedIOException e) {
+            return List.of();
+        }
+    }
+
+    /**
+     * Removes the installs that {@code current}, a freshly installed "latest", supersedes. Each one
+     * is a whole server, kotlin-compiler included, so without this every release adds another. The
+     * newest other install stays: it is the fallback when GitHub cannot be reached, and what a
+     * session started before this install may still be running.
+     *
+     * <p>Each goes by first being moved under {@code stagingRoot}. A half-deleted install would
+     * still look installed, while a moved one is gone from {@code dist/} at once. Windows refuses
+     * the move outright while a running server holds a jar open, so a version in use stays; on Linux
+     * and macOS the move and delete succeed, and the running server keeps the jars it has open. What
+     * fails to delete after the move is swept with the abandoned unpacks. Best effort: nothing here
+     * stops the launch.
+     */
+    static void pruneSuperseded(Path distRoot, String current, Path stagingRoot) {
+        List<String> others = new ArrayList<>(installedVersions(distRoot));
+        others.remove(current);
+        for (String version : others.subList(Math.min(1, others.size()), others.size())) {
+            Path doomed = stagingRoot.resolve(version + ".superseded." + System.nanoTime());
+            try {
+                Files.createDirectories(stagingRoot);
+                Files.move(distRoot.resolve(version), doomed, StandardCopyOption.ATOMIC_MOVE);
+            } catch (IOException e) {
+                continue; // in use, or another session got to it first
+            }
+            try {
+                deleteRecursively(doomed);
+            } catch (IOException e) {
+                warn("could not finish removing superseded server " + version + " (" + e + ")");
+            }
         }
     }
 
     /** Sorts 0.10.0 above 0.9.0 by zero-padding each numeric run. Non-numeric parts sort as text. */
-    private static String versionKey(String version) {
+    static String versionKey(String version) {
         StringBuilder key = new StringBuilder();
         for (String part : version.split("[.]")) {
             key.append(part.chars().allMatch(Character::isDigit) && part.length() <= 9
@@ -252,12 +320,9 @@ public final class KotlinLibMcpLauncher {
 
         String want = publishedDigest(version, archive);
         byte[] zip = get(URI.create(
-                "https://github.com/" + REPO + "/releases/download/v" + version + "/" + archive));
-        String got = sha256(zip);
-        if (!got.equalsIgnoreCase(want)) {
-            throw new IOException("Checksum mismatch for " + archive + ": expected " + want
-                    + ", got " + got + ". Nothing was installed.");
-        }
+                "https://github.com/" + REPO + "/releases/download/v" + version + "/" + archive),
+                "application/octet-stream");
+        verifyChecksum(zip, want, archive);
 
         // Same filesystem as dist (both under the plugin's data directory), so the move below can
         // be atomic.
@@ -275,6 +340,14 @@ public final class KotlinLibMcpLauncher {
             }
         } finally {
             deleteRecursively(staging);
+        }
+    }
+
+    static void verifyChecksum(byte[] zip, String want, String archive) throws Exception {
+        String got = sha256(zip);
+        if (!got.equalsIgnoreCase(want)) {
+            throw new IOException("Checksum mismatch for " + archive + ": expected " + want
+                    + ", got " + got + ". Nothing was installed.");
         }
     }
 
@@ -301,7 +374,7 @@ public final class KotlinLibMcpLauncher {
     }
 
     /** Unpacks the archive, stripping its single top-level directory. Rejects zip-slip paths. */
-    private static void unpack(byte[] zip, Path target) throws IOException {
+    static void unpack(byte[] zip, Path target) throws IOException {
         try (ZipInputStream in = new ZipInputStream(new ByteArrayInputStream(zip))) {
             Path root = target.toRealPath();
             for (ZipEntry entry = in.getNextEntry(); entry != null; entry = in.getNextEntry()) {
@@ -332,8 +405,7 @@ public final class KotlinLibMcpLauncher {
      * stdout are already the pipes Claude Code opened for the stdio transport, so handing them over
      * directly avoids both a second JVM and the orphaned-child problem when a session ends.
      */
-    private static void launch(Path dist, String[] args) throws Exception {
-        List<URL> classpath = classpath(dist);
+    private static void launch(Path dist, List<URL> classpath, String[] args) throws Exception {
         // Parent is the platform loader, not this launcher's own loader: the server sees exactly
         // its distribution, and nothing from the single-file source compilation leaks in.
         URLClassLoader loader =
@@ -401,25 +473,114 @@ public final class KotlinLibMcpLauncher {
     // Helpers
     // ---------------------------------------------------------------------------------------
 
-    private static String api(String path) {
-        return "https://api.github.com/repos/" + REPO + "/" + path;
+    /** {@code path} under this repository in the GitHub REST API, as text. */
+    private static String api(String path) throws IOException, InterruptedException {
+        byte[] body = get(URI.create("https://api.github.com/repos/" + REPO + "/" + path),
+                "application/vnd.github+json",
+                // Pinned, as GitHub asks: an unversioned request gets 2022-11-28, whose support ends
+                // in 2028, and this file outlives the plugin release that ships it.
+                "X-GitHub-Api-Version", GITHUB_API_VERSION);
+        return new String(body, StandardCharsets.UTF_8);
     }
 
-    private static byte[] get(URI uri) throws IOException, InterruptedException {
-        HttpClient client = HttpClient.newBuilder()
+    /** Fetches {@code uri}, following redirects. Anything but a 200 is an {@link HttpStatusException}. */
+    private static byte[] get(URI uri, String accept, String... headers)
+            throws IOException, InterruptedException {
+        HttpRequest.Builder request = HttpRequest.newBuilder(uri)
+                .header("User-Agent", USER_AGENT)
+                .header("Accept", accept)
+                .timeout(HTTP_TIMEOUT);
+        for (int i = 0; i + 1 < headers.length; i += 2) request.header(headers[i], headers[i + 1]);
+        // Closed rather than left to the collector: its selector thread would otherwise live on in
+        // the server this JVM is about to become.
+        try (HttpClient client = HttpClient.newBuilder()
                 .followRedirects(HttpClient.Redirect.NORMAL) // release downloads redirect to a CDN
                 .connectTimeout(HTTP_TIMEOUT)
-                .build();
-        HttpRequest request = HttpRequest.newBuilder(uri)
-                .header("User-Agent", USER_AGENT)
-                .header("Accept", "application/octet-stream, application/json")
-                .timeout(HTTP_TIMEOUT)
-                .build();
-        HttpResponse<byte[]> response = client.send(request, HttpResponse.BodyHandlers.ofByteArray());
-        if (response.statusCode() != 200) {
-            throw new IOException("HTTP " + response.statusCode() + " for " + uri);
+                .build()) {
+            HttpResponse<byte[]> response =
+                    client.send(request.build(), HttpResponse.BodyHandlers.ofByteArray());
+            if (response.statusCode() != 200) {
+                throw HttpStatusException.of(uri, response.statusCode(), response.headers(), response.body());
+            }
+            return response.body();
         }
-        return response.body();
+    }
+
+    /**
+     * A response other than 200. {@code rateLimited} follows GitHub's own rules: a 403 or 429 that
+     * either says when to retry or reports no requests remaining, or a 429 at all. GitHub allows an
+     * unauthenticated client 60 API requests an hour per IP address, which a shared office or VPN
+     * address can use up without this launcher's help.
+     */
+    static final class HttpStatusException extends IOException {
+        private static final long serialVersionUID = 1L;
+
+        final int status;
+        final boolean rateLimited;
+        /** When GitHub said it takes requests again, if it said; only ever set when rate limited. */
+        final Instant retryAt;
+
+        private HttpStatusException(URI uri, int status, boolean rateLimited, Instant retryAt) {
+            super("HTTP " + status + " for " + uri);
+            this.status = status;
+            this.rateLimited = rateLimited;
+            this.retryAt = retryAt;
+        }
+
+        static HttpStatusException of(URI uri, int status, HttpHeaders headers, byte[] body) {
+            boolean rateLimited = false;
+            Instant retryAt = null;
+            if (status == 403 || status == 429) {
+                Long retryAfter = number(headers.firstValue("retry-after"));
+                Long reset = number(headers.firstValue("x-ratelimit-reset"));
+                if (retryAfter != null) {
+                    rateLimited = true;
+                    retryAt = Instant.now().plusSeconds(retryAfter);
+                } else if (headers.firstValue("x-ratelimit-remaining").filter("0"::equals).isPresent()) {
+                    rateLimited = true;
+                    if (reset != null) retryAt = Instant.ofEpochSecond(reset);
+                } else {
+                    // A secondary limit may come with neither header, only its message.
+                    rateLimited = status == 429
+                            || new String(body, StandardCharsets.UTF_8).contains("rate limit");
+                }
+            }
+            return new HttpStatusException(uri, status, rateLimited, retryAt);
+        }
+
+        private static Long number(Optional<String> header) {
+            try {
+                return header.isPresent() ? Long.valueOf(header.get().trim()) : null;
+            } catch (NumberFormatException e) {
+                return null;
+            }
+        }
+
+        @Override
+        public String toString() {
+            return getMessage();
+        }
+    }
+
+    /**
+     * Why a request to GitHub failed, put as what the user can do about it. {@code what} completes
+     * "the request to …". Every case ends with the way round GitHub, since none of them is fixed by
+     * changing the pin.
+     */
+    static String gitHubTrouble(String what, Exception e) {
+        String why;
+        if (e instanceof HttpStatusException http && http.rateLimited) {
+            why = "GitHub rate-limited the request to " + what
+                    + (http.retryAt == null ? "" : " until " + RETRY_AT.format(http.retryAt))
+                    + ". Try again after that";
+        } else if (e instanceof HttpStatusException http) {
+            why = "GitHub answered HTTP " + http.status + " to the request to " + what + ". Try again later";
+        } else {
+            why = "Could not reach GitHub to " + what + ". Check the network and any proxy";
+        }
+        return why + ", or download the release zip from https://github.com/" + REPO + "/releases"
+                + " by hand, unzip it, and set KOTLIN_LIB_MCP_SERVER_HOME to the unzipped directory"
+                + " before starting Claude Code.";
     }
 
     private static String sha256(byte[] bytes) throws Exception {

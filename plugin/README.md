@@ -60,6 +60,11 @@ already installed and says so on stderr; the next session tries again. A pinned 
 fallback: if it cannot be installed, the server fails to start with the reason. Everything the
 launcher prints goes to stderr; stdout is the protocol channel.
 
+Each release is a full server, so once `latest` installs a new one the launcher removes the older
+installs, keeping one: the newest previous version, as the offline fallback and for any session
+still running it. A version that a running server still has open on Windows is left for a later
+install to remove.
+
 Both the archive and the plugin come from the same repository over HTTPS, so the checksum protects
 against a corrupted or truncated download rather than against a compromised GitHub account. Release
 artifacts also carry [build provenance](https://github.com/aoreshkov/kotlin-lib-mcp/attestations),
