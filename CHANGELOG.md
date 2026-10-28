@@ -118,6 +118,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   cleared entry came back. A clear that failed, such as on a file Windows still had open, stopped
   "Clear all" at that entry, skipped the refresh and logged nothing.
 - **Dashboard: the log pane stays where you scrolled.** It jumped to the bottom on every new line.
+- **Plugin: a GitHub failure is no longer reported as a missing release.** Offline, rate-limited
+  (GitHub allows 60 unauthenticated API requests an hour per IP address) or refused with a 5xx, the
+  launcher said "No release v… on GitHub" and told you to change a pin that was fine. That message
+  is now kept for a 404; the others say what went wrong, when a rate limit resets, and how to run a
+  hand-downloaded release through `KOTLIN_LIB_MCP_SERVER_HOME`. The setup skill's troubleshooting
+  table matches.
+- **Plugin: a wrong `KOTLIN_LIB_MCP_SERVER_HOME` gets a one-line reason.** A directory with no
+  `lib/`, or no jars in it, ended in a stack trace and exit status 1; it now reports like every other
+  setup problem and exits with status 2.
+- **Plugin: superseded server versions are removed.** Every release `latest` installed stayed in
+  the plugin's data directory, each a full server. After installing a new one, the launcher now
+  removes the older installs, keeping the newest previous one as the offline fallback.
 
 ### Changed
 - **The cache index moves to `index-v4.json`.** Libraries cached by an earlier version are analyzed
