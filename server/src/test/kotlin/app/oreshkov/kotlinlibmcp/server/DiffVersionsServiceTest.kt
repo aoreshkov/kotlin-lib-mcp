@@ -218,6 +218,50 @@ class DiffVersionsServiceTest {
         assertEquals("commonMain/engine/A.kt", diff.files.single().path)
     }
 
+    // --- size: a line budget is not a size budget ---
+
+    @Test
+    fun aChangedMinifiedLineIsOmittedRatherThanSentInFull() = runTest {
+        // One line, a megabyte long: within every line budget, and without a character cap it was
+        // returned whole as `-` and again as `+`, then twice more on the wire.
+        val path = "commonMain/generated/Bundle.kt"
+        val service = serviceFor(
+            version("1.0.0", mapOf(path to "package generated\n" + "a".repeat(1_000_000))),
+            version("2.0.0", mapOf(path to "package generated\n" + "b".repeat(1_000_000))),
+        )
+
+        val file = service.diffVersions(group, artifact, "1.0.0", "2.0.0").files.single()
+
+        assertTrue(file.diffOmitted, "a hunk past the per-file character budget must be omitted")
+        assertEquals(emptyList(), file.hunks)
+        assertEquals(1, file.addedLines, "the counts stay honest")
+        assertEquals(1, file.removedLines)
+    }
+
+    @Test
+    fun thePageHasACharacterBudgetAndAnOmittedFileCanBeFetchedAlone() = runTest {
+        // Each file's one changed line makes a ~30 000-character hunk: under the per-file cap, but
+        // only three fit in a page.
+        val paths = (1..5).map { "commonMain/F$it.kt" }
+        val service = serviceFor(
+            version("1.0.0", paths.associateWith { "x".repeat(15_000) }),
+            version("2.0.0", paths.associateWith { "y".repeat(15_000) }),
+        )
+
+        val page = service.diffVersions(group, artifact, "1.0.0", "2.0.0")
+
+        assertTrue(page.files.sumOf { file -> file.hunks.sumOf { it.length } } <= LibraryService.MAX_DIFF_CHARS_PER_PAGE)
+        assertEquals(listOf(false, false, false, true, true), page.files.map { it.diffOmitted })
+        assertEquals(paths, page.files.map { it.path }, "an omitted file keeps its place, so offset paging still works")
+        assertFalse(page.truncated, "every file is on the page; only hunks were left out")
+        assertTrue(page.files.all { it.addedLines == 1 && it.removedLines == 1 })
+
+        // ...and its hunks are one narrowed call away.
+        val alone = service.diffVersions(group, artifact, "1.0.0", "2.0.0", pathFilter = "F4.kt").files.single()
+        assertFalse(alone.diffOmitted)
+        assertEquals(1, alone.hunks.size)
+    }
+
     @Test
     fun anUnfetchedVersionSaysSoRatherThanReportingEverythingAsAdded() = runTest {
         val service = serviceFor(version("1.0.0", mapOf("commonMain/A.kt" to "v1")))

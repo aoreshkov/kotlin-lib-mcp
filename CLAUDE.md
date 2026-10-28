@@ -166,8 +166,10 @@ place so a rename is a single edit.
 
 We target **2025-11-25**, because that is what the Kotlin SDK declares
 (`LATEST_PROTOCOL_VERSION`). Spec revision **2026-07-28** is stable, but the SDK has released none
-of it: as of **2026-10-01** the newest release is still 0.15.0 (2026-07-28, no beta or
-pre-release). Work has started upstream — the stateless lifecycle is an open PR
+of it on the wire: as of **2026-10-28** the newest release is 0.16.0 (2026-10-27), which still
+declares 2025-11-25 and adds only experimental, unused SEP-2575 discovery types. This repo is still
+on 0.15.0; 0.16.0 changes `mcpStreamableHttp`'s signature (idle-session expiry, `maxSessions`), so
+it is a bump of its own. Work has started upstream — the stateless lifecycle is an open PR
 (`modelcontextprotocol/kotlin-sdk#985`) — and the SDK's milestones set the order: **0.17.0** puts
 2026-07-28 on the wire (per-request `_meta` envelope, `subscriptions/listen`, SEP-2243 headers),
 **0.18.0** brings MRTR, **0.20.0** moves the Ktor integration (`mcpStreamableHttp`) into a separate

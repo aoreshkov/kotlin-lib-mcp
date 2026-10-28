@@ -5,6 +5,7 @@ import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
 import app.oreshkov.kotlinlibmcp.server.onEachSession
 import app.oreshkov.kotlinlibmcp.server.resources.LIBRARY_INDEX_URI_TEMPLATE
 import app.oreshkov.kotlinlibmcp.server.resources.LIBRARY_PACKAGE_URI_TEMPLATE
+import app.oreshkov.kotlinlibmcp.server.runCatchingCancellable
 import app.oreshkov.kotlinlibmcp.server.telemetry.completionSpan
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.types.CompleteRequest
@@ -32,8 +33,9 @@ private const val MAX_COMPLETIONS = 100
  * - the [EXPLAIN_PROMPT] prompt's `coordinate` (cached `group:artifact:version` strings) and
  *   `package` (packages of the coordinate already in context).
  *
- * The handler never throws: any failure (unparseable context, cache miss, corrupt entry) yields
- * an empty completion rather than failing the client's request.
+ * The handler never fails the client's request: any failure (unparseable context, cache miss,
+ * corrupt entry) yields an empty completion. Cancellation is the one exception and is re-thrown, so
+ * a request the client withdrew stops rather than answering with an empty list.
  */
 fun Server.registerLibraryCompletions(cache: LibraryCache) {
     // The SDK's Server wires tools/prompts/resources into each session but has no completion hook,
@@ -42,7 +44,7 @@ fun Server.registerLibraryCompletions(cache: LibraryCache) {
     onEachSession { session ->
         session.setRequestHandler<CompleteRequest>(Method.Defined.CompletionComplete) { request, _ ->
             completionSpan(session.sessionId, request.params.meta) {
-                val values = runCatching {
+                val values = runCatchingCancellable {
                     val ctx = request.context?.arguments.orEmpty()
                     when (val ref = request.ref) {
                         is ResourceTemplateReference -> when (ref.uri) {

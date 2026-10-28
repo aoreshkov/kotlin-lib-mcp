@@ -8,8 +8,13 @@ import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequest
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolRequestParams
 import io.modelcontextprotocol.kotlin.sdk.types.CallToolResult
+import io.modelcontextprotocol.kotlin.sdk.types.CancelTaskRequest
+import io.modelcontextprotocol.kotlin.sdk.types.CancelTaskRequestParams
 import io.modelcontextprotocol.kotlin.sdk.types.CreateTaskResult
 import io.modelcontextprotocol.kotlin.sdk.types.EmptyJsonObject
+import io.modelcontextprotocol.kotlin.sdk.types.GetTaskPayloadRequest
+import io.modelcontextprotocol.kotlin.sdk.types.GetTaskPayloadRequestParams
+import io.modelcontextprotocol.kotlin.sdk.types.GetTaskPayloadResult
 import io.modelcontextprotocol.kotlin.sdk.types.GetTaskRequest
 import io.modelcontextprotocol.kotlin.sdk.types.GetTaskRequestParams
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
@@ -17,7 +22,9 @@ import io.modelcontextprotocol.kotlin.sdk.types.InitializedNotification
 import io.modelcontextprotocol.kotlin.sdk.types.JSONRPCRequest
 import io.modelcontextprotocol.kotlin.sdk.types.ListTasksRequest
 import io.modelcontextprotocol.kotlin.sdk.types.ListTasksResult
+import io.modelcontextprotocol.kotlin.sdk.types.McpJson
 import io.modelcontextprotocol.kotlin.sdk.types.Method
+import io.modelcontextprotocol.kotlin.sdk.types.RELATED_TASK_META_KEY
 import io.modelcontextprotocol.kotlin.sdk.types.RPCError
 import io.modelcontextprotocol.kotlin.sdk.types.RequestId
 import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
@@ -37,10 +44,15 @@ import kotlin.test.assertTrue
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runCurrent
 import kotlinx.coroutines.test.runTest
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.buildJsonObject
+import kotlinx.serialization.json.jsonPrimitive
+import kotlinx.serialization.json.put
 
 /**
  * `installTaskHandlersOnEverySession` — how task support reaches a transport that never hands us a
@@ -60,6 +72,9 @@ class TaskHandlerInstallationTest {
         execution = ToolExecution(taskSupport = TaskSupport.Optional),
     )
 
+    /** Never finishes on its own, so a task running it can only end by being cancelled. */
+    private val stuck = slow.copy(name = "stuck")
+
     private fun TestScope.server(): Server = Server(
         serverInfo = Implementation(name = "test", version = "0"),
         options = ServerOptions(
@@ -76,16 +91,20 @@ class TaskHandlerInstallationTest {
             handlerCoroutineContext = StandardTestDispatcher(testScheduler),
         ),
     ) {
-        addTool(slow) { CallToolResult(content = listOf(TextContent("done"))) }
+        addTool(slow) {
+            // A key of the tool's own, so tests can tell a merged `_meta` from a replaced one.
+            CallToolResult(content = listOf(TextContent("done")), meta = buildJsonObject { put(TOOL_META_KEY, "kept") })
+        }
+        addTool(stuck) { awaitCancellation() }
     }
 
     private fun TestScope.store() =
         TaskStore(scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)))
 
-    private fun taskCall(id: Long): JSONRPCRequest = JSONRPCRequest(
+    private fun taskCall(id: Long, tool: String = slow.name): JSONRPCRequest = JSONRPCRequest(
         id = RequestId(id),
         method = Method.Defined.ToolsCall.value,
-        params = CallToolRequest(CallToolRequestParams(name = "slow", task = TaskMetadata())).toJSON().params,
+        params = CallToolRequest(CallToolRequestParams(name = tool, task = TaskMetadata())).toJSON().params,
     )
 
     private fun tasksList(id: Long): JSONRPCRequest =
@@ -93,6 +112,12 @@ class TaskHandlerInstallationTest {
 
     private fun tasksGet(id: Long, taskId: String): JSONRPCRequest =
         GetTaskRequest(GetTaskRequestParams(taskId = taskId)).toJSON().copy(id = RequestId(id))
+
+    private fun tasksResult(id: Long, taskId: String): JSONRPCRequest =
+        GetTaskPayloadRequest(GetTaskPayloadRequestParams(taskId = taskId)).toJSON().copy(id = RequestId(id))
+
+    private fun tasksCancel(id: Long, taskId: String): JSONRPCRequest =
+        CancelTaskRequest(CancelTaskRequestParams(taskId = taskId)).toJSON().copy(id = RequestId(id))
 
     private fun createdTaskId(transport: FakeTransport, id: Long): String {
         val result = assertNotNull(transport.responseTo(id), "no response to tools/call id=$id").result
@@ -248,5 +273,94 @@ class TaskHandlerInstallationTest {
         assertTrue(createdTaskId(transport, 2).isNotBlank())
         session.close()
         store.close()
+    }
+
+    // --- tasks/result and tasks/cancel, end to end ---
+
+    @Test
+    fun tasksResultReturnsTheToolResultTaggedWithItsTask() = runTest {
+        val server = server()
+        val store = store()
+        server.installTaskHandlersOnEverySession(store)
+        val transport = FakeTransport()
+        val session = server.createSession(transport)
+        transport.handshake()
+
+        transport.deliver(taskCall(id = 2))
+        runCurrent()
+        val taskId = createdTaskId(transport, 2)
+        transport.deliver(tasksResult(id = 3, taskId = taskId))
+        runCurrent()
+
+        val payload = assertIs<GetTaskPayloadResult>(
+            assertNotNull(transport.responseTo(3), "no response to tasks/result").result,
+        )
+        // The payload is the tool's own CallToolResult, re-encoded: it must still decode as one.
+        val result = McpJson.decodeFromJsonElement(CallToolResult.serializer(), payload.json)
+        assertEquals("done", (result.content.single() as TextContent).text)
+        // 2025-11-25: tasks/result "MUST include this metadata in its response, as the result
+        // structure itself does not contain the task ID" — merged in, not replacing the tool's _meta.
+        val meta = assertNotNull(payload.meta, "tasks/result carries no _meta")
+        val related = assertIs<JsonObject>(meta[RELATED_TASK_META_KEY], "no related-task key in $meta")
+        assertEquals(taskId, related["taskId"]?.jsonPrimitive?.content)
+        assertEquals("kept", meta[TOOL_META_KEY]?.jsonPrimitive?.content, "the tool's own _meta was dropped")
+
+        session.close()
+        store.close()
+    }
+
+    @Test
+    fun cancellingAFinishedTaskIsAnInvalidParamsError() = runTest {
+        val server = server()
+        val store = store()
+        server.installTaskHandlersOnEverySession(store)
+        val transport = FakeTransport()
+        val session = server.createSession(transport)
+        transport.handshake()
+
+        transport.deliver(taskCall(id = 2))
+        runCurrent()
+        val taskId = createdTaskId(transport, 2)
+        transport.deliver(tasksCancel(id = 3, taskId = taskId))
+        runCurrent()
+
+        // "Receivers MUST reject cancellation requests for tasks already in a terminal status ...
+        // with error code -32602 (Invalid params)" — a JSON-RPC error, not a result and not -32603.
+        assertNull(transport.responseTo(3), "cancelling a completed task must not succeed")
+        assertEquals(RPCError.ErrorCode.INVALID_PARAMS, transport.errorTo(3)?.error?.code)
+
+        session.close()
+        store.close()
+    }
+
+    @Test
+    fun tasksResultForACancelledTaskIsAnInvalidParamsError() = runTest {
+        val server = server()
+        val store = store()
+        server.installTaskHandlersOnEverySession(store)
+        val transport = FakeTransport()
+        val session = server.createSession(transport)
+        transport.handshake()
+
+        // Cancelled while still running, so the task ends with no payload to return.
+        transport.deliver(taskCall(id = 2, tool = stuck.name))
+        runCurrent()
+        val taskId = createdTaskId(transport, 2)
+        transport.deliver(tasksCancel(id = 3, taskId = taskId))
+        runCurrent()
+        assertNotNull(transport.responseTo(3), "cancelling a running task must succeed")
+
+        transport.deliver(tasksResult(id = 4, taskId = taskId))
+        runCurrent()
+
+        assertNull(transport.responseTo(4))
+        assertEquals(RPCError.ErrorCode.INVALID_PARAMS, transport.errorTo(4)?.error?.code)
+
+        session.close()
+        store.close()
+    }
+
+    private companion object {
+        const val TOOL_META_KEY = "example.com/trace"
     }
 }

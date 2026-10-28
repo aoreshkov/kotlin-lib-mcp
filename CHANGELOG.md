@@ -7,7 +7,30 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **`search_source` pages.** It takes an `offset` and returns a `totalCount`, like the other
+  listing tools, so hits past the first page can be reached. Counting stops at 10 000 matches;
+  past that `totalCountCapped` is `true`, `totalCount` is a lower bound, and the remaining matches
+  are out of paging's reach (narrow the query).
+
 ### Fixed
+- **`diff_versions` pages are bounded in characters**, not only in lines. One changed line of a
+  minified or generated source was returned whole, however long, as both `-` and `+`. Hunk text is
+  now capped per file (40 000 characters) and per page (100 000). A file over either keeps its
+  counts and is marked `diffOmitted`; narrowing `path` to that file returns its hunks.
+- **`diff_versions` hunk headers are correct with `contextLines: 0`.** A pure insertion or deletion
+  started one line late (`@@ -2,0 +2,2 @@` instead of `@@ -1,0 +2,2 @@`), so `git apply
+  --unidiff-zero` and `patch` put the lines in the wrong place. Adjacent changed lines also came
+  back as one hunk per line at zero context; they now share a hunk, as `diff -U0` prints them.
+- **A `search_source` regex that recurses too deeply is a tool error.** A pattern like `(.|x)*` on
+  a long line overflowed the stack and reached the client as a protocol failure. It now gets the
+  same "too expensive" `isError` result a backtracking pattern does.
+- **`tasks/result` carries `io.modelcontextprotocol/related-task` in its `_meta`** (with
+  `--tasks`), as the 2025-11-25 spec requires, merged with any `_meta` the tool set.
+  `notifications/tasks/status` no longer repeats it, since the spec says it should not.
+- **A withdrawn `completion/complete` or `fetch_library` stops.** Both caught the cancellation as an
+  ordinary failure: autocomplete answered with an empty list, and a cancelled `fetch_library` went
+  on to build its result.
 - **Early-access builds no longer outrank the release they precede.** `3.0.0-eap-852` (and
   `-dev`, `-preview`, `-pre`, `-ea` builds) sorted *above* `3.0.0`, so `get_latest_version`'s
   pre-release `latest` could name an EAP over the final release, and `list_versions` and the

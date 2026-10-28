@@ -61,7 +61,7 @@ fun attachMcpLogForwarder(server: Server, scope: CoroutineScope) {
     scope.launch {
         for (notification in channel) {
             server.sessions.values.forEach { session ->
-                runCatching { session.sendLoggingMessage(notification) }
+                runCatchingCancellable { session.sendLoggingMessage(notification) }
             }
         }
     }

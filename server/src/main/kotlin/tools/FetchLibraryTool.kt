@@ -7,6 +7,7 @@ import app.oreshkov.kotlinlibmcp.server.LibraryService
 import app.oreshkov.kotlinlibmcp.server.elicitation.resolveCoordinate
 import app.oreshkov.kotlinlibmcp.server.icons.Glyph
 import app.oreshkov.kotlinlibmcp.server.resources.libraryIndexLink
+import app.oreshkov.kotlinlibmcp.server.runCatchingCancellable
 import io.modelcontextprotocol.kotlin.sdk.server.ClientConnection
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.shared.currentRequestHandlerExtra
@@ -108,7 +109,7 @@ private suspend fun ClientConnection.sendFetchProgress(token: ProgressToken, pro
             message = progress.message,
         )
     )
-    runCatching {
+    runCatchingCancellable {
         when (val extra = currentRequestHandlerExtra()) {
             null -> notification(frame)
             else -> extra.sendNotification(frame)

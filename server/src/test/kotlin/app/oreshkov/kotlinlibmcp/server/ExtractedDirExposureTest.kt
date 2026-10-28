@@ -12,9 +12,11 @@ import java.nio.file.Path
 import java.util.concurrent.ConcurrentHashMap
 import kotlin.test.Test
 import kotlin.test.assertEquals
+import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.time.Instant
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.test.runTest
 
 /**
@@ -102,6 +104,21 @@ class ExtractedDirExposureTest {
 
         assertEquals(true, warm.fromCache, "second call must be the warm path")
         assertEquals(normalizedRoot, assertNotNull(warm.extractedDir))
+    }
+
+    @Test
+    fun aCancelledRootLookupCancelsTheFetchInsteadOfDroppingTheField() = runTest {
+        // A resolution *failure* only costs the convenience field. A cancellation is the client
+        // withdrawing the call, and must not be swallowed into a summary with `extractedDir: null`
+        // that the cancelled call then goes on to return.
+        val cache = InMemoryCache().apply { putIndex(LibraryIndex(coordinate = coordinate, fetchedAt = Instant.fromEpochSeconds(0))) }
+        val withdrawn = object : MavenSourceFetcher by RootFetcher(root) {
+            override suspend fun fetch(coordinate: LibraryCoordinate, repos: List<String>): FetchResult =
+                throw CancellationException("client withdrew fetch_library")
+        }
+        val service = LibraryService(withdrawn, RecordingAnalyzer(), cache, exposeLocalPaths = true)
+
+        assertFailsWith<CancellationException> { service.fetchLibrary(coordinate) }
     }
 
     @Test

@@ -16,6 +16,7 @@ import kotlin.test.AfterTest
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFailsWith
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlin.time.Instant
 import kotlinx.coroutines.test.runTest
@@ -134,6 +135,74 @@ class SearchSourceServiceTest {
         assertFailsWith<SearchPatternTooExpensiveException> {
             service.searchSource(coordinate, query = "(x+x+)+y", regex = true, maxResults = 10)
         }
+    }
+
+    @Test
+    fun aRecursionBlowUpIsTheSameCorrectableErrorNotAStackOverflow() = runTest {
+        // `java.util.regex` repeats a group with alternation by recursion, one level per character,
+        // so this overflows the stack long before it has spent the character budget. As an `Error`
+        // it would bypass `guarded` and reach the client as a protocol failure.
+        val (service, _) = serviceWith(fileCount = 1, line = "a".repeat(100_000))
+
+        assertFailsWith<SearchPatternTooExpensiveException> {
+            service.searchSource(coordinate, query = "(.|x)*y", regex = true, maxResults = 10)
+        }
+    }
+
+    // --- paging ---
+
+    @Test
+    fun offsetPagesThroughEveryMatchAndTotalCountSaysHowMany() = runTest {
+        val (service, _) = serviceWith(fileCount = 12, line = "val needle = 1")
+
+        val first = service.searchSource(coordinate, query = "needle", regex = false, maxResults = 5)
+        val middle = service.searchSource(coordinate, query = "needle", regex = false, maxResults = 5, offset = 5)
+        val last = service.searchSource(coordinate, query = "needle", regex = false, maxResults = 5, offset = 10)
+
+        assertEquals(listOf(12, 12, 12), listOf(first, middle, last).map { it.totalCount })
+        assertTrue(listOf(first, middle, last).none { it.totalCountCapped })
+        assertEquals(listOf(5, 5, 2), listOf(first, middle, last).map { it.hits.size })
+        assertEquals(listOf(true, true, false), listOf(first, middle, last).map { it.truncated })
+        // Hits past the first page used to be unreachable; now the pages partition them.
+        val paged = (first.hits + middle.hits + last.hits).map { it.path }
+        val all = service.searchSource(coordinate, query = "needle", regex = false, maxResults = 200).hits.map { it.path }
+        assertEquals(all, paged)
+        assertEquals(12, paged.toSet().size)
+    }
+
+    @Test
+    fun anOffsetPastTheEndIsAnEmptyPageNotAnError() = runTest {
+        val (service, _) = serviceWith(fileCount = 3, line = "val needle = 1")
+
+        val page = service.searchSource(coordinate, query = "needle", regex = false, maxResults = 5, offset = 50)
+
+        assertEquals(emptyList(), page.hits)
+        assertEquals(3, page.totalCount)
+        assertEquals(false, page.truncated)
+    }
+
+    @Test
+    fun countingStopsAtTheCeilingAndSaysTheTotalIsALowerBound() = runTest {
+        val ceiling = LibraryService.MAX_SEARCH_MATCHES_COUNTED
+        val (service, _) = serviceWith(fileCount = 1, line = List(ceiling + 50) { "needle" }.joinToString("\n"))
+
+        val page = service.searchSource(coordinate, query = "needle", regex = false, maxResults = 10)
+
+        assertEquals(ceiling, page.totalCount)
+        assertTrue(page.totalCountCapped, "a capped count must not read as the real total")
+        assertTrue(page.truncated)
+        assertEquals(10, page.hits.size)
+
+        // The last reachable page says there is no next one. Matches past the ceiling cannot be
+        // paged to, and a `truncated: true` here would send a client that pages until it turns
+        // false round an endless run of empty pages.
+        val last = service.searchSource(coordinate, query = "needle", regex = false, maxResults = 200, offset = ceiling - 200)
+        assertEquals(200, last.hits.size)
+        assertTrue(last.totalCountCapped)
+        assertFalse(last.truncated, "no page past the ceiling has hits, so none may be promised")
+        val beyond = service.searchSource(coordinate, query = "needle", regex = false, maxResults = 200, offset = ceiling)
+        assertEquals(emptyList(), beyond.hits)
+        assertFalse(beyond.truncated)
     }
 
     @Test

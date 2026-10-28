@@ -6,6 +6,7 @@ import app.oreshkov.kotlinlibmcp.server.telemetry.METHOD_TASKS_LIST
 import app.oreshkov.kotlinlibmcp.server.telemetry.METHOD_TASKS_RESULT
 import app.oreshkov.kotlinlibmcp.server.telemetry.taskSpan
 import app.oreshkov.kotlinlibmcp.server.onEachSession
+import app.oreshkov.kotlinlibmcp.server.runCatchingCancellable
 import io.modelcontextprotocol.kotlin.sdk.server.ClientConnection
 import io.modelcontextprotocol.kotlin.sdk.server.RegisteredTool
 import io.modelcontextprotocol.kotlin.sdk.server.Server
@@ -88,10 +89,11 @@ fun ServerSession.registerTaskHandlers(server: Server, store: TaskStore) {
         taskSpan(METHOD_TASKS_RESULT, sessionId, request.params.meta) {
             mapTaskErrors {
                 // tasks/result returns the original request's result shape verbatim — for a
-                // tools/call task that is a CallToolResult, re-encoded as the raw payload object.
-                GetTaskPayloadResult(
-                    McpJson.encodeToJsonElement(store.payload(sessionId, request.taskId)) as JsonObject
-                )
+                // tools/call task that is a CallToolResult, re-encoded as the raw payload object —
+                // plus the related-task key, which the spec requires here because nothing else in
+                // the result names the task.
+                val payload = McpJson.encodeToJsonElement(store.payload(sessionId, request.taskId)) as JsonObject
+                GetTaskPayloadResult(payload.withRelatedTask(request.taskId))
             }
         }
     }
@@ -202,17 +204,33 @@ private suspend fun invokeTool(
  * client can always fall back to polling `tasks/get`, which is the spec's baseline anyway.
  */
 private suspend fun ClientConnection.sendTaskStatus(task: Task) {
-    runCatching { notification(TaskStatusNotification(task.asNotificationParams())) }
+    runCatchingCancellable { notification(TaskStatusNotification(task.asNotificationParams())) }
 }
 
 /**
- * `_meta` marking a message as belonging to [taskId]. The spec requires it on **every** message
- * related to a task — including the server-to-client requests a task's body makes, which is why
- * this is shared with `elicitation/VersionElicitation.kt` rather than private here.
+ * `_meta` marking a message as belonging to [taskId]. The spec requires it on messages related to a
+ * task — including the server-to-client requests a task's body makes, which is why this is shared
+ * with `elicitation/VersionElicitation.kt` rather than private here — and on the `tasks/result`
+ * response, whose payload is the tool's own result and so does not name the task.
+ *
+ * It is deliberately **absent** where the message already carries the `taskId`: the `tasks/get`,
+ * `tasks/list` and `tasks/cancel` results, and `notifications/tasks/status`, all of which the spec
+ * says SHOULD NOT include it.
  */
 internal fun relatedTaskMeta(taskId: String): JsonObject = buildJsonObject {
     put(RELATED_TASK_META_KEY, buildJsonObject { put("taskId", taskId) })
 }
+
+/**
+ * This result payload with [relatedTaskMeta] merged into its `_meta`. Keys the tool set itself are
+ * kept; only the related-task key is ours to write.
+ */
+private fun JsonObject.withRelatedTask(taskId: String): JsonObject {
+    val meta = (this[META_KEY] as? JsonObject).orEmpty() + relatedTaskMeta(taskId)
+    return JsonObject(this + (META_KEY to JsonObject(meta)))
+}
+
+private const val META_KEY = "_meta"
 
 private fun Task.asNotificationParams(): TaskStatusNotificationParams = TaskStatusNotificationParams(
     taskId = taskId,
@@ -222,7 +240,6 @@ private fun Task.asNotificationParams(): TaskStatusNotificationParams = TaskStat
     lastUpdatedAt = lastUpdatedAt,
     ttl = ttl,
     pollInterval = pollInterval,
-    meta = relatedTaskMeta(taskId),
 )
 
 /** `Task` and `GetTaskResult` carry the same fields; the latter flattens them into a result. */

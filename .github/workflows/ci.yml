@@ -26,6 +26,18 @@ jobs:
         with:
           persist-credentials: false
 
+      # Coroutine cancellation is an exception and `runCatching` catches every Throwable, so a
+      # withdrawn request carried on as an ordinary failure. Server code uses the re-throwing
+      # `runCatchingCancellable` (server/src/main/kotlin/RunCatching.kt). The rule had been broken
+      # twice while it was only written down; one leg is enough, the sources are the same.
+      - name: No runCatching in server code
+        if: runner.os == 'Linux'
+        run: |
+          if grep -rnE '\brunCatching[[:space:]]*[{(]' --include='*.kt' server/src/main; then
+            echo "::error::runCatching swallows CancellationException; use runCatchingCancellable instead"
+            exit 1
+          fi
+
       - name: Set up JDK 25
         uses: actions/setup-java@b843ebf9b913146b38da2eaa7aeddf76074ae1ad # v6.1.0
         with:

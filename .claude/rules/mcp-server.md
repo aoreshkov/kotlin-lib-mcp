@@ -43,8 +43,15 @@ Follow the established shape rather than inventing one: `maxResults` + `offset` 
 clamped, and `totalCount` + `truncated` in the result so the caller can see what it did not get and
 page for the rest. Where rows are the wrong unit, bound the real one instead and say so —
 `get_source` pages by line *and* clips by characters (a line cap is not a size cap when a generated
-line runs to thousands of characters), and `get_dependencies` prunes by node count breadth-first
-(`depth` bounds resolution cost, not result size).
+line runs to thousands of characters), `diff_versions` caps hunk text per file and per page in
+characters on top of its line budget (a file over either stays on the page as `diffOmitted`, so
+`offset` paging is unchanged), and `get_dependencies` prunes by node count breadth-first (`depth`
+bounds resolution cost, not result size). A `totalCount` that would need a full scan to compute may
+stop at a ceiling and say so: `search_source` counts to `MAX_SEARCH_MATCHES_COUNTED` and then
+reports `totalCountCapped: true`. Name such flags so `false` is the normal case — `toolResult`
+omits default values and the output schema carries no defaults, so a missing boolean reads as
+`false` — and keep `truncated` meaning strictly "advancing `offset` returns more", never "more
+exist somewhere", or a client paging until it is false never stops.
 
 **Resources fall under the same rule**, with less room: a resource has no arguments to page with,
 and a client may attach one to a conversation wholesale. So `…/index` is a summary (counts plus the
@@ -102,6 +109,12 @@ its non-task branch must reproduce the SDK's semantics exactly: unknown tool →
 The `tasks` capability and the handlers are both driven by `ServerConfig.tasks` so they can never
 disagree; advertising the capability without handlers makes the SDK route methods that answer
 nothing.
+
+**`io.modelcontextprotocol/related-task` goes where the message does not already name the task.**
+`tasks/result` MUST carry it (its payload is the tool's own result), merged into whatever `_meta`
+the tool set; so must server-to-client requests a task body makes (the elicitation). The
+`tasks/get`/`list`/`cancel` results and `notifications/tasks/status` SHOULD NOT, because `taskId`
+is already in them. `TaskHandlerInstallationTest` and `TaskDispatchTest` pin both directions.
 
 **Registering them differs per transport**, because the SDK only sometimes hands us the session.
 stdio calls `registerTaskHandlers` on the `ServerSession` `runStdioServer` owns. HTTP has no such
@@ -166,7 +179,11 @@ deadlocked forever; `transport/ConcurrentDispatchTransport.kt` existed solely to
 
 Two obligations this puts on our code, both already satisfied — keep them that way:
 always re-throw `CancellationException` from handlers (that is what makes a withdrawn
-`tools/call` actually stop the download), and never replace a control-method handler
+`tools/call` actually stop the download) — which in practice means **never `runCatching` in server
+code**: it catches `Throwable`, cancellation included, and was how the rule got broken twice (the
+completion handler, `fetch_library`'s source-root lookup). Use `runCatchingCancellable`
+(`RunCatching.kt`) or a `try` with a re-throwing `catch (e: CancellationException)` arm; CI's
+`build` job greps `server/src/main` for a bare `runCatching` and fails. And never replace a control-method handler
 (`ping`, `notifications/cancelled`, `notifications/progress`, `notifications/initialized`) with slow
 code — replacing `cancelled` disables inbound cancellation outright. `ConcurrentDispatchTest` pins
 the anti-deadlock property, the serial handshake, and cancellation.
