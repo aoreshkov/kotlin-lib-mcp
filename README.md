@@ -296,7 +296,9 @@ the container image. The payload is **PNG**, the one format icon-rendering clien
 (`image/svg+xml` is only a SHOULD, and the spec warns it may carry executable content). The glyphs
 are drawn by [`tools/src/main/kotlin/GenerateIcons.kt`](tools/src/main/kotlin/GenerateIcons.kt)
 (`./gradlew :tools:generateIcons`) and kept small —
-about 800 bytes encoded each, since they ride in every `tools/list`.
+about 800 bytes encoded each, since they ride in every `tools/list`. The same geometry also
+writes the vector brand mark, `assets/icon.svg`, and a test fails if any committed icon stops
+matching it.
 
 [sep-973]: https://modelcontextprotocol.io/specification/2025-11-25/basic#icons
 
@@ -318,7 +320,7 @@ Requires JDK 25 (a Gradle toolchain: an installed JDK 25 is detected, otherwise 
 | `core/` | KMP library: domain model + ports (`commonMain`); Maven fetcher, zip extractor, Analysis API analyzer, on-disk cache (`jvmMain`) |
 | `server/` | JVM app: MCP tools/resources/prompts + stdio and Streamable HTTP transports |
 | `dashboard/` | Compose Desktop control panel embedding the server (optional) |
-| `tools/` | Generator for the SEP-973 icon PNGs the server advertises. The module never ships; its output does |
+| `tools/` | Generator for the SEP-973 icon PNGs the server advertises and the brand SVG. The module never ships; its output does |
 
 ## Cache
 

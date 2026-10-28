@@ -11,7 +11,8 @@ Every tool declares a `title`, behavior annotations (`readOnlyHint`/`openWorldHi
 (`server/.../tools/OutputSchemas.kt`), and an SEP-973 `icon`; `toolResult` returns JSON text **and**
 matching `structuredContent`. When adding a tool, pass all four to `addTool` — use the shared
 `LOCAL_READ_ONLY`/`REPOSITORY_READ_ONLY` annotation constants in `ToolSupport.kt`, and add a new
-`Glyph` entry (plus its PNG, via `./gradlew :tools:generateIcons`) in `server/.../icons/Icons.kt`.
+`Glyph` entry in `server/.../icons/Icons.kt`, drawn by a matching `Glyph` in
+`tools/.../GenerateIcons.kt` (then `./gradlew :tools:generateIcons` writes its PNG).
 
 **Arguments are validated, never quietly defaulted.** The SDK checks nothing against `inputSchema`,
 so the server does: `addTool` (the `ToolSupport.kt` extension) rejects any argument the schema does
