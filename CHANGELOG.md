@@ -7,6 +7,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.0] - 2026-10-28
+
+This release makes fetches survive failing repositories and shared caches, pages `search_source`,
+fixes task handling under `--tasks`, and moves to MCP Kotlin SDK 0.16.0. The protocol is still
+2025-11-25. **Upgrading:** `--repo` now adds a repository instead of replacing Maven Central, so a
+`--repo` pointing at a mirror of Central needs `--no-maven-central` to keep the old behaviour. On
+`--transport http`, a session idle for 60 minutes expires and the client re-initializes. Cached
+libraries are analyzed again, automatically, on their next fetch (see *Changed*).
+
 ### Added
 - **`search_source` pages.** It takes an `offset` and returns a `totalCount`, like the other
   listing tools, so hits past the first page can be reached. Counting stops at 10 000 matches;
@@ -816,7 +825,8 @@ Initial public release.
 - On-disk cache keyed by `group/artifact/version` under the OS cache directory.
 - Optional **Compose Desktop dashboard** embedding the server (control, logs, cache browser).
 
-[Unreleased]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.9.2...HEAD
+[Unreleased]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.9.0...v0.9.1
 [0.9.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.8.0...v0.9.0
