@@ -56,6 +56,32 @@ private const val POLL_INTERVAL_MS = 1_000L
 
 private val log = Logger.withTag("TaskStore")
 
+/** `completed`, `failed` and `cancelled`: the statuses a task never leaves. */
+internal val TaskStatus.isTerminal: Boolean
+    get() = this != TaskStatus.Working && this != TaskStatus.InputRequired
+
+/**
+ * The task state machine, in one place: whether a task in [from] may move to [to].
+ *
+ * 2025-11-25 allows `working` and `input_required` to move to any other status, and says the three
+ * terminal ones "**MUST NOT** transition to any other status" — in particular "once a task is
+ * cancelled, it MUST remain in cancelled status even if execution continues to completion or fails".
+ * Every write to a record's status goes through this check under the record's monitor (see
+ * `TaskStore.update`), so a body that finishes just after `tasks/cancel`, or just before `close()`,
+ * cannot overwrite whichever terminal state landed first. Moving to the current status is not a
+ * transition either, which keeps a repeated `input_required` from re-notifying.
+ */
+internal fun canTransition(from: TaskStatus, to: TaskStatus): Boolean = !from.isTerminal && to != from
+
+/**
+ * The [Error]s a task still records as `failed` but then lets propagate: the JVM is in no state to
+ * keep serving after one. `StackOverflowError` is the exception: it unwinds cleanly and is
+ * specific to the input that caused it (a pathological regex), so the server carries on.
+ * `LinkageError`s — the `NoSuchMethodError` a mis-ordered classpath produces — are not
+ * [VirtualMachineError]s and stay contained to the task.
+ */
+private fun Throwable.isFatal(): Boolean = this is VirtualMachineError && this !is StackOverflowError
+
 /** How a caller describes the work to run; [onStatus] fires on every transition, including the first. */
 class TaskRun(
     val label: String,
@@ -98,7 +124,15 @@ private class TaskRecord(
      */
     val finished: CompletableDeferred<Unit> = CompletableDeferred()
 
-    val terminal: Boolean get() = status != TaskStatus.Working && status != TaskStatus.InputRequired
+    /**
+     * Held across taking the on-disk snapshot *and* writing it, so two writers of this record —
+     * the job on [Dispatchers.Default] and a `tasks/cancel` or `close()` on the caller's thread —
+     * cannot land out of order and leave a stale state on disk. Separate from the record's own
+     * monitor so file IO never blocks a `tasks/get`. Always taken before that monitor, never inside it.
+     */
+    val writeLock: Any = Any()
+
+    val terminal: Boolean get() = status.isTerminal
 
     fun snapshot(): Task = Task(
         taskId = taskId,
@@ -314,10 +348,16 @@ class TaskStore(
                 Outcome.Done(withContext(TaskContext(record.taskId, this@TaskStore)) { run.block() })
             } catch (e: CancellationException) {
                 Outcome.Cancelled
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
+                // Throwable, not Exception: a `NoSuchMethodError` from the kotlin-compiler classpath
+                // or an `ExceptionInInitializerError` would otherwise skip `publish`, leaving the task
+                // `working` and every `tasks/result` parked on it until the TTL ran out.
                 Outcome.Failed(e)
             }
             publish(record, outcome, run.onStatus)
+            // Recorded first, so the client is not left waiting; only then let a fatal one reach
+            // the scope's uncaught-exception handler (stderr), rather than swallowing an OOM here.
+            if (outcome is Outcome.Failed && outcome.error.isFatal()) throw outcome.error
         }
         return initial
     }
@@ -368,27 +408,29 @@ class TaskStore(
         (record.createdAt.toEpochMilli() + record.ttlMs - now().toEpochMilli()).coerceAtLeast(0)
 
     /**
-     * Cancels [taskId] (`tasks/cancel`), returning the resulting state. Cancelling the job unwinds
-     * the tool body through the `CancellationException` that `guarded` already re-throws, so the
-     * in-flight download/analysis stops rather than running on unobserved.
+     * Cancels [taskId] (`tasks/cancel`), returning the resulting state.
+     *
+     * The record is moved to `cancelled` **first**, in the same critical section that checks it is
+     * not already terminal — the spec's "MUST transition the task to cancelled status before
+     * sending the response". Only then is the job cancelled, which unwinds the tool body through
+     * the `CancellationException` that `guarded` already re-throws, so the in-flight
+     * download/analysis stops rather than running on unobserved. Whatever that body does next —
+     * return a result, or throw while unwinding — finds the task terminal and changes nothing.
      *
      * @throws TaskAlreadyTerminalException if the task already finished — the spec requires an
      * error here, not a no-op, so a client that raced the completion learns which way it went.
      */
     fun cancel(owner: String, taskId: String): Task {
         val record = withRecord(owner, taskId) { it }
-        val job = synchronized(record) {
-            if (record.terminal) throw TaskAlreadyTerminalException(taskId, record.status) else record.job
-        }
-        job?.cancel()
-        // The job's own CancellationException path publishes `cancelled`; report it now so the
-        // response does not depend on that coroutine having been rescheduled yet.
-        return update(record) {
-            if (!record.terminal) {
-                record.status = TaskStatus.Cancelled
-                record.statusMessage = "Cancelled by client request"
-            }
-        }
+        val cancelled = update(record, TaskStatus.Cancelled) {
+            record.statusMessage = "Cancelled by client request"
+        } ?: throw TaskAlreadyTerminalException(taskId, synchronized(record) { record.status })
+        synchronized(record) { record.job }?.cancel()
+        // The job is cancelled, so it can no longer report this transition itself, and this
+        // function is not suspend. Notifications are optional in the spec; the response above is
+        // what the client relies on.
+        scope.launch { runCatchingCancellable { record.onStatus(cancelled) } }
+        return cancelled
     }
 
     /**
@@ -418,6 +460,12 @@ class TaskStore(
      * would then come back as `cancelled` or `failed` depending on thread timing. Marking first also
      * means that path finds the record already terminal and leaves it alone.
      *
+     * The check and the write are one step ([update]): a task that completes between them keeps
+     * its `completed` and its payload, rather than being relabelled as killed by the shutdown. Such
+     * a task may still be on its way to disk, though — terminal in memory, its write in flight on
+     * the job's thread — so it is written here too: every record's final state is on disk when
+     * this returns, whichever thread decided it.
+     *
      * `failed` rather than `cancelled`: the spec's `cancelled` means the requestor asked, and nobody
      * did — the server went away. It matches what [restore] does for a record a hard crash left
      * `working`, with a different message so the two provenances stay distinguishable.
@@ -427,10 +475,11 @@ class TaskStore(
      */
     override fun close() {
         records.values.forEach { record ->
-            if (synchronized(record) { record.terminal }) return@forEach
-            update(record) {
-                record.status = TaskStatus.Failed
+            update(record, TaskStatus.Failed) {
                 record.statusMessage = "Server shut down while this task was running"
+            } ?: run {
+                // `finished` completes only once the terminal state is saved; until then, save it.
+                if (!record.finished.isCompleted) persist(record)
             }
         }
         scope.cancel()
@@ -441,36 +490,36 @@ class TaskStore(
 
     private sealed interface Outcome {
         class Done(val result: CallToolResult) : Outcome
-        class Failed(val error: Exception) : Outcome
+        class Failed(val error: Throwable) : Outcome
         data object Cancelled : Outcome
     }
 
+    /**
+     * Records how the body ended. A no-op when the task is already terminal — `tasks/cancel` or
+     * [close] got there first, and that state stands — so neither the record, its file nor the
+     * client's notifications change.
+     */
     private suspend fun publish(record: TaskRecord, outcome: Outcome, onStatus: suspend (Task) -> Unit) {
-        val snapshot = update(record) {
-            when (outcome) {
-                is Outcome.Done -> {
-                    // A tool that reported isError did not complete successfully: 2025-11-25 is
-                    // explicit that "for tool calls specifically, this includes cases where the
-                    // tool call result has isError set to true" → `failed`. The result is still
-                    // kept, because tasks/result must return exactly what the underlying request
-                    // would have returned — the error content the model needs to read and act on.
-                    val failed = outcome.result.isError == true
-                    record.status = if (failed) TaskStatus.Failed else TaskStatus.Completed
+        val snapshot = when (outcome) {
+            is Outcome.Done -> {
+                // A tool that reported isError did not complete successfully: 2025-11-25 is
+                // explicit that "for tool calls specifically, this includes cases where the
+                // tool call result has isError set to true" → `failed`. The result is still
+                // kept, because tasks/result must return exactly what the underlying request
+                // would have returned — the error content the model needs to read and act on.
+                val failed = outcome.result.isError == true
+                update(record, if (failed) TaskStatus.Failed else TaskStatus.Completed) {
                     record.result = outcome.result
                     record.statusMessage = if (failed) "The tool reported an error" else null
                 }
-                is Outcome.Failed -> {
-                    record.status = TaskStatus.Failed
-                    record.statusMessage = outcome.error.message ?: outcome.error.toString()
-                    log.w { "Task ${record.taskId} (${record.label}) failed: ${record.statusMessage}" }
-                }
-                // Set by `cancel` already in the common case; repeated for a cancellation that
-                // originated inside the tool body rather than from tasks/cancel.
-                Outcome.Cancelled -> if (!record.terminal) {
-                    record.status = TaskStatus.Cancelled
-                }
             }
-        }
+            is Outcome.Failed -> update(record, TaskStatus.Failed) {
+                record.statusMessage = outcome.error.message ?: outcome.error.toString()
+            }?.also { log.w(outcome.error) { "Task ${record.taskId} (${record.label}) failed: ${it.statusMessage}" } }
+            // A cancellation that originated inside the tool body rather than from tasks/cancel,
+            // which has already moved the record itself.
+            Outcome.Cancelled -> update(record, TaskStatus.Cancelled)
+        } ?: return
         // A client that has already disconnected must not turn into a failed task.
         runCatchingCancellable { onStatus(snapshot) }
     }
@@ -481,33 +530,30 @@ class TaskStore(
      */
     private suspend fun transition(taskId: String, status: TaskStatus, message: String?) {
         val record = records[taskId] ?: return
-        val snapshot = synchronized(record) {
-            if (record.terminal || record.status == status) return
-            record.status = status
-            record.statusMessage = message
-            record.lastUpdatedAt = now()
-            record.snapshot()
-        }
-        persist(record)
+        val snapshot = update(record, status) { record.statusMessage = message } ?: return
         runCatchingCancellable { record.onStatus(snapshot) }
     }
 
     /**
-     * Applies [mutate] under the record's monitor and returns the resulting snapshot, releasing any
-     * `tasks/result` call parked on [TaskRecord.finished] if the change was terminal. Every path
-     * that can end a task goes through here, so no terminal transition can forget to unblock.
+     * Moves [record] to [to] and applies [mutate], both under the record's monitor, if
+     * [canTransition] allows it; returns the resulting snapshot, or `null` — touching nothing,
+     * on disk or off — when it does not. Every status write goes through here, so the state
+     * machine cannot be bypassed by one path, and a terminal transition always releases any
+     * `tasks/result` call parked on [TaskRecord.finished].
      */
-    private fun update(record: TaskRecord, mutate: () -> Unit): Task {
-        val (snapshot, terminal) = synchronized(record) {
+    private fun update(record: TaskRecord, to: TaskStatus, mutate: () -> Unit = {}): Task? {
+        val snapshot = synchronized(record) {
+            if (!canTransition(record.status, to)) return null
+            record.status = to
             mutate()
             record.lastUpdatedAt = now()
-            record.snapshot() to record.terminal
+            record.snapshot()
         }
         persist(record)
         // Released only *after* the new state is on disk. Completing it inside the lock would let a
         // client observe a finished task through tasks/result that a crash a moment later would
         // resurrect as `working` — the one inconsistency persistence exists to prevent.
-        if (terminal) record.finished.complete(Unit)
+        if (to.isTerminal) record.finished.complete(Unit)
         return snapshot
     }
 
@@ -516,16 +562,20 @@ class TaskStore(
      *
      * **Synchronous, deliberately.** Launching the write instead would be cancelled by [close] —
      * losing exactly the final state a task reaches during shutdown, which is the state a restart
-     * most needs — and would leave two saves free to land out of order. Records are a few KB and
-     * written only on state changes (four per task in the common case), so the cost is a couple of
-     * milliseconds on a path that is already doing network and disk work.
+     * most needs. Records are a few KB and written only on state changes (four per task in the
+     * common case), so the cost is a couple of milliseconds on a path that is already doing network
+     * and disk work.
      *
-     * Called outside the record's monitor. Failures are swallowed and logged by the record store:
-     * durability is a bonus, and losing it must never fail a task the client is waiting on.
+     * The snapshot is taken *inside* [TaskRecord.writeLock], not before it: whichever writer saves
+     * last therefore saves the latest state, so concurrent writers cannot leave an older one on
+     * disk. Failures are swallowed and logged by the record store: durability is a bonus, and
+     * losing it must never fail a task the client is waiting on.
      */
     private fun persist(record: TaskRecord) {
         val store = recordStore ?: return
-        store.save(synchronized(record) { record.persisted() })
+        synchronized(record.writeLock) {
+            store.save(synchronized(record) { record.persisted() })
+        }
     }
 
     /**

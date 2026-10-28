@@ -59,8 +59,11 @@ internal data class PersistedTask(
  * and skipped, never fatal. A task record is not worth failing a server start over.
  *
  * All IO is caller-scheduled — [TaskStore] calls these off its own scope on [kotlinx.coroutines.Dispatchers.IO].
+ *
+ * `open` so a test can hold a [save] in flight: that is the only way to open, on demand, the window
+ * between a task turning terminal in memory and reaching disk, which `TaskStore.close` must wait out.
  */
-class TaskRecordStore(private val dir: Path) {
+open class TaskRecordStore(private val dir: Path) {
 
     private val log = Logger.withTag("TaskRecordStore")
 
@@ -71,18 +74,28 @@ class TaskRecordStore(private val dir: Path) {
      * record that would then be skipped as corrupt. `ATOMIC_MOVE` is not universally supported
      * (some network filesystems), hence the fallback — which is still strictly better than writing
      * the target in place.
+     *
+     * The temp file is uniquely named per save, the way core's `writeAtomically` names its own. A
+     * fixed `<taskId>.json.tmp` let two saves of one task write into the same file at once —
+     * interleaving their bytes, or moving it away from under each other. `TaskStore` also
+     * serializes the saves of one task, so this is the second of two guards, not the only one.
      */
-    internal fun save(record: PersistedTask) {
+    internal open fun save(record: PersistedTask) {
         runCatchingCancellable {
             dir.createDirectories()
             val target = fileFor(record.taskId)
-            val temp = dir.resolve("${record.taskId}.json.tmp")
-            temp.writeText(McpJson.encodeToString(record))
+            val temp = Files.createTempFile(dir, "${record.taskId}.", ".json.tmp")
             try {
-                Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
-            } catch (e: AtomicMoveNotSupportedException) {
-                log.d(e) { "Atomic move unavailable under $dir; falling back to a plain replace" }
-                Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING)
+                temp.writeText(McpJson.encodeToString(record))
+                try {
+                    Files.move(temp, target, StandardCopyOption.ATOMIC_MOVE, StandardCopyOption.REPLACE_EXISTING)
+                } catch (e: AtomicMoveNotSupportedException) {
+                    log.d(e) { "Atomic move unavailable under $dir; falling back to a plain replace" }
+                    Files.move(temp, target, StandardCopyOption.REPLACE_EXISTING)
+                }
+            } finally {
+                // Gone already after a successful move; otherwise a failed save leaves no litter.
+                temp.deleteIfExists()
             }
         }.onFailure {
             // Losing durability must never lose the task itself — the in-memory record is the

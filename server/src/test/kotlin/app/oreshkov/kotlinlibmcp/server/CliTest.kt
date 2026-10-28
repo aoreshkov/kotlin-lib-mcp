@@ -5,10 +5,18 @@ import app.oreshkov.clikit.testing.GoldenFiles
 import app.oreshkov.clikit.testing.RecordingTerminalIo
 import app.oreshkov.clikit.testing.RunResult
 import app.oreshkov.clikit.testing.record
+import app.oreshkov.kotlinlibmcp.server.tasks.TaskRecordStore
+import io.modelcontextprotocol.kotlin.sdk.types.TaskStatus
+import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
+import java.net.URI
+import java.net.http.HttpClient
+import java.net.http.HttpRequest
+import java.net.http.HttpResponse
 import java.nio.file.Files
 import java.nio.file.Path
+import java.time.Duration
 import kotlin.concurrent.thread
 import kotlin.test.Test
 import kotlin.test.assertContains
@@ -154,6 +162,12 @@ class CliTest {
      * The real `serve`, over http, stopped as SIGTERM would stop it. The interrupt action must not
      * return before the server has stopped and `close()` has run, because the JVM halts the moment
      * it does; and the handler must have written nothing to stdout.
+     *
+     * The engine stops in `runHttpServer`'s `finally`, *before* `close()`, so a closed port alone
+     * would not show that `close()` ran. A task still in flight does: `close()` is what writes it to
+     * disk as `failed`. Its `fetch_library` points at a repository that accepts the connection and
+     * never answers, so the task is certain to be running when the interrupt comes, without the
+     * test touching the network.
      */
     @Test
     fun interruptReturnsOnlyOnceTheServerHasClosed() {
@@ -161,23 +175,77 @@ class CliTest {
         val cacheDir = Files.createTempDirectory("cli-test-cache")
         val io = RecordingTerminalIo()
         var result: RunResult? = null
-        val program = thread(name = "cli-test-server") {
-            result = Cli.program(::serve).record(
-                "--transport", "http", "--port", "$port", "--cache-dir", "$cacheDir", "--tasks",
-                io = io,
-            )
-        }
+        ServerSocket(0, 50, InetAddress.getLoopbackAddress()).use { silentRepo ->
+            val program = thread(name = "cli-test-server") {
+                result = Cli.program(::serve).record(
+                    "--transport", "http", "--port", "$port", "--cache-dir", "$cacheDir", "--tasks",
+                    "--repo", "http://127.0.0.1:${silentRepo.localPort}/",
+                    io = io,
+                )
+            }
 
-        awaitListening(port)
-        assertTrue(io.interrupt(), "serve must register an interrupt action")
-        // Checked the moment the action returns: the JVM would halt here.
-        assertFalse(listening(port), "the interrupt action returned before the http engine had stopped")
-        program.join(SHUTDOWN_GRACE_SECONDS * 1_000)
-        assertFalse(program.isAlive, "serve did not return after the interrupt")
+            awaitListening(port)
+            val taskId = McpHttpClient(port).startStalledFetchTask()
+            assertTrue(io.interrupt(), "serve must register an interrupt action")
+            // Checked the moment the action returns: the JVM would halt here.
+            assertFalse(listening(port), "the interrupt action returned before the http engine had stopped")
+            val record = TaskRecordStore(cacheDir.resolve("tasks")).loadAll().single { it.taskId == taskId }
+            assertEquals(TaskStatus.Failed, record.status, "the interrupt action returned before close() had run")
+            assertEquals("Server shut down while this task was running", record.statusMessage)
+
+            program.join(SHUTDOWN_GRACE_SECONDS * 1_000)
+            assertFalse(program.isAlive, "serve did not return after the interrupt")
+        }
 
         val run = result ?: fail("the program did not finish")
         assertEquals(ExitStatus.INTERRUPTED, run.status, run.stderr)
         assertEquals("", run.stdout, "stdout belongs to the transport")
+    }
+
+    /** Just enough of a Streamable HTTP client to leave one task running on the server. */
+    private class McpHttpClient(port: Int) {
+        private val http = HttpClient.newHttpClient()
+        private val endpoint = URI("http://127.0.0.1:$port/mcp")
+        private var sessionId: String? = null
+
+        /** Initializes a session and starts a task-augmented `fetch_library`; returns its task id. */
+        fun startStalledFetchTask(): String {
+            post(
+                """{"jsonrpc":"2.0","id":1,"method":"initialize","params":{"protocolVersion":"2025-11-25",""" +
+                    """"capabilities":{},"clientInfo":{"name":"cli-test","version":"1"}}}""",
+            )
+            post("""{"jsonrpc":"2.0","method":"notifications/initialized"}""")
+            val created = post(
+                """{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"fetch_library",""" +
+                    """"arguments":{"coordinate":"com.example:stalled:1.0.0"},"task":{"ttl":60000}}}""",
+            )
+            return TASK_ID.find(created)?.groupValues?.get(1) ?: fail("no task was created: $created")
+        }
+
+        /**
+         * Sends one message and returns the first line that carries a JSON-RPC message (the SSE
+         * `data:` line, or the whole body when the server answers in plain JSON), or "" for a
+         * notification's 202. Read line by line, so a stream the server keeps open cannot hang it.
+         */
+        private fun post(body: String): String {
+            val request = HttpRequest.newBuilder(endpoint)
+                .header("Content-Type", "application/json")
+                .header("Accept", "application/json, text/event-stream")
+                .apply { sessionId?.let { header("Mcp-Session-Id", it).header("MCP-Protocol-Version", "2025-11-25") } }
+                .timeout(Duration.ofSeconds(30))
+                .POST(HttpRequest.BodyPublishers.ofString(body))
+                .build()
+            val response = http.send(request, HttpResponse.BodyHandlers.ofLines())
+            assertTrue(response.statusCode() in 200..299, "HTTP ${response.statusCode()} for $body")
+            response.headers().firstValue("Mcp-Session-Id").ifPresent { sessionId = it }
+            return response.body().use { lines ->
+                lines.map { it.removePrefix("data:").trim() }.filter { it.startsWith("{") }.findFirst().orElse("")
+            }
+        }
+
+        private companion object {
+            val TASK_ID = Regex(""""taskId"\s*:\s*"([^"]+)"""")
+        }
     }
 
     private fun awaitListening(port: Int) {
