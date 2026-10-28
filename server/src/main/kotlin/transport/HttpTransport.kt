@@ -1,5 +1,6 @@
 package app.oreshkov.kotlinlibmcp.server.transport
 
+import app.oreshkov.kotlinlibmcp.server.tasks.MAX_TTL_MS
 import app.oreshkov.kotlinlibmcp.server.tasks.TaskStore
 import app.oreshkov.kotlinlibmcp.server.tasks.installTaskHandlersOnEverySession
 import co.touchlab.kermit.Logger
@@ -9,6 +10,7 @@ import io.ktor.server.engine.embeddedServer
 import io.modelcontextprotocol.kotlin.sdk.server.Server
 import io.modelcontextprotocol.kotlin.sdk.server.mcpStreamableHttp
 import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.NonCancellable
@@ -26,6 +28,16 @@ public const val LOOPBACK_HOST: String = "127.0.0.1"
  * that nginx, ELB and most corporate proxies default to, without adding meaningful traffic.
  */
 private val SSE_HEARTBEAT_PERIOD: Duration = 30.seconds
+
+/**
+ * How long a session may go without a request before the SDK closes it (since kotlin-sdk 0.16.0;
+ * its own default is 30 minutes). Set to the longest retention a task can be given, because a task
+ * is owned by the session that created it and is unreachable once that session is gone: with the
+ * SDK's default, a client that asked for a 60-minute TTL and stepped away for 30 would come back to
+ * a `404`, re-initialize, and find its task unreachable for the rest of its life. The session counts
+ * as active through every POST — task polls included — but not through an open GET stream.
+ */
+internal val SESSION_IDLE_TIMEOUT: Duration = MAX_TTL_MS.milliseconds
 
 /**
  * How long a stop lets in-flight requests finish, and how long it waits in all: well inside the
@@ -56,6 +68,15 @@ private const val STOP_TIMEOUT_MILLIS = 2_000L
  * connections get culled by proxies and load balancers long before that. [SSE_HEARTBEAT_PERIOD]
  * keeps the stream demonstrably alive; the comment events it sends are ignored by SSE clients.
  *
+ * Idle sessions expire after [SESSION_IDLE_TIMEOUT], after which their id answers `404` and the
+ * client re-initializes, as the spec has it. The SDK's other session bound, at most 10 000 open at
+ * once (`503` beyond), is left at its default: it only has to stop a runaway client, not ration a
+ * loopback server's handful.
+ *
+ * The SDK also installs Ktor's `HttpRequestLifecycle` with `cancelCallOnClose` on this route, so a
+ * client that drops its connection cancels the request it was waiting on — a `fetch_library`
+ * download included, which is why handlers must let `CancellationException` through.
+ *
  * Starting the engine binds the socket, so a busy port throws out of `start`/`startSuspend`. Ktor
  * has created the application by then, so a caller that outlives the failure should still `stop` it.
  */
@@ -78,6 +99,7 @@ fun createHttpEngine(
             allowedOrigins = (LOCALHOST_HOSTS + allowedOrigins).takeIf { allowedOrigins.isNotEmpty() },
             // Non-null opts in: the SDK sends no heartbeat at all by default.
             sseHeartbeatConfig = { period = SSE_HEARTBEAT_PERIOD },
+            sessionIdleTimeout = SESSION_IDLE_TIMEOUT,
         ) { server }
     }
 }

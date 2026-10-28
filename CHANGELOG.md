@@ -135,6 +135,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **The cache index moves to `index-v4.json`.** Libraries cached by an earlier version are analyzed
   again on their next `fetch_library`, from the sources already on disk, and the older index files
   are deleted when that happens.
+- **MCP Kotlin SDK 0.15.0 → 0.16.0.** The protocol is still 2025-11-25. What changes on the wire
+  is all Streamable HTTP and all the SDK's:
+  - **Idle HTTP sessions expire.** A session that sends no request for 60 minutes is closed, and its
+    `Mcp-Session-Id` then answers `404`, so the client re-initializes. An open GET stream does not
+    count as activity. The SDK's own default is 30 minutes; 60 matches the longest TTL a task can
+    have (with `--tasks`), so a task cannot outlive the session that is the only one allowed to read
+    it. At most 10 000 sessions are open at once; beyond that a new one gets `503`.
+  - **A client that disconnects cancels its request.** A `fetch_library` whose HTTP client went
+    away stops downloading, as one cancelled with `notifications/cancelled` already did.
+  - **`prompts/get` for an unknown prompt is a `-32602` (invalid params) error**, as the spec asks,
+    rather than an internal error.
+  - A task's `ttl` is always present in `tasks/…` results, as `null` for unlimited retention.
+    Ours never is unlimited, so this server's output does not change.
 
 ## [0.9.2] - 2026-10-27
 

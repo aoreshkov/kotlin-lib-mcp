@@ -45,8 +45,11 @@ private const val DEFAULT_TTL_MS = 10 * 60 * 1000L
  * Ceiling on retention, whatever the caller asks for. Every record is held in memory, and a task is
  * only as useful as the process that owns it, so an unbounded (or `null` = unlimited) TTL would just
  * be a leak with extra steps.
+ *
+ * Internal because the HTTP transport's session idle timeout is derived from it: a record is
+ * reachable only from the session that created it, so that session must not expire first.
  */
-private const val MAX_TTL_MS = 60 * 60 * 1000L
+internal const val MAX_TTL_MS = 60 * 60 * 1000L
 
 /**
  * Suggested `tasks/get` cadence. A `fetch_library` runs seconds→tens of seconds, so sub-second

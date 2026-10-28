@@ -9,7 +9,7 @@ kotlin = "2.4.10"
 kover = "0.9.11"
 
 # Third-party
-mcpKotlinSdk = "0.15.0"
+mcpKotlinSdk = "0.16.0"
 ktor = "3.6.0"
 compose = "1.12.2"             # aligned to Kotlin 2.4.x
 kotlinxCoroutines = "1.11.0"
