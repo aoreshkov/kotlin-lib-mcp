@@ -105,7 +105,8 @@ class LibraryService(
     private val fetcher: MavenSourceFetcher,
     private val analyzer: SourceAnalyzer,
     private val cache: LibraryCache,
-    private val repos: List<String> = emptyList(),
+    /** The repositories every fetch searches, in order; `McpServerFactory` passes `ServerConfig.searchedRepos`. */
+    internal val repos: List<String> = emptyList(),
     /**
      * Whether `fetch_library` may report the on-disk source root (`FetchSummary.extractedDir`).
      *

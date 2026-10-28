@@ -47,7 +47,7 @@ fix, choose **Reconnect** on it in `/mcp`.
 | `java` fails before the launcher prints anything, with an error about compiling the source file | The configured `java` belongs to a JRE, which has no compiler | Point **Java executable** at a JDK's `java` — check with `javac -version` from the same `bin` directory |
 | `Could not reach the GitHub releases API` | First start with no network route to `api.github.com` / `github.com`, or a proxy | Fix the network, or download the release zip by hand, unzip it, and set the `KOTLIN_LIB_MCP_SERVER_HOME` environment variable to it before starting Claude Code |
 | `No release v… of kotlin-lib-mcp` | A pinned version that was never released | Pin a version listed at https://github.com/aoreshkov/kotlin-lib-mcp/releases, or set it back to `latest` |
-| Tools present, every `fetch_library` fails | No network route to Maven Central, or a corporate proxy | The server reaches Maven repositories only; pass a mirror with `--repo <url>` through a manual registration (below) |
+| Tools present, every `fetch_library` fails | No network route to Maven Central, or a corporate proxy | The server reaches Maven repositories only; pass a mirror with `--repo <url> --no-maven-central` through a manual registration (below) |
 | First fetch is very slow | Expected — download plus full source analysis | It is cached afterwards, keyed by `group/artifact/version` |
 
 To force a fresh server download, delete `${CLAUDE_PLUGIN_DATA}/dist` and choose **Reconnect** on

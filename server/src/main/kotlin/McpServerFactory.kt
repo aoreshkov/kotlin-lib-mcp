@@ -112,7 +112,14 @@ internal fun sharesFilesystemWithClient(transport: String): Boolean = transport 
 /** Runtime configuration shared by both transports, populated from the CLI flags in `Main`. */
 data class ServerConfig(
     val cacheDir: Path = OnDiskLibraryCache.defaultCacheRoot(),
+    /** Maven repositories searched besides Maven Central (`--repo`), in order, after it. See [searchedRepos]. */
     val repos: List<String> = emptyList(),
+    /**
+     * Search Maven Central, ahead of [repos]. Off only with `--no-maven-central`, for a mirror or
+     * proxy that already serves Central's artifacts (where Central itself may be unreachable), and
+     * then [repos] must name at least one repository.
+     */
+    val mavenCentral: Boolean = true,
     /**
      * Opt into mirroring the app's logs to MCP clients as `notifications/message` (the deprecated
      * `logging` capability). Off by default: 2025-11-25 blesses stderr for *all* stdio logging, so
@@ -147,7 +154,17 @@ data class ServerConfig(
      * the rest queue. See `LibraryService`'s parameter of the same name.
      */
     val maxConcurrentFetches: Int = LibraryService.DEFAULT_MAX_CONCURRENT_FETCHES,
-)
+) {
+    /**
+     * Every repository a fetch searches, in order: Maven Central first unless [mavenCentral] is off,
+     * then [repos], each once. Central goes first because it is where nearly every lookup ends, and
+     * because a version catalog's `release`/`latest` tags come from the first repository that
+     * declares them. Never empty, so `core`'s empty-means-Central fallback never applies to it.
+     */
+    val searchedRepos: List<String>
+        get() = (if (mavenCentral) listOf(MavenSourceFetcherImpl.MAVEN_CENTRAL) + repos else repos)
+            .distinctBy { it.trimEnd('/') }
+}
 
 /**
  * A configured MCP [server] plus the core collaborators it was built from. The [service] and
@@ -188,6 +205,9 @@ object McpServerFactory {
         require(!config.forwardLogsToClient || sharesFilesystemWithClient(config.transport)) {
             "forwardLogsToClient is stdio-only: the forwarder sends every record to every session"
         }
+        require(config.mavenCentral || config.repos.isNotEmpty()) {
+            "mavenCentral is off and no repos are given, so there is nothing to search"
+        }
         routeKermitToSlf4j()
         // Before any handler can run, so the very first request is traced.
         val otelSdk = if (config.otel) startTelemetry(config.transport) else null
@@ -197,7 +217,7 @@ object McpServerFactory {
             fetcher = fetcher,
             analyzer = AnalysisApiSourceAnalyzer(),
             cache = cache,
-            repos = config.repos,
+            repos = config.searchedRepos,
             // Only a stdio client shares this process filesystem, so only it can use a local path.
             exposeLocalPaths = sharesFilesystemWithClient(config.transport),
             maxConcurrentFetches = config.maxConcurrentFetches,

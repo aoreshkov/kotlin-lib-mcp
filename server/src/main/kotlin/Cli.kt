@@ -85,7 +85,11 @@ internal object Cli {
         "--repo",
         Converters.string,
         valueName = "url",
-        help = "Extra Maven repository, besides Maven Central; repeatable",
+        help = "Extra Maven repository, after Maven Central; repeatable",
+    )
+    val noMavenCentral: Option.Flag = Option.Flag(
+        "--no-maven-central",
+        help = "Search only the --repo repositories: for a mirror that proxies Maven Central",
     )
     val maxConcurrentFetches: Option.Single<Int> = Option.Single(
         "--max-concurrent-fetches",
@@ -123,8 +127,8 @@ internal object Cli {
         "server",
         help = "kotlin-lib-mcp — MCP server exposing the sources of Maven-published Kotlin/Java libraries.",
         options = listOf(
-            transport, port, host, allowedHost, allowedOrigin, cacheDir, repo, maxConcurrentFetches,
-            forwardLogs, otel, tasks,
+            transport, port, host, allowedHost, allowedOrigin, cacheDir, repo, noMavenCentral,
+            maxConcurrentFetches, forwardLogs, otel, tasks,
         ),
         examples = listOf(
             Example("server --transport stdio", "Serve one client over stdin/stdout (the default)"),
@@ -137,6 +141,10 @@ internal object Cli {
                 "server --cache-dir /tmp/klm --repo https://maven.google.com",
                 "Cache elsewhere, and also search Google's Maven repository",
             ),
+            Example(
+                "server --repo https://nexus.example.com/repository/maven-public --no-maven-central",
+                "Search only a company mirror that proxies Maven Central",
+            ),
             Example("server --tasks", "Accept task-augmented fetch_library calls"),
             Example(
                 "OTEL_EXPORTER_OTLP_ENDPOINT=http://localhost:4318 server --otel",
@@ -144,7 +152,8 @@ internal object Cli {
             ),
         ),
         epilogue = "Documentation: https://github.com/aoreshkov/kotlin-lib-mcp",
-        constraints = httpOnly.map { Constraint.RequiresValue(it, transport, "http") },
+        constraints = httpOnly.map { Constraint.RequiresValue(it, transport, "http") } +
+            Constraint.Requires(noMavenCentral, repo),
         environment = listOf(
             EnvironmentVariable("OTEL_EXPORTER_OTLP_ENDPOINT", "With --otel: base endpoint; '/v1/traces' is appended"),
             EnvironmentVariable(
@@ -170,6 +179,7 @@ internal object Cli {
             config = defaults.copy(
                 cacheDir = values[cacheDir] ?: defaults.cacheDir,
                 repos = values[repo],
+                mavenCentral = !values[noMavenCentral],
                 maxConcurrentFetches = values[maxConcurrentFetches] ?: defaults.maxConcurrentFetches,
                 forwardLogsToClient = values[forwardLogs],
                 otel = values[otel],

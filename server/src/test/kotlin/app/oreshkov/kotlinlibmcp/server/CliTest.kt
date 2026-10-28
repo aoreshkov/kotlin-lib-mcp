@@ -95,6 +95,7 @@ class CliTest {
             "--cache-dir", "klm-cache",
             "--repo", "https://maven.google.com",
             "--repo", "https://repo.example.com/maven",
+            "--no-maven-central",
             "--max-concurrent-fetches", "4",
             "--otel",
             "--tasks",
@@ -109,6 +110,7 @@ class CliTest {
                 config = ServerConfig(
                     cacheDir = Path.of("klm-cache"),
                     repos = listOf("https://maven.google.com", "https://repo.example.com/maven"),
+                    mavenCentral = false,
                     maxConcurrentFetches = 4,
                     otel = true,
                     tasks = true,

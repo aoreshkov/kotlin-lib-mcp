@@ -12,8 +12,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   listing tools, so hits past the first page can be reached. Counting stops at 10 000 matches;
   past that `totalCountCapped` is `true`, `totalCount` is a lower bound, and the remaining matches
   are out of paging's reach (narrow the query).
+- **`--no-maven-central`** searches only the `--repo` repositories, for a mirror or proxy that
+  serves Central's artifacts where Central itself is unreachable. It requires `--repo`.
 
 ### Fixed
+- **`--repo` adds a repository instead of replacing Maven Central**, as its help, the README and
+  the registry entry always said. Before, `--repo https://maven.google.com` stopped every library
+  on Central from resolving. Central is searched first, then each `--repo` in order. If you used
+  `--repo` to point at a mirror of Central, add `--no-maven-central` to keep the old behaviour.
 - **`diff_versions` pages are bounded in characters**, not only in lines. One changed line of a
   minified or generated source was returned whole, however long, as both `-` and `+`. Hunk text is
   now capped per file (40 000 characters) and per page (100 000). A file over either keeps its
