@@ -99,6 +99,9 @@ internal fun serverCapabilities(
 /** [ServerConfig.transport] for the stdio transport — the one whose client shares our filesystem. */
 const val STDIO_TRANSPORT: String = "stdio"
 
+/** [ServerConfig.transport] for Streamable HTTP, whose clients may be on another machine. */
+const val HTTP_TRANSPORT: String = "http"
+
 /**
  * Whether a client arriving over [transport] shares this process's filesystem, and may therefore be
  * told local paths (`FetchSummary.extractedDir`).

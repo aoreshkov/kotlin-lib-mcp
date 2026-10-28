@@ -5,9 +5,12 @@ import io.modelcontextprotocol.kotlin.sdk.server.ServerOptions
 import io.modelcontextprotocol.kotlin.sdk.types.Implementation
 import io.modelcontextprotocol.kotlin.sdk.types.ServerCapabilities
 import java.io.IOException
+import java.net.BindException
+import java.net.InetAddress
 import java.net.ServerSocket
 import java.net.Socket
 import kotlin.test.Test
+import kotlin.test.assertFailsWith
 import kotlin.test.assertFalse
 import kotlin.test.fail
 import kotlinx.coroutines.Dispatchers
@@ -36,6 +39,19 @@ class HttpTransportStopTest {
             serving.cancelAndJoin()
         }
         assertFalse(listening(port), "round $round: the engine was still listening after runHttpServer returned")
+    }
+
+    /**
+     * CIO reports a busy port as a cancellation. Unless `runHttpServer` hands back the bind error,
+     * `serve` mistakes it for Ctrl-C: exit status 130, and nothing logged.
+     */
+    @Test
+    fun aBusyPortFailsWithTheBindErrorNotACancellation() {
+        ServerSocket(0, 50, InetAddress.getByName("127.0.0.1")).use { taken ->
+            runBlocking {
+                assertFailsWith<BindException> { runHttpServer(server(), taken.localPort) }
+            }
+        }
     }
 
     private fun server() = Server(

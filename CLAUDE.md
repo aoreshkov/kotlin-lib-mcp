@@ -14,7 +14,9 @@ Desktop dashboard runs the same server in-process for control, logs, and cache b
   - `jvmMain`: JVM implementations — `MavenSourceFetcher` (Ktor client + `.module`/`.pom`
     parsing), `ZipExtractor`, `AnalysisApiSourceAnalyzer`, on-disk cache.
 - `server/` — **JVM app**: registers MCP tools and runs the transports. Runnable headless.
-- `dashboard/` — **Compose Desktop** control panel (optional). Embeds `server`.
+- `dashboard/` — **Compose Desktop** control panel (optional). Embeds `server`, and takes its HTTP
+  engine from `createHttpEngine` (`transport/HttpTransport.kt`) so `mcpStreamableHttp` is wired in
+  exactly one file. Keep it that way, or the SDK's 0.20.0 Ktor split breaks a file the map below misses.
 - `tools/` — **asset generator**, never shipped: the SEP-973 icon PNGs. Its *output* does ship —
   `server/src/main/resources/icons/` is read by `icons/Icons.kt` and rides inline in every
   `tools/list` — so the glyph geometry in `GenerateIcons.kt` is product source, not repo artwork.

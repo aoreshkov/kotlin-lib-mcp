@@ -6,11 +6,15 @@ import ch.qos.logback.core.AppenderBase
 import java.time.Instant
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
+import java.util.concurrent.atomic.AtomicLong
 import kotlinx.coroutines.channels.BufferOverflow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.SharedFlow
 import org.slf4j.Logger
 import org.slf4j.LoggerFactory
+
+/** One formatted log line; [id] is unique and increasing, so a list can key rows by it. */
+data class LogLine(val id: Long, val text: String)
 
 /**
  * Bridges the existing logging path (Kermit → SLF4J → Logback) into the UI: a Logback appender
@@ -21,12 +25,14 @@ object LogPane {
 
     private val timestamp = DateTimeFormatter.ofPattern("HH:mm:ss.SSS").withZone(ZoneId.systemDefault())
 
-    private val _lines = MutableSharedFlow<String>(
+    private val nextId = AtomicLong()
+
+    private val _lines = MutableSharedFlow<LogLine>(
         replay = 200,
         extraBufferCapacity = 800,
         onBufferOverflow = BufferOverflow.DROP_OLDEST,
     )
-    val lines: SharedFlow<String> get() = _lines
+    val lines: SharedFlow<LogLine> get() = _lines
 
     /** Attaches the flow appender to Logback's root logger. Idempotent per process. */
     fun install() {
@@ -35,7 +41,8 @@ object LogPane {
         val appender = object : AppenderBase<ILoggingEvent>() {
             override fun append(event: ILoggingEvent) {
                 val time = timestamp.format(Instant.ofEpochMilli(event.timeStamp))
-                _lines.tryEmit("$time ${event.level} ${event.loggerName.substringAfterLast('.')} - ${event.formattedMessage}")
+                val text = "$time ${event.level} ${event.loggerName.substringAfterLast('.')} - ${event.formattedMessage}"
+                _lines.tryEmit(LogLine(nextId.getAndIncrement(), text))
             }
         }
         appender.name = APPENDER_NAME

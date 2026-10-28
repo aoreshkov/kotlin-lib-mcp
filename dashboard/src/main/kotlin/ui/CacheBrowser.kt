@@ -21,8 +21,8 @@ import app.oreshkov.kotlinlibmcp.dashboard.DashboardState
 /** Cached libraries with per-row clear, total size, refresh and clear-all. */
 @Composable
 fun CacheBrowser(state: DashboardState, modifier: Modifier = Modifier) {
-    val entries by state.cacheEntries.collectAsState()
-    val sizeBytes by state.cacheSizeBytes.collectAsState()
+    val snapshot by state.cacheSnapshot.collectAsState()
+    val (entries, sizeBytes) = snapshot
 
     Column(modifier = modifier) {
         Row(

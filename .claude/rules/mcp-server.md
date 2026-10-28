@@ -78,8 +78,14 @@ overload and still compiles. `ToolRegistrationTest.everyToolDeclaresADistinctIco
 **Classpath-shadowing gotcha:** `kotlin-compiler` (via `core`) is a fat jar bundling old,
 *unrelocated* copies of libraries we also depend on for real, and the first copy on the classpath
 wins. Gradle sorts the genuine artifacts well behind it (shared transitives sort late, so
-declaration order does **not** fix it), so `server/build.gradle.kts` hoists the real jars to the
-front of the `test`, `run` and `startScripts` classpaths (`hoistOverKotlinCompiler`). Two families
+declaration order does **not** fix it), so the real jars are hoisted to the front of every
+classpath a JVM gets: `hoistOverKotlinCompiler` and `shadowedByKotlinCompiler` live in build-logic
+(`KotlinCompilerShadowing.kt`); `server/build.gradle.kts` applies them to `test`, `run` and
+`startScripts`, `dashboard/build.gradle.kts` to `test` and Compose's application classpath. Compose
+keeps the order for `run` and the uber jar, but **jpackage sorts the packaged app's jars by file
+name**, so the dashboard also copies the hoisted jars under a `0-` prefix (`kotlin-compiler-…`
+otherwise sorts ahead of `kotlinx-…` and `opentelemetry-…`); check
+`dashboard/build/compose/binaries/main/app/dashboard/app/dashboard.cfg` after touching it. Two families
 are known:
 
 - `kotlinx.collections.immutable` — 127 classes of a pre-0.5 release. Since kotlin-sdk 0.15.0 built
@@ -96,9 +102,10 @@ When adding any dependency `kotlin-compiler` might also bundle, check with
 **Same trap, OpenTelemetry:** `kotlin-compiler` also bundles ~83 *stripped stubs* of an old
 unrelocated `io.opentelemetry.api` (1.41.0 — `Attributes`, `OpenTelemetry`, `Tracer`,
 `TracerProvider` are empty shells), so without the hoist above `--otel` dies with
-`NoSuchMethodError: Attributes.empty()`. Keep both prefixes in `hoistOverKotlinCompiler`'s list, and
-keep that list *local to the function* — a script-level `val` captured in the filter is a Gradle
-script object reference and the configuration cache refuses to serialize it.
+`NoSuchMethodError: Attributes.empty()`. Keep both prefixes in `shadowedByKotlinCompiler`'s list, and
+keep that list *local to the function* — it once lived in a build script, where a script-level `val`
+captured in the filter is a Gradle script object reference the configuration cache refuses to
+serialize.
 
 **Tasks gotcha:** `tasks/TaskHandlers.kt` **replaces** the SDK's `tools/call` handler (that is the
 only way to answer with a `CreateTaskResult` — `Server.handleCallTool` is hard-typed to
