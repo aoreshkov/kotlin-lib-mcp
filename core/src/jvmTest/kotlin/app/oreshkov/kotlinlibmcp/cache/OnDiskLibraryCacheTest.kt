@@ -100,6 +100,16 @@ class OnDiskLibraryCacheTest {
     }
 
     @Test
+    fun listSkipsFetchesStillBeingStaged() = runTest {
+        cache.putIndex(index)
+        // A fetch in progress: three levels of directories, which would otherwise parse as
+        // `.staging:<fetch id>:sources`.
+        root.resolve(CacheLayout.STAGING_DIR).resolve("3f2a").resolve(CacheLayout.SOURCES_DIR).createDirectories()
+
+        assertEquals(listOf(coordinate), cache.list())
+    }
+
+    @Test
     fun sizeCountsBytesAndClearEvicts() = runTest {
         cache.putIndex(index)
         assertTrue(cache.size() > 0)

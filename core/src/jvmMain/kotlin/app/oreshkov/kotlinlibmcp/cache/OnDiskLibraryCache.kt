@@ -62,6 +62,14 @@ internal object CacheLayout {
     const val SOURCES_DIR: String = "sources"
     const val JARS_DIR: String = "jars"
 
+    /**
+     * `<root>/.staging/<fetch id>/{jars,sources}/`: where a fetch downloads and extracts before it
+     * moves the result into its version directory. Under the root, not the system temp dir, so the
+     * move is a rename on one filesystem rather than a copy. Not a group: [OnDiskLibraryCache.list]
+     * skips it, though its three levels of directories would otherwise parse as a coordinate.
+     */
+    const val STAGING_DIR: String = ".staging"
+
     fun versionDir(root: Path, coordinate: LibraryCoordinate): Path =
         root.resolve(coordinate.group).resolve(coordinate.artifact).resolve(coordinate.version)
 }
@@ -115,7 +123,7 @@ public class OnDiskLibraryCache(
     override suspend fun list(): List<LibraryCoordinate> =
         withContext(Dispatchers.IO) {
             if (!root.exists()) return@withContext emptyList()
-            root.listDirectoryEntries().filter { it.isDirectory() }.flatMap { group ->
+            root.listDirectoryEntries().filter { it.isDirectory() && it.name != CacheLayout.STAGING_DIR }.flatMap { group ->
                 group.listDirectoryEntries().filter { it.isDirectory() }.flatMap { artifact ->
                     artifact.listDirectoryEntries().filter { it.isDirectory() }.mapNotNull { version ->
                         LibraryCoordinate.parseOrNull("${group.name}:${artifact.name}:${version.name}")

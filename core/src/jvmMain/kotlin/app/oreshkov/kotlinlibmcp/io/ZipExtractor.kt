@@ -29,8 +29,26 @@ public class ZipExtractor(
 ) {
 
     /**
+     * What extraction may still write: entries and uncompressed bytes, counted down by every
+     * [extract] it is passed to. Sharing one across several archives makes the limits hold for all of
+     * them together. That matters because a bound per archive bounds nothing once the number of
+     * archives is someone else's choice: a fetch extracts every jar a `.module` lists. Not thread-safe;
+     * pass it to one [extract] at a time.
+     */
+    public class Budget internal constructor(
+        internal val maxEntries: Int,
+        internal val maxTotalBytes: Long,
+    ) {
+        internal var entries: Int = 0
+        internal var bytes: Long = 0L
+    }
+
+    /** A fresh [Budget] of this extractor's limits. */
+    public fun newBudget(): Budget = Budget(maxEntries, maxTotalBytes)
+
+    /**
      * Extracts [archive] into [targetDir] (created if absent) and returns the extracted files'
-     * paths relative to [targetDir], `/`-separated.
+     * paths relative to [targetDir], `/`-separated. Whatever it writes is charged to [budget].
      *
      * Cancellable: every copied chunk checks for cancellation, so a withdrawn fetch stops writing
      * within one buffer instead of finishing the archive (up to [maxTotalBytes]) on an IO thread
@@ -38,19 +56,17 @@ public class ZipExtractor(
      *
      * @throws ZipExtractionException on a traversal attempt or when limits are exceeded.
      */
-    public suspend fun extract(archive: Path, targetDir: Path): List<String> =
+    public suspend fun extract(archive: Path, targetDir: Path, budget: Budget = newBudget()): List<String> =
         withContext(Dispatchers.IO) {
             val root = targetDir.toAbsolutePath().normalize()
             root.createDirectories()
             val extracted = mutableListOf<String>()
-            var entryCount = 0
-            var totalBytes = 0L
             ZipInputStream(archive.inputStream().buffered()).use { zip ->
                 var entry = zip.nextEntry
                 while (entry != null) {
-                    if (++entryCount > maxEntries) {
+                    if (++budget.entries > budget.maxEntries) {
                         throw ZipExtractionException(
-                            "$archive has more than $maxEntries entries; refusing to extract",
+                            "$archive takes extraction past ${budget.maxEntries} entries; refusing to extract",
                         )
                     }
                     val dest = root.resolve(entry.name).normalize()
@@ -63,7 +79,7 @@ public class ZipExtractor(
                         dest.parent?.createDirectories()
                         // Enforce the byte budget *during* the copy: a single highly-compressed
                         // entry must not stream in full before the cap is checked (zip-bomb).
-                        dest.outputStream().use { out -> totalBytes += copyBounded(zip, out, totalBytes, archive, coroutineContext) }
+                        dest.outputStream().use { out -> budget.bytes += copyBounded(zip, out, budget, archive, coroutineContext) }
                         extracted += dest.relativeTo(root).invariantSeparatorsPathString
                     }
                     zip.closeEntry()
@@ -75,13 +91,14 @@ public class ZipExtractor(
 
     /**
      * Copies the current zip entry into [target], aborting the moment the cumulative extracted size
-     * ([alreadyWritten] + bytes copied here) would exceed [maxTotalBytes] — before the offending
-     * chunk is written, so an over-budget entry never fully lands on disk. Returns bytes written.
+     * (what [budget] has already spent + bytes copied here) would exceed its byte limit — before the
+     * offending chunk is written, so an over-budget entry never fully lands on disk. Returns bytes
+     * written.
      */
     private fun copyBounded(
         source: InputStream,
         target: OutputStream,
-        alreadyWritten: Long,
+        budget: Budget,
         archive: Path,
         context: CoroutineContext,
     ): Long {
@@ -93,9 +110,9 @@ public class ZipExtractor(
             context.ensureActive()
             val read = source.read(buffer)
             if (read < 0) break
-            if (alreadyWritten + written + read > maxTotalBytes) {
+            if (budget.bytes + written + read > budget.maxTotalBytes) {
                 throw ZipExtractionException(
-                    "$archive expands past $maxTotalBytes bytes; refusing to extract",
+                    "$archive takes extraction past ${budget.maxTotalBytes} bytes; refusing to extract",
                 )
             }
             target.write(buffer, 0, read)

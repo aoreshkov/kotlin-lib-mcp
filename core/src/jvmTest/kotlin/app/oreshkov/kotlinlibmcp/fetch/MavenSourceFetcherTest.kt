@@ -4,6 +4,8 @@ package app.oreshkov.kotlinlibmcp.fetch
 
 import app.oreshkov.kotlinlibmcp.cache.CacheLayout
 import app.oreshkov.kotlinlibmcp.fixture
+import app.oreshkov.kotlinlibmcp.io.ZipExtractionException
+import app.oreshkov.kotlinlibmcp.io.ZipExtractor
 import app.oreshkov.kotlinlibmcp.mockRepoEngine
 import app.oreshkov.kotlinlibmcp.model.KmpTarget
 import app.oreshkov.kotlinlibmcp.model.LibraryCoordinate
@@ -21,6 +23,9 @@ import java.nio.channels.FileChannel
 import java.nio.file.Path
 import java.nio.file.StandardOpenOption.CREATE
 import java.nio.file.StandardOpenOption.WRITE
+import java.nio.file.attribute.FileTime
+import java.time.Duration
+import java.time.Instant
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.atomic.AtomicLong
@@ -30,9 +35,13 @@ import kotlin.io.path.createDirectories
 import kotlin.io.path.createTempDirectory
 import kotlin.io.path.deleteRecursively
 import kotlin.io.path.exists
+import kotlin.io.path.invariantSeparatorsPathString
 import kotlin.io.path.isRegularFile
+import kotlin.io.path.listDirectoryEntries
 import kotlin.io.path.moveTo
 import kotlin.io.path.name
+import kotlin.io.path.relativeTo
+import kotlin.io.path.setLastModifiedTime
 import kotlin.io.path.walk
 import kotlin.io.path.writeText
 import kotlin.test.AfterTest
@@ -495,6 +504,148 @@ class MavenSourceFetcherTest {
 
         assertEquals(listOf("jvm/com/example/Hello.kt"), result.files.map { it.path })
         assertFalse(versionDir.resolve("sources/jvm/com/example/Other.kt").exists())
+    }
+
+    @Test
+    fun downloadsAJarListedRepeatedlyOnlyOnce() = runTest {
+        val name = "demo-lib-1.0.0-sources.jar"
+        val engine = mockRepoEngine(
+            mapOf(
+                rootModuleUrl to moduleListing(*Array(50) { name }).toByteArray(),
+                commonJarUrl to commonJar,
+            ),
+        )
+        fetcher(engine).use { fetcher ->
+            val result = fetcher.fetch(coordinate, listOf(repo))
+
+            // Metadata is publisher input: fifty entries for one file must not mean fifty downloads.
+            assertEquals(1, engine.requestHistory.count { it.url.toString() == commonJarUrl })
+            assertEquals(listOf("common/com/example/Common.kt"), result.files.map { it.path })
+        }
+    }
+
+    @Test
+    fun refusesAModuleListingMoreJarsThanOneFetchMayTake() = runTest {
+        val names = (1..3).map { "part$it-sources.jar" }
+        val engine = mockRepoEngine(
+            mapOf(rootModuleUrl to moduleListing(*names.toTypedArray()).toByteArray()) +
+                names.associate { "${repo}com/example/demo-lib/1.0.0/$it" to commonJar },
+        )
+        MavenSourceFetcherImpl(cacheDir = newCacheDir(), engine = engine, maxJarsPerFetch = 2).use { fetcher ->
+            val failure = assertFailsWith<DownloadTooLargeException> { fetcher.fetch(coordinate, listOf(repo)) }
+
+            assertContains(failure.message.orEmpty(), "lists 3 sources jars")
+        }
+        // Refused from the metadata alone, before a single jar was requested.
+        assertTrue(engine.requestHistory.none { it.url.toString().endsWith(".jar") })
+    }
+
+    @Test
+    fun capsWhatOneFetchDownloadsAcrossAllItsJars() = runTest {
+        val names = listOf("a-sources.jar", "b-sources.jar")
+        val engine = mockRepoEngine(
+            mapOf(rootModuleUrl to moduleListing(*names.toTypedArray()).toByteArray()) +
+                names.associate { "${repo}com/example/demo-lib/1.0.0/$it" to ByteArray(3_000) },
+        )
+        // Each jar is under the per-jar cap; only the two together are over the per-fetch one.
+        MavenSourceFetcherImpl(cacheDir = newCacheDir(), engine = engine, maxDownloadBytes = 4_096, maxFetchBytes = 5_000)
+            .use { fetcher ->
+                val failure = assertFailsWith<DownloadTooLargeException> { fetcher.fetch(coordinate, listOf(repo)) }
+
+                assertContains(failure.message.orEmpty(), "cap on one fetch's jars")
+            }
+    }
+
+    @Test
+    fun capsWhatOneFetchExtractsAcrossAllItsJars() = runTest {
+        val names = listOf("a-sources.jar", "b-sources.jar")
+        val engine = mockRepoEngine(
+            mapOf(rootModuleUrl to moduleListing(*names.toTypedArray()).toByteArray()) +
+                names.associate { name ->
+                    "${repo}com/example/demo-lib/1.0.0/$name" to zipBytes(mapOf("com/example/${name.first()}.kt" to "x".repeat(3_000)))
+                },
+        )
+        // 3 000 bytes each fits the extractor's 5 000; the 6 000 they make together does not.
+        val cacheDir = newCacheDir()
+        MavenSourceFetcherImpl(cacheDir = cacheDir, engine = engine, extractor = ZipExtractor(maxTotalBytes = 5_000))
+            .use { fetcher ->
+                assertFailsWith<ZipExtractionException> { fetcher.fetch(coordinate, listOf(repo)) }
+            }
+        assertEquals(emptyList(), cacheDir.walk().filter { it.isRegularFile() }.toList(), "a refused fetch writes nothing")
+    }
+
+    @Test
+    fun aFetchReplacesWhatAnEarlierOneLeftRatherThanAddingToIt() = runTest {
+        val cacheDir = newCacheDir()
+        val versionDir = cacheDir.resolve("com.example/demo-lib/1.0.0")
+        // What a cancelled fetch, or one that chose different variants, leaves without a marker:
+        // the analyzer indexes everything under sources/, so a file here would pass as this fetch's.
+        val stale = versionDir.resolve("sources/jvm/com/example/Stale.kt").also {
+            it.parent.createDirectories()
+            it.writeText("package com.example\n\nfun stale() = Unit\n")
+        }
+        val staleJar = versionDir.resolve("jars/demo-lib-android-1.0.0-sources.jar").also {
+            it.parent.createDirectories()
+            it.writeText("not a jar")
+        }
+
+        fetcher(mockRepoEngine(kmpRoutes), cacheDir).use { fetcher ->
+            val result = fetcher.fetch(coordinate, listOf(repo))
+
+            assertFalse(stale.exists(), "a stale source survived the fetch")
+            assertFalse(staleJar.exists(), "a stale jar survived the fetch")
+            assertTrue(Path.of(result.extractedDir).resolve("jvm/com/example/Hello.kt").exists())
+            assertEquals(
+                listOf("common/com/example/Common.kt", "jvm/com/example/Hello.kt"),
+                Path.of(result.extractedDir).walk().filter { it.isRegularFile() && it.name.endsWith(".kt") }
+                    .map { it.relativeTo(Path.of(result.extractedDir)).invariantSeparatorsPathString }
+                    .sorted().toList(),
+            )
+        }
+    }
+
+    @Test
+    fun stagingIsClearedHoweverAFetchEnds() = runTest {
+        val cacheDir = newCacheDir()
+        val staging = cacheDir.resolve(CacheLayout.STAGING_DIR)
+        fetcher(mockRepoEngine(kmpRoutes), cacheDir).use { it.fetch(coordinate, listOf(repo)) }
+        assertEquals(emptyList(), staging.listDirectoryEntries(), "after a fetch that succeeded")
+
+        val badChecksum = mapOf(
+            "${repo}com/example/plain-lib/2.0.0/plain-lib-2.0.0.module" to
+                moduleListing("plain-lib-2.0.0-sources.jar", sha256 = "00").toByteArray(),
+            plainJarUrl to jvmJar,
+        )
+        fetcher(mockRepoEngine(badChecksum), cacheDir).use { fetcher ->
+            assertFailsWith<ChecksumMismatchException> { fetcher.fetch(plain, listOf(repo)) }
+        }
+        assertEquals(emptyList(), staging.listDirectoryEntries(), "after a fetch that failed")
+    }
+
+    @Test
+    fun sweepsStagingAServerAbandonedButNotAFetchInProgress() = runTest {
+        val cacheDir = newCacheDir()
+        val staging = cacheDir.resolve(CacheLayout.STAGING_DIR)
+        val abandoned = staging.resolve("abandoned").also { it.resolve("jars").createDirectories().resolve("x.jar").writeText("x") }
+        abandoned.setLastModifiedTime(FileTime.from(Instant.now().minus(Duration.ofDays(2))))
+        val inProgress = staging.resolve("in-progress").also { it.resolve("jars").createDirectories() }
+
+        fetcher(mockRepoEngine(mapOf(plainJarUrl to jvmJar)), cacheDir).use { it.fetch(plain, listOf(repo)) }
+
+        assertFalse(abandoned.exists(), "a day-old staging directory is what a crashed fetch leaves")
+        assertTrue(inProgress.exists(), "a recent one may be another server's fetch")
+    }
+
+    /**
+     * A `.module` whose common sources variant lists [fileNames], each served beside it, with an
+     * optional (shared) [sha256].
+     */
+    private fun moduleListing(vararg fileNames: String, sha256: String? = null): String {
+        val files = fileNames.joinToString { name ->
+            val checksum = sha256?.let { """, "sha256": "$it"""" }.orEmpty()
+            """{ "name": "$name", "url": "$name"$checksum }"""
+        }
+        return """{ "formatVersion": "1.1", "variants": [ ${sourcesVariant("common", """"files": [ $files ]""")} ] }"""
     }
 
     /**
