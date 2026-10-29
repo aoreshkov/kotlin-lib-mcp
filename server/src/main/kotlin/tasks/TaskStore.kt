@@ -21,6 +21,8 @@ import kotlinx.coroutines.Job
 import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import kotlinx.coroutines.withTimeoutOrNull
@@ -85,7 +87,31 @@ internal fun canTransition(from: TaskStatus, to: TaskStatus): Boolean = !from.is
  */
 private fun Throwable.isFatal(): Boolean = this is VirtualMachineError && this !is StackOverflowError
 
-/** How a caller describes the work to run; [onStatus] fires on every transition, including the first. */
+/**
+ * Delivers one `notifications/tasks/status`, best-effort: notifications are optional in the spec and
+ * a client can always poll `tasks/get`, so nothing [onStatus] throws may change how the task ends.
+ *
+ * That includes a [CancellationException] that is not ours. A transport writing to a session that
+ * has gone away can throw the cancellation of *that session's* scope while this task's job is still
+ * active; re-throwing it unexamined, as `runCatchingCancellable` would, ended the job without
+ * publishing anything — a task stranded in `working` that the TTL sweep never evicts, because it
+ * only evicts finished ones. So a cancellation is re-thrown only if this coroutine really was
+ * cancelled, which is the check the kotlinx.coroutines maintainers recommend for telling the two
+ * apart (`currentCoroutineContext().ensureActive()`, kotlinx.coroutines#3658).
+ */
+private suspend fun notifyStatus(onStatus: suspend (Task) -> Unit, task: Task) {
+    try {
+        onStatus(task)
+    } catch (e: Throwable) {
+        if (e is CancellationException) currentCoroutineContext().ensureActive()
+        log.d(e) { "Dropped the ${task.status} notification for task ${task.taskId}" }
+    }
+}
+
+/**
+ * How a caller describes the work to run; [onStatus] fires on every transition, including the first,
+ * and whatever it throws is dropped (see [notifyStatus]).
+ */
 class TaskRun(
     val label: String,
     val requested: TaskMetadata?,
@@ -345,10 +371,11 @@ class TaskStore(
         log.i { "Task ${record.taskId} started (${run.label})" }
 
         record.job = scope.launch {
-            // The first status is published from inside the job so a caller that awaits the very
-            // first notification cannot race the CreateTaskResult it is about to receive.
-            runCatchingCancellable { run.onStatus(initial) }
             val outcome = try {
+                // The first status is published from inside the job so a caller that awaits the very
+                // first notification cannot race the CreateTaskResult it is about to receive — and
+                // inside the `try`, so that every way out of the job goes through `publish`.
+                notifyStatus(run.onStatus, initial)
                 // The body runs with a [TaskContext] in scope so that work which needs something
                 // from the client — an elicitation — can say so without any of the layers in
                 // between (`dispatchToolCall`, `guarded`, the tool itself) knowing about tasks.
@@ -436,7 +463,7 @@ class TaskStore(
         // The job is cancelled, so it can no longer report this transition itself, and this
         // function is not suspend. Notifications are optional in the spec; the response above is
         // what the client relies on.
-        scope.launch { runCatchingCancellable { record.onStatus(cancelled) } }
+        scope.launch { notifyStatus(record.onStatus, cancelled) }
         return cancelled
     }
 
@@ -530,7 +557,7 @@ class TaskStore(
             Outcome.Cancelled -> update(record, TaskStatus.Cancelled)
         } ?: return
         // A client that has already disconnected must not turn into a failed task.
-        runCatchingCancellable { onStatus(snapshot) }
+        notifyStatus(onStatus, snapshot)
     }
 
     /**
@@ -540,7 +567,9 @@ class TaskStore(
     private suspend fun transition(taskId: String, status: TaskStatus, message: String?) {
         val record = records[taskId] ?: return
         val snapshot = update(record, status) { record.statusMessage = message } ?: return
-        runCatchingCancellable { record.onStatus(snapshot) }
+        // Through notifyStatus, not a bare call: a foreign cancellation thrown here would otherwise
+        // unwind the tool body and record a `cancelled` task that nobody cancelled.
+        notifyStatus(record.onStatus, snapshot)
     }
 
     /**

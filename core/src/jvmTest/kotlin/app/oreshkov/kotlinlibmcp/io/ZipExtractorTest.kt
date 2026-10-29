@@ -95,6 +95,26 @@ class ZipExtractorTest {
     }
 
     @Test
+    fun aSharedBudgetHoldsAcrossArchives() = runTest {
+        val extractor = ZipExtractor(maxEntries = 3, maxTotalBytes = 1024)
+        val first = writeZip(mapOf("a.kt" to "x".repeat(600)))
+        val second = writeZip(mapOf("b.kt" to "x".repeat(600)))
+
+        // Each archive alone is within the limits, as two calls with their own budgets show.
+        extractor.extract(first, tempDir())
+        extractor.extract(second, tempDir())
+
+        // Sharing one budget makes them hold for both together, whoever chose how many there are.
+        val budget = extractor.newBudget()
+        extractor.extract(first, tempDir(), budget)
+        assertFailsWith<ZipExtractionException> { extractor.extract(second, tempDir(), budget) }
+
+        val entries = extractor.newBudget()
+        repeat(3) { extractor.extract(writeZip(mapOf("f$it.kt" to "p")), tempDir(), entries) }
+        assertFailsWith<ZipExtractionException> { extractor.extract(writeZip(mapOf("g.kt" to "p")), tempDir(), entries) }
+    }
+
+    @Test
     fun abortsSingleOversizedEntryMidCopy() = runTest {
         // A single entry far larger than the cap must be aborted *during* the copy, not streamed to
         // disk in full and then rejected (zip-bomb: one entry can be highly compressed).

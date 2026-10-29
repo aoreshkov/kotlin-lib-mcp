@@ -1,3 +1,5 @@
+@file:OptIn(ExperimentalPathApi::class)
+
 package app.oreshkov.kotlinlibmcp.fetch
 
 import app.oreshkov.kotlinlibmcp.cache.CacheLayout
@@ -5,7 +7,6 @@ import app.oreshkov.kotlinlibmcp.core.FetchResult
 import app.oreshkov.kotlinlibmcp.core.MavenSourceFetcher
 import app.oreshkov.kotlinlibmcp.core.VersionCatalog
 import app.oreshkov.kotlinlibmcp.io.ZipExtractor
-import app.oreshkov.kotlinlibmcp.io.writeAtomically
 import app.oreshkov.kotlinlibmcp.io.writeTextAtomically
 import app.oreshkov.kotlinlibmcp.model.DependencyNode
 import app.oreshkov.kotlinlibmcp.model.KmpTarget
@@ -26,23 +27,34 @@ import io.ktor.client.statement.bodyAsChannel
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.contentLength
 import io.ktor.http.isSuccess
+import io.ktor.utils.io.exhausted
 import io.ktor.utils.io.readBuffer
 import java.io.ByteArrayOutputStream
+import java.io.IOException
 import java.nio.channels.FileChannel
 import java.nio.channels.FileLock
 import java.nio.channels.OverlappingFileLockException
 import java.nio.file.Path
+import java.nio.file.StandardCopyOption
 import java.nio.file.StandardOpenOption.CREATE
 import java.nio.file.StandardOpenOption.WRITE
 import java.security.MessageDigest
+import java.util.UUID
 import kotlinx.io.readByteArray
+import kotlin.io.path.ExperimentalPathApi
 import kotlin.io.path.createDirectories
 import kotlin.io.path.deleteIfExists
+import kotlin.io.path.deleteRecursively
 import kotlin.io.path.exists
+import kotlin.io.path.getLastModifiedTime
 import kotlin.io.path.isDirectory
+import kotlin.io.path.listDirectoryEntries
+import kotlin.io.path.moveTo
 import kotlin.io.path.name
+import kotlin.io.path.outputStream
 import kotlin.io.path.readText
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
@@ -59,8 +71,11 @@ public class SourcesNotFoundException(message: String) : FetchException(message)
 public class ChecksumMismatchException(message: String) : FetchException(message)
 
 /**
- * A response body exceeded its cap, declared or streamed: [MavenSourceFetcherImpl.maxDownloadBytes]
- * for a jar, [MavenSourceFetcherImpl.maxMetadataBytes] for `.module`, `.pom` or `maven-metadata.xml`.
+ * A download exceeded a cap. Either one response body, declared or streamed, went past its own:
+ * [MavenSourceFetcherImpl.maxDownloadBytes] for a jar, [MavenSourceFetcherImpl.maxMetadataBytes] for
+ * `.module`, `.pom` or `maven-metadata.xml`. Or one fetch as a whole went past
+ * [MavenSourceFetcherImpl.maxFetchBytes] across its jars, or listed more than
+ * [MavenSourceFetcherImpl.maxJarsPerFetch] of them.
  */
 public class DownloadTooLargeException(message: String) : FetchException(message)
 
@@ -88,11 +103,16 @@ public class RepositoryUnavailableException(public val status: Int, public val u
  * (`-jvm-<v>-sources.jar`, `<v>-sources.jar`). Downloads land directly in the [CacheLayout]
  * cache dir; a [CacheLayout.FETCH_RESULT_FILE] marker makes warm fetches network-free.
  *
- * A fetch downloads first and writes second: every jar of the chosen repository is in memory and
- * verified before anything touches the cache, and the writes run under a lock on the version
- * directory, because the cache root is shared by every server on the machine. A repository that
- * fails (see [RepositoryUnavailableException]) is skipped for the next one, but if none has the
- * file, that failure is what the caller sees, and no marker is written, so the next call retries.
+ * A fetch stages first and commits second. Every jar of the chosen repository is streamed to a
+ * fresh staging directory ([CacheLayout.STAGING_DIR]), verified and extracted there before anything
+ * touches the version directory; the commit then *replaces* that directory's sources and jars rather
+ * than adding to them, under a lock on the version directory, because the cache root is shared by
+ * every server on the machine. What one fetch may cost is bounded as a whole, not per jar: how many
+ * jars ([maxJarsPerFetch]), how many bytes they download ([maxFetchBytes]) and how much they extract
+ * (one [ZipExtractor.Budget] for all of them). A `.module` is publisher input, so per-jar bounds
+ * alone would leave the totals to whoever publishes one. A repository that fails (see
+ * [RepositoryUnavailableException]) is skipped for the next one, but if none has the file, that
+ * failure is what the caller sees, and no marker is written, so the next call retries.
  *
  * The [engine] is injectable so tests drive the fetcher with Ktor's `MockEngine`.
  */
@@ -109,6 +129,8 @@ public class MavenSourceFetcherImpl(
     private val extractor: ZipExtractor = ZipExtractor(),
     private val maxDownloadBytes: Long = DEFAULT_MAX_DOWNLOAD_BYTES,
     private val maxMetadataBytes: Long = DEFAULT_MAX_METADATA_BYTES,
+    private val maxFetchBytes: Long = DEFAULT_MAX_FETCH_BYTES,
+    private val maxJarsPerFetch: Int = DEFAULT_MAX_JARS_PER_FETCH,
 ) : MavenSourceFetcher, AutoCloseable {
 
     private val log = Logger.withTag("MavenSourceFetcher")
@@ -136,12 +158,15 @@ public class MavenSourceFetcherImpl(
             return it
         }
         val repoList = normalizeRepos(repos)
-        val (repo, jars) = firstFromRepos(repoList) { repo ->
-            downloadFromRepo(repo, coordinate).takeIf { it.isNotEmpty() }?.let { repo to it }
-        } ?: throw SourcesNotFoundException("No sources jar found for $coordinate in $repoList")
-        return withVersionDirLock(versionDir) {
-            // Another server sharing the cache root may have finished this fetch while we downloaded.
-            readCachedResult(coordinate, versionDir) ?: persist(repo, coordinate, versionDir, jars)
+        return withStagingDir { staging ->
+            val (repo, jars) = firstFromRepos(repoList) { repo ->
+                downloadFromRepo(repo, coordinate, staging).takeIf { it.isNotEmpty() }?.let { repo to it }
+            } ?: throw SourcesNotFoundException("No sources jar found for $coordinate in $repoList")
+            val staged = extract(jars, staging)
+            withVersionDirLock(versionDir) {
+                // Another server sharing the cache root may have finished this fetch while we downloaded.
+                readCachedResult(coordinate, versionDir) ?: commit(repo, coordinate, versionDir, staging, staged)
+            }
         }
     }
 
@@ -197,8 +222,14 @@ public class MavenSourceFetcherImpl(
         val sha256: String?,
     )
 
-    /** A sources jar downloaded and verified, not yet written anywhere. */
-    private class DownloadedJar(val target: KmpTarget, val fileName: String, val bytes: ByteArray)
+    /** A sources jar downloaded to the staging directory and verified, not yet in the cache. */
+    private class StagedJar(val target: KmpTarget, val fileName: String, val path: Path)
+
+    /** What one repository attempt may still download, across all of its jars. */
+    private class FetchBudget(var bytesLeft: Long)
+
+    /** What a response body may grow to, and how to name that limit when it is exceeded. */
+    private class Cap(val bytes: Long, val description: String)
 
     /**
      * What [CacheLayout.FETCH_RESULT_FILE] holds: a [FetchResult] without the paths, which are
@@ -220,66 +251,132 @@ public class MavenSourceFetcherImpl(
             val saved = runCatching { json.decodeFromString(FetchMarker.serializer(), marker.readText()) }
                 .onFailure { log.w(it) { "Corrupt fetch marker $marker; refetching" } }
                 .getOrNull() ?: return@withContext null
-            val sourcesRoot = versionDir.resolve(CacheLayout.SOURCES_DIR)
-            if (!sourcesRoot.isDirectory()) {
+            if (!versionDir.resolve(CacheLayout.SOURCES_DIR).isDirectory()) {
                 log.w { "Fetch marker for $coordinate has no extracted sources beside it; refetching" }
                 return@withContext null
             }
-            val jarsDir = versionDir.resolve(CacheLayout.JARS_DIR)
-            FetchResult(
-                coordinate = coordinate,
-                resolvedTargets = saved.resolvedTargets,
-                downloadedJars = saved.jarFileNames.map { jarsDir.resolve(it).toString() },
-                extractedDir = sourcesRoot.toString(),
-                files = saved.files,
-            )
+            resultOf(coordinate, versionDir, saved)
         }
 
+    /** The [FetchResult] that [marker] describes, its paths resolved against [versionDir]. */
+    private fun resultOf(coordinate: LibraryCoordinate, versionDir: Path, marker: FetchMarker): FetchResult {
+        val jarsDir = versionDir.resolve(CacheLayout.JARS_DIR)
+        return FetchResult(
+            coordinate = coordinate,
+            resolvedTargets = marker.resolvedTargets,
+            downloadedJars = marker.jarFileNames.map { jarsDir.resolve(it).toString() },
+            extractedDir = versionDir.resolve(CacheLayout.SOURCES_DIR).toString(),
+            files = marker.files,
+        )
+    }
+
     /**
-     * Every sources jar [repo] has for [coordinate], in memory and checksum-verified; empty when
-     * the repository publishes none.
+     * Runs [body] with a fresh directory of its own under [CacheLayout.STAGING_DIR], deleted
+     * afterwards however [body] ends. Cancellation included, which is why the delete is
+     * [NonCancellable]: a withdrawn fetch would otherwise leave its downloads on disk for good.
+     *
+     * A server that died mid-fetch never reaches that delete, so this also clears what such a fetch
+     * left behind: any staging directory older than [STALE_STAGING_MILLIS]. Several servers share the
+     * cache root, so age is what tells an abandoned directory from another server's fetch in progress.
      */
-    private suspend fun downloadFromRepo(repo: String, coordinate: LibraryCoordinate): List<DownloadedJar> {
-        val downloaded = mutableListOf<DownloadedJar>()
-        val modulePlans = planViaModuleMetadata(repo, coordinate)
+    private suspend fun <T> withStagingDir(body: suspend (Path) -> T): T {
+        val stagingRoot = cacheDir.resolve(CacheLayout.STAGING_DIR)
+        val staging = withContext(Dispatchers.IO) {
+            sweepAbandonedStaging(stagingRoot)
+            stagingRoot.resolve(UUID.randomUUID().toString()).createDirectories()
+        }
+        try {
+            return body(staging)
+        } finally {
+            withContext(NonCancellable + Dispatchers.IO) { deleteQuietly(staging) }
+        }
+    }
+
+    private fun sweepAbandonedStaging(stagingRoot: Path) {
+        if (!stagingRoot.isDirectory()) return
+        val cutoff = System.currentTimeMillis() - STALE_STAGING_MILLIS
+        try {
+            stagingRoot.listDirectoryEntries()
+                .filter { it.getLastModifiedTime().toMillis() < cutoff }
+                .forEach(::deleteQuietly)
+        } catch (e: IOException) {
+            log.w(e) { "Could not sweep abandoned fetches under $stagingRoot" }
+        }
+    }
+
+    /** Best effort: what cannot be deleted now is swept once it is [STALE_STAGING_MILLIS] old. */
+    private fun deleteQuietly(dir: Path) {
+        try {
+            dir.deleteRecursively()
+        } catch (e: IOException) {
+            log.w(e) { "Could not delete $dir" }
+        }
+    }
+
+    /**
+     * Every sources jar [repo] has for [coordinate], streamed into [staging]'s `jars/` and
+     * checksum-verified; empty when the repository publishes none.
+     *
+     * `jars/` is emptied first, so a jar a previous repository left behind before it failed is
+     * never committed as this one's, and each repository gets the whole [maxFetchBytes].
+     */
+    private suspend fun downloadFromRepo(repo: String, coordinate: LibraryCoordinate, staging: Path): List<StagedJar> {
+        val jarsDir = withContext(Dispatchers.IO) {
+            staging.resolve(CacheLayout.JARS_DIR).also {
+                it.deleteRecursively()
+                it.createDirectories()
+            }
+        }
+        val budget = FetchBudget(maxFetchBytes)
+        val downloaded = mutableListOf<StagedJar>()
+        val modulePlans = planViaModuleMetadata(repo, coordinate)?.let { bounded(it, coordinate) }
         if (modulePlans != null) {
             for (plan in modulePlans) {
-                downloadJar(plan)?.let { downloaded += it }
+                downloadJar(plan, jarsDir, budget)?.let { downloaded += it }
             }
         }
         if (downloaded.isEmpty()) {
             if (modulePlans != null) log.i { "Module metadata for $coordinate yielded no sources; falling back to filename heuristics" }
             for (plan in fallbackPlans(repo, coordinate)) {
-                downloaded += downloadJar(plan) ?: continue
+                downloaded += downloadJar(plan, jarsDir, budget) ?: continue
                 break // fallback ladder: first hit wins
             }
         }
         return downloaded
     }
 
-    /** Writes [jars] into the cache, extracts them, and records the result in the marker. */
-    private suspend fun persist(
-        repo: String,
-        coordinate: LibraryCoordinate,
-        versionDir: Path,
-        jars: List<DownloadedJar>,
-    ): FetchResult {
-        val jarsDir = versionDir.resolve(CacheLayout.JARS_DIR).normalize()
-        val sourcesRoot = versionDir.resolve(CacheLayout.SOURCES_DIR)
+    /**
+     * [plans] without repeats, refused outright when more than [maxJarsPerFetch] remain, before a
+     * single jar is requested. `.module` metadata is publisher input, and nothing in the format bounds
+     * how many files a variant lists. Without this, one coordinate could have every fetch download
+     * thousands of jars, or one jar thousands of times; a checksum is no help, since the same file
+     * declares it. Real KMP modules list one or two once the variants are narrowed to common and JVM.
+     */
+    private fun bounded(plans: List<JarPlan>, coordinate: LibraryCoordinate): List<JarPlan> {
+        // By name as well as by URL: a jar is saved under its name, so a second plan with the same
+        // name would overwrite the first.
+        val distinct = plans.distinctBy { it.url }.distinctBy { it.fileName }
+        if (distinct.size > maxJarsPerFetch) {
+            throw DownloadTooLargeException(
+                "Module metadata for $coordinate lists ${distinct.size} sources jars, over the $maxJarsPerFetch-jar cap on one fetch",
+            )
+        }
+        return distinct
+    }
+
+    /**
+     * Extracts every staged jar into [staging]'s `sources/<target>`, all of them charged to one
+     * [ZipExtractor.Budget]: the extractor's limits then hold for the fetch as a whole, however many
+     * jars it took. Returns the marker that describes the result.
+     */
+    private suspend fun extract(jars: List<StagedJar>, staging: Path): FetchMarker {
+        val sourcesRoot = staging.resolve(CacheLayout.SOURCES_DIR)
+        val budget = extractor.newBudget()
         val targets = sortedSetOf<KmpTarget>()
         val files = mutableListOf<SourceFileRef>()
-        val jarPaths = mutableListOf<Path>()
         for (jar in jars) {
-            // safeFileName already ran when planning; checking the destination too means a plan
-            // built any other way still cannot leave jars/.
-            val dest = jarsDir.resolve(safeFileName(jar.fileName)).normalize()
-            if (dest.parent != jarsDir) {
-                throw UnsafeArtifactNameException("Refusing to save '${jar.fileName}' outside the jars directory")
-            }
-            withContext(Dispatchers.IO) { dest.writeAtomically(jar.bytes) }
-            jarPaths.add(dest)
             val targetName = jar.target.name.lowercase()
-            val relativePaths = extractor.extract(dest, sourcesRoot.resolve(targetName))
+            val relativePaths = extractor.extract(jar.path, sourcesRoot.resolve(targetName), budget)
             targets += jar.target
             for (relative in relativePaths) {
                 if (!isSourceFile(relative)) continue
@@ -290,28 +387,51 @@ public class MavenSourceFetcherImpl(
                 )
             }
         }
-        val marker = FetchMarker(targets.toList(), jarPaths.map { it.name }, files)
+        return FetchMarker(targets.toList(), jars.map { it.fileName }, files)
+    }
+
+    /**
+     * Moves a staged fetch into [versionDir] and records it in the marker. Runs under the
+     * version-directory lock.
+     *
+     * It **replaces** `sources/` and `jars/`, never adds to them. The analyzer indexes everything
+     * under `sources/`, so whatever an earlier fetch left there would be indexed as part of this
+     * one: the files of a fetch that was cancelled or failed partway, or of a different variant
+     * choice (another repository's, or an older server's, such as Android sources a JVM variant has
+     * since displaced).
+     *
+     * The marker is the commit point. It is deleted first and written last, so a crash or failure
+     * anywhere in between leaves a miss, which the next fetch redoes from scratch, never a mix that
+     * looks complete. Both moves are renames, since staging is on the cache root's filesystem.
+     */
+    private suspend fun commit(
+        repo: String,
+        coordinate: LibraryCoordinate,
+        versionDir: Path,
+        staging: Path,
+        marker: FetchMarker,
+    ): FetchResult {
         withContext(Dispatchers.IO) {
-            versionDir.resolve(CacheLayout.FETCH_RESULT_FILE)
-                .writeTextAtomically(json.encodeToString(FetchMarker.serializer(), marker))
+            val markerFile = versionDir.resolve(CacheLayout.FETCH_RESULT_FILE)
+            markerFile.deleteIfExists()
+            for (name in listOf(CacheLayout.SOURCES_DIR, CacheLayout.JARS_DIR)) {
+                val live = versionDir.resolve(name)
+                live.deleteRecursively()
+                staging.resolve(name).moveTo(live, StandardCopyOption.ATOMIC_MOVE)
+            }
+            markerFile.writeTextAtomically(json.encodeToString(FetchMarker.serializer(), marker))
             // The pre-v2 marker would never be read again; it only misleads someone browsing the cache.
             versionDir.resolve(CacheLayout.LEGACY_FETCH_RESULT_FILE).deleteIfExists()
         }
-        log.i { "Fetched $coordinate from $repo: ${jars.size} jar(s), ${files.size} source files" }
-        return FetchResult(
-            coordinate = coordinate,
-            resolvedTargets = marker.resolvedTargets,
-            downloadedJars = jarPaths.map { it.toString() },
-            extractedDir = sourcesRoot.toString(),
-            files = files,
-        )
+        log.i { "Fetched $coordinate from $repo: ${marker.jarFileNames.size} jar(s), ${marker.files.size} source files" }
+        return resultOf(coordinate, versionDir, marker)
     }
 
     /**
      * Runs [body] holding an exclusive lock on [versionDir], so two servers sharing the cache root
-     * never write or extract the same coordinate at once. Taking it creates the directory, which is
-     * why [fetch] takes it only once there is something to write: a coordinate that does not exist
-     * leaves nothing behind in the cache.
+     * never commit the same coordinate at once. Taking it creates the directory, which is why [fetch]
+     * takes it only once there is something to commit: a coordinate that does not exist leaves no
+     * version directory behind in the cache.
      *
      * Polls with [FileChannel.tryLock] instead of blocking in `lock()`: a blocked `lock()` cannot be
      * cancelled, and it throws [OverlappingFileLockException] when another coroutine of this same
@@ -426,11 +546,38 @@ public class MavenSourceFetcherImpl(
         )
     }
 
-    /** Downloads one jar into memory, verifying sha256 when published. `null` when absent. */
-    private suspend fun downloadJar(plan: JarPlan): DownloadedJar? {
-        val bytes = getBytesOrNull(plan.url) ?: return null
-        verifySha256(bytes, plan.sha256, plan.url)
-        return DownloadedJar(plan.target, plan.fileName, bytes)
+    /**
+     * Streams one jar into [jarsDir], hashing it on the way, and verifies its sha256 when one is
+     * published. `null` when absent. The jar is never held in memory, so memory use does not grow
+     * with the size or number of jars. A jar that fails its cap or its checksum stays in the staging
+     * directory, which is deleted with everything else in it.
+     */
+    private suspend fun downloadJar(plan: JarPlan, jarsDir: Path, budget: FetchBudget): StagedJar? {
+        // safeFileName already ran when planning; checking the destination too means a plan built
+        // any other way still cannot leave jars/.
+        val dest = jarsDir.resolve(safeFileName(plan.fileName)).normalize()
+        if (dest.parent != jarsDir.normalize()) {
+            throw UnsafeArtifactNameException("Refusing to save '${plan.fileName}' outside the jars directory")
+        }
+        val cap = if (budget.bytesLeft < maxDownloadBytes) {
+            Cap(budget.bytesLeft, "the $maxFetchBytes-byte cap on one fetch's jars")
+        } else {
+            Cap(maxDownloadBytes, "the $maxDownloadBytes-byte download cap")
+        }
+        val digest = MessageDigest.getInstance("SHA-256")
+        val size = getOrNull(plan.url) { response ->
+            withContext(Dispatchers.IO) {
+                dest.outputStream().use { out ->
+                    readCapped(response, plan.url, cap) { chunk ->
+                        digest.update(chunk)
+                        out.write(chunk)
+                    }
+                }
+            }
+        } ?: return null
+        budget.bytesLeft -= size
+        verifySha256(digest, plan.sha256, plan.url)
+        return StagedJar(plan.target, dest.name, dest)
     }
 
     /**
@@ -445,13 +592,13 @@ public class MavenSourceFetcherImpl(
         return name
     }
 
-    private fun verifySha256(bytes: ByteArray, expected: String?, url: String) {
+    /** Checks what [digest] has hashed against [expected], when the metadata publishes one. */
+    private fun verifySha256(digest: MessageDigest, expected: String?, url: String) {
         if (expected.isNullOrBlank()) {
             log.d { "No sha256 published for $url; skipping verification" }
             return
         }
-        val actual = MessageDigest.getInstance("SHA-256").digest(bytes)
-            .joinToString("") { "%02x".format(it) }
+        val actual = digest.digest().joinToString("") { "%02x".format(it) }
         if (!actual.equals(expected, ignoreCase = true)) {
             throw ChecksumMismatchException("sha256 mismatch for $url: expected $expected, got $actual")
         }
@@ -515,58 +662,61 @@ public class MavenSourceFetcherImpl(
 
     // --- HTTP helpers ---
 
-    /** A `.module`, `.pom` or `maven-metadata.xml` body, read under [maxMetadataBytes]. */
+    /** A `.module`, `.pom` or `maven-metadata.xml` body, read into memory under [maxMetadataBytes]. */
     private suspend fun getTextOrNull(url: String): String? =
-        getCappedOrNull(url, maxMetadataBytes)?.decodeToString()
-
-    /** A jar, read under [maxDownloadBytes]. */
-    private suspend fun getBytesOrNull(url: String): ByteArray? = getCappedOrNull(url, maxDownloadBytes)
+        getOrNull(url) { response ->
+            val out = ByteArrayOutputStream()
+            readCapped(response, url, Cap(maxMetadataBytes, "the $maxMetadataBytes-byte download cap"), out::write)
+            out.toString(Charsets.UTF_8)
+        }
 
     /**
-     * The body of [url] read under [cap], or `null` when the repository does not have it (404).
-     * Any other failure status, once [HttpRequestRetry] has given up, throws
+     * [read] applied to the response for [url], or `null` when the repository does not have it
+     * (404). Any other failure status, once [HttpRequestRetry] has given up, throws
      * [RepositoryUnavailableException]: it says nothing about whether the file exists.
      *
      * `prepareGet(...).execute { }`, not `get(...)`: a plain `get` returns only after Ktor has saved
      * the whole body in memory, so a cap counted on that response protects nothing. Inside `execute`
      * the body is still the network stream.
      */
-    private suspend fun getCappedOrNull(url: String, cap: Long): ByteArray? =
+    private suspend fun <T : Any> getOrNull(url: String, read: suspend (HttpResponse) -> T): T? =
         client.prepareGet(url).execute { response ->
             when {
-                response.status.isSuccess() -> readCapped(response, url, cap)
+                response.status.isSuccess() -> read(response)
                 response.status == HttpStatusCode.NotFound -> null
                 else -> throw RepositoryUnavailableException(response.status.value, url)
             }
         }
 
     /**
-     * Reads the streaming body into memory with a [cap] budget: rejects early on a too-large
-     * declared `Content-Length`, then aborts the moment the running total exceeds the cap, so a huge
-     * (or `Content-Length`-lying) body can't OOM the JVM before extraction limits apply.
+     * Streams the body to [sink] one chunk at a time under [cap], returning the bytes read. It
+     * rejects a too-large declared `Content-Length` up front. After that it aborts the moment the
+     * running total passes the cap, before that chunk reaches [sink], so a huge or
+     * `Content-Length`-lying body is never held whole. Only one [READ_CHUNK_BYTES] chunk is in
+     * memory at a time, whatever the body's size.
+     *
+     * The loop is Ktor 3's streaming read, `exhausted()` then a bounded read. `readBuffer(Long)`
+     * rather than the `readRemaining(Long)` the client docs still show: Ktor 3.6 deprecates the latter
+     * in favour of the former.
      */
-    private suspend fun readCapped(response: HttpResponse, url: String, cap: Long): ByteArray {
+    private suspend fun readCapped(response: HttpResponse, url: String, cap: Cap, sink: (ByteArray) -> Unit): Long {
         response.contentLength()?.let { declared ->
-            if (declared > cap) {
-                throw DownloadTooLargeException("$url declares $declared bytes, over the $cap-byte download cap")
+            if (declared > cap.bytes) {
+                throw DownloadTooLargeException("$url declares $declared bytes, over ${cap.description}")
             }
         }
         val channel = response.bodyAsChannel()
         return withContext(Dispatchers.IO) {
-            val out = ByteArrayOutputStream()
             var total = 0L
-            while (!channel.isClosedForRead) {
-                val buffer = channel.readBuffer(READ_CHUNK_BYTES)
-                while (!buffer.exhausted()) {
-                    val chunk = buffer.readByteArray()
-                    total += chunk.size
-                    if (total > cap) {
-                        throw DownloadTooLargeException("$url exceeds the $cap-byte download cap")
-                    }
-                    out.write(chunk)
+            while (!channel.exhausted()) {
+                val chunk = channel.readBuffer(READ_CHUNK_BYTES).readByteArray()
+                total += chunk.size
+                if (total > cap.bytes) {
+                    throw DownloadTooLargeException("$url exceeds ${cap.description}")
                 }
+                sink(chunk)
             }
-            out.toByteArray()
+            total
         }
     }
 
@@ -592,6 +742,20 @@ public class MavenSourceFetcherImpl(
         public const val DEFAULT_MAX_DOWNLOAD_BYTES: Long = 200L * 1024 * 1024
 
         /**
+         * Default ceiling on what one fetch downloads across all its jars, which is also roughly
+         * the disk a fetch in progress may take. Twice [DEFAULT_MAX_DOWNLOAD_BYTES], so a common jar
+         * and a JVM jar can each be as large as any one jar may be.
+         */
+        public const val DEFAULT_MAX_FETCH_BYTES: Long = 2 * DEFAULT_MAX_DOWNLOAD_BYTES
+
+        /**
+         * Default ceiling on the distinct sources jars one `.module` may have a fetch download. A
+         * real KMP module lists one or two once narrowed to common and JVM, so this leaves room for
+         * an unusual layout without letting metadata choose an unbounded number.
+         */
+        public const val DEFAULT_MAX_JARS_PER_FETCH: Int = 8
+
+        /**
          * Default ceiling for a `.module`, `.pom` or `maven-metadata.xml` body. Real ones are at most
          * a few hundred KB; this only stops a hostile repository streaming one until the timeout.
          */
@@ -601,6 +765,12 @@ public class MavenSourceFetcherImpl(
 
         /** How often a fetch waiting on another's version-directory lock checks again. */
         private const val LOCK_POLL_MILLIS: Long = 100
+
+        /**
+         * Age past which a staging directory is taken to be abandoned by a server that died
+         * mid-fetch. Far beyond any live fetch, which the request timeout bounds to minutes per jar.
+         */
+        private const val STALE_STAGING_MILLIS: Long = 24L * 60 * 60 * 1000
 
         /** Maven's coordinate charset, as in [LibraryCoordinate.requireValidSegment]: no separators. */
         private val SAFE_FILE_NAME = Regex("[A-Za-z0-9._+-]+")

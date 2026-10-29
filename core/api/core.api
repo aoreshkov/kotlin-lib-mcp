@@ -693,11 +693,13 @@ public class app/oreshkov/kotlinlibmcp/fetch/FetchException : java/lang/RuntimeE
 public final class app/oreshkov/kotlinlibmcp/fetch/MavenSourceFetcherImpl : app/oreshkov/kotlinlibmcp/core/MavenSourceFetcher, java/lang/AutoCloseable {
 	public static final field Companion Lapp/oreshkov/kotlinlibmcp/fetch/MavenSourceFetcherImpl$Companion;
 	public static final field DEFAULT_MAX_DOWNLOAD_BYTES J
+	public static final field DEFAULT_MAX_FETCH_BYTES J
+	public static final field DEFAULT_MAX_JARS_PER_FETCH I
 	public static final field DEFAULT_MAX_METADATA_BYTES J
 	public static final field MAVEN_CENTRAL Ljava/lang/String;
 	public static final field UNRESOLVED_VERSION Ljava/lang/String;
-	public fun <init> (Ljava/nio/file/Path;Lio/ktor/client/engine/HttpClientEngine;Lkotlinx/serialization/json/Json;Lapp/oreshkov/kotlinlibmcp/io/ZipExtractor;JJ)V
-	public synthetic fun <init> (Ljava/nio/file/Path;Lio/ktor/client/engine/HttpClientEngine;Lkotlinx/serialization/json/Json;Lapp/oreshkov/kotlinlibmcp/io/ZipExtractor;JJILkotlin/jvm/internal/DefaultConstructorMarker;)V
+	public fun <init> (Ljava/nio/file/Path;Lio/ktor/client/engine/HttpClientEngine;Lkotlinx/serialization/json/Json;Lapp/oreshkov/kotlinlibmcp/io/ZipExtractor;JJJI)V
+	public synthetic fun <init> (Ljava/nio/file/Path;Lio/ktor/client/engine/HttpClientEngine;Lkotlinx/serialization/json/Json;Lapp/oreshkov/kotlinlibmcp/io/ZipExtractor;JJJIILkotlin/jvm/internal/DefaultConstructorMarker;)V
 	public fun close ()V
 	public fun fetch (Lapp/oreshkov/kotlinlibmcp/model/LibraryCoordinate;Ljava/util/List;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
 	public fun fetchVersionCatalog (Ljava/lang/String;Ljava/lang/String;Ljava/util/List;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
@@ -733,7 +735,12 @@ public final class app/oreshkov/kotlinlibmcp/io/ZipExtractor {
 	public fun <init> ()V
 	public fun <init> (IJ)V
 	public synthetic fun <init> (IJILkotlin/jvm/internal/DefaultConstructorMarker;)V
-	public final fun extract (Ljava/nio/file/Path;Ljava/nio/file/Path;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public final fun extract (Ljava/nio/file/Path;Ljava/nio/file/Path;Lapp/oreshkov/kotlinlibmcp/io/ZipExtractor$Budget;Lkotlin/coroutines/Continuation;)Ljava/lang/Object;
+	public static synthetic fun extract$default (Lapp/oreshkov/kotlinlibmcp/io/ZipExtractor;Ljava/nio/file/Path;Ljava/nio/file/Path;Lapp/oreshkov/kotlinlibmcp/io/ZipExtractor$Budget;Lkotlin/coroutines/Continuation;ILjava/lang/Object;)Ljava/lang/Object;
+	public final fun newBudget ()Lapp/oreshkov/kotlinlibmcp/io/ZipExtractor$Budget;
+}
+
+public final class app/oreshkov/kotlinlibmcp/io/ZipExtractor$Budget {
 }
 
 public final class app/oreshkov/kotlinlibmcp/io/ZipExtractor$Companion {

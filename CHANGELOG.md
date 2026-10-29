@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- **A fetch is bounded as a whole, not only per jar.** Sources jars are streamed to disk instead of
+  held in memory, and one fetch may take at most 8 distinct jars, 400 MB of downloads and the
+  extractor's limits (20 000 entries, 500 MB) across all of its jars together.
+
+### Fixed
+- **A fetch replaces the cached sources instead of adding to them.** Sources and jars are staged
+  in a fresh directory under the cache root (`.staging/`) and moved into place when complete. Before,
+  files left by a cancelled or failed fetch, or by a different variant choice, stayed beside the new
+  ones, and the analyzer indexed them as part of the library.
+- **Under `--tasks`, a task no longer stays `working` when a status notification fails.** A
+  notification that threw a cancellation of its own, as a write to a closed session can, ended the
+  task's job before the tool ran, and nothing ever moved the task on. Status notifications are now
+  best-effort everywhere: a failed one cannot change how a task ends, and it no longer marks the
+  task `cancelled` when nobody cancelled it.
+
 ## [0.10.0] - 2026-10-28
 
 This release makes fetches survive failing repositories and shared caches, pages `search_source`,
