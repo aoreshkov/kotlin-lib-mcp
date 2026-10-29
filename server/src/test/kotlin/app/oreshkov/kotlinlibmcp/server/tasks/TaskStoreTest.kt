@@ -13,10 +13,12 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 import kotlin.test.assertNull
 import kotlin.test.assertTrue
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.async
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.currentCoroutineContext
@@ -345,6 +347,93 @@ class TaskStoreTest {
         // The first status is published from inside the job, so a client watching
         // notifications/tasks/status cannot miss the `working` edge.
         assertEquals(listOf(TaskStatus.Working, TaskStatus.Completed), seen)
+        store.close()
+    }
+
+    @Test
+    fun aForeignCancellationFromTheFirstNotificationDoesNotStrandTheTask() = runTest {
+        val store = TestScopeStore(CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)))
+        var notifications = 0
+
+        // What a transport writing to a session that has gone away can throw: the cancellation of
+        // the session's scope, while the task's own job is still active.
+        val started = store.start(
+            S1,
+            taskRun(onStatus = { if (notifications++ == 0) throw CancellationException("session closed") }) {
+                ok("ran")
+            },
+        )
+        advanceUntilIdle()
+
+        // Re-thrown unexamined, it ended the job before the body ran or `publish` did: the task sat
+        // in `working` for good, since the TTL sweep only evicts finished records.
+        assertEquals(TaskStatus.Completed, store.get(S1, started.taskId).status)
+        assertEquals("ran", (store.payload(S1, started.taskId).content.single() as TextContent).text)
+        store.close()
+    }
+
+    @Test
+    fun aForeignCancellationFromAnInputRequiredNotificationDoesNotCancelTheTask() = runTest {
+        val store = TestScopeStore(CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)))
+
+        val started = store.start(
+            S1,
+            taskRun(onStatus = { if (it.status == TaskStatus.InputRequired) throw CancellationException("session closed") }) {
+                currentCoroutineContext()[TaskContext]!!.awaitingInput("Need a version") { "1.0" }
+                ok()
+            },
+        )
+        advanceUntilIdle()
+
+        // Nobody cancelled this task; a dropped notification must not unwind the body into `cancelled`.
+        assertEquals(TaskStatus.Completed, store.get(S1, started.taskId).status)
+        store.close()
+    }
+
+    @Test
+    fun cancellingDuringAnInputRequiredNotificationStopsTheBody() = runTest {
+        val store = TestScopeStore(CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)))
+        val never = CompletableDeferred<Unit>()
+        var asked = false
+
+        // The input_required notification parks, as a slow transport would; tasks/cancel lands meanwhile.
+        val started = store.start(
+            S1,
+            taskRun(onStatus = { if (it.status == TaskStatus.InputRequired) never.await() }) {
+                currentCoroutineContext()[TaskContext]!!.awaitingInput("Need a version") { asked = true }
+                ok()
+            },
+        )
+        runCurrent()
+        store.cancel(S1, started.taskId)
+        advanceUntilIdle()
+
+        // That cancellation is this job's own, so dropping notification failures must not swallow
+        // it: the body stops there instead of going on to ask the client its question.
+        assertTrue(!asked, "a cancelled task went on to ask for input")
+        assertEquals(TaskStatus.Cancelled, store.get(S1, started.taskId).status)
+        store.close()
+    }
+
+    @Test
+    fun aJobCancelledDuringTheFirstNotificationStillEndsTerminal() = runTest {
+        val scope = CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler))
+        val store = TestScopeStore(scope)
+        val never = CompletableDeferred<Unit>()
+
+        val started = store.start(
+            S1,
+            taskRun(onStatus = { if (it.status == TaskStatus.Working) never.await() }) { ok() },
+        )
+        runCurrent()
+        // Cancelled from outside the store, so no terminal state was written first, unlike
+        // tasks/cancel and close().
+        scope.cancel()
+        advanceUntilIdle()
+
+        // The first notification sits inside the job's `try`, so even this exit goes through
+        // `publish`; outside it, the task stayed `working` with no job left to finish it.
+        assertEquals(TaskStatus.Cancelled, store.get(S1, started.taskId).status)
         store.close()
     }
 
