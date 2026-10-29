@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-10-29
+
+This release bounds what one fetch may download, makes a fetch replace the cached sources rather
+than add to them, and fixes a task that could stay `working` under `--tasks`. Nothing changes on
+the wire. **Upgrading:** a library whose fetch needs more than 8 jars or 400 MB of downloads is now
+refused (see *Security*). Everyone else needs to do nothing.
+
 ### Security
 - **A fetch is bounded as a whole, not only per jar.** Sources jars are streamed to disk instead of
   held in memory, and one fetch may take at most 8 distinct jars, 400 MB of downloads and the
@@ -841,7 +848,8 @@ Initial public release.
 - On-disk cache keyed by `group/artifact/version` under the OS cache directory.
 - Optional **Compose Desktop dashboard** embedding the server (control, logs, cache browser).
 
-[Unreleased]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.10.0...v0.10.1
 [0.10.0]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.9.2...v0.10.0
 [0.9.2]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.9.1...v0.9.2
 [0.9.1]: https://github.com/aoreshkov/kotlin-lib-mcp/compare/v0.9.0...v0.9.1
