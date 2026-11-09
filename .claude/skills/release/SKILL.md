@@ -56,7 +56,10 @@ server's), or installed plugins never receive the change.
 ## 3. Update the changelog
 
 Add a `<VERSION>` section to `CHANGELOG.md` (follow the existing format): summarize
-user-facing changes since the last release. Use `git log <last-tag>..HEAD` to gather them.
+user-facing changes since the last release. Use `git log <last-tag>..HEAD` to gather them. Mark a
+breaking change inline with `**Breaking:**` inside its own type, and lead a security entry with its
+CVE id when it has one. This section becomes the top of the GitHub release page, and `verify`
+fails if it is missing.
 
 ## 4. Pre-flight checks (catch the known release-pipeline gotchas)
 
@@ -65,8 +68,7 @@ user-facing changes since the last release. Use `git log <last-tag>..HEAD` to ga
   `jq -r '.description | length' server.json` → must be ≤ 100.
 - **`gradlew` executable bit:** the wrapper must stay executable in git or the CI build fails
   on a fresh checkout. Verify: `git ls-files -s gradlew` shows mode `100755`.
-- **No private paths leak:** confirm nothing under `docs/` (private) is referenced from
-  released files, and `docs/` is gitignored.
+- **No private paths leak:** confirm nothing git-ignored is referenced from released files.
 - **Build is green:** `./gradlew build` passes, and `./gradlew :server:installDist` produces
   the distribution the release zip is built from.
 
@@ -78,6 +80,7 @@ Before tagging, run the guard's own logic so you don't discover a mismatch in CI
 VERSION="<VERSION>"
 grep -q "^version=${VERSION}$" gradle.properties && \
 jq -e --arg v "$VERSION" '.version == $v' server.json >/dev/null && \
+bash .github/scripts/changelog-section.sh "$VERSION" >/dev/null && \
 echo "guard OK" || echo "guard WOULD FAIL"
 ```
 

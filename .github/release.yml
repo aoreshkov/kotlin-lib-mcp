@@ -1,0 +1,6 @@
+# The PR list GitHub generates for a release, which follows the CHANGELOG.md entry on its page.
+# Dependabot labels its PRs `dependencies`.
+changelog:
+  exclude:
+    labels:
+      - dependencies

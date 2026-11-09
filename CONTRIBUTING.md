@@ -6,17 +6,27 @@ you invest time.
 
 ## Prerequisites
 
-- **JDK 21** (the build uses Gradle toolchains, so any JDK that can run Gradle works —
-  the toolchain resolves 21 automatically).
+- **JDK 25** (a Gradle toolchain: an installed JDK 25 is detected, otherwise Gradle downloads
+  one).
 - No other setup: `./gradlew` downloads everything else.
 
 ## Build & test
 
 ```sh
-./gradlew build     # compiles all modules, runs tests and API checks
-./gradlew test      # unit tests only
-./gradlew :server:run --args="--transport stdio"   # run the MCP server locally
+./gradlew build                                    # compiles all modules, runs tests and API checks
+./gradlew test                                     # unit tests only
+./gradlew :server:run --args="--transport stdio"   # local MCP over stdio (default)
+./gradlew :server:run --args="--transport http --port 3000"   # Streamable HTTP at /mcp
+./gradlew :dashboard:run                           # Compose Desktop UI
+./gradlew :server:installDist                      # standalone launcher in server/build/install/server/bin
 ```
+
+| Module | What it is |
+|---|---|
+| `core/` | KMP library: domain model + ports (`commonMain`); Maven fetcher, zip extractor, Analysis API analyzer, on-disk cache (`jvmMain`) |
+| `server/` | JVM app: MCP tools/resources/prompts + stdio and Streamable HTTP transports |
+| `dashboard/` | Compose Desktop control panel embedding the server (optional) |
+| `tools/` | Generator for the SEP-973 icon PNGs the server advertises and the brand SVG. The module never ships; its output does |
 
 CI also runs the official [MCP conformance suite](https://github.com/modelcontextprotocol/conformance)
 against the server over Streamable HTTP. To run it the same way locally (needs Node):
@@ -46,8 +56,11 @@ file explains what does belong there.
   the protocol stream.
 - Keep the Analysis API isolated behind the `SourceAnalyzer` interface and degrade
   gracefully (best-effort PSI signatures) when type resolution fails.
-- When adding an MCP tool, provide all three metadata pieces: `title`, behavior annotations
-  (reuse the constants in `ToolSupport.kt`), and an `outputSchema` (see `OutputSchemas.kt`).
+- When adding an MCP tool, provide all four metadata pieces: `title`, behavior annotations
+  (reuse the constants in `ToolSupport.kt`), an `outputSchema` (see `OutputSchemas.kt`), and an
+  icon (a `Glyph` in `Icons.kt` and in `GenerateIcons.kt`, then `./gradlew :tools:generateIcons`).
+- **Changes under `plugin/` need a version bump** in `plugin/.claude-plugin/plugin.json`, or
+  installed plugins never receive them. CI enforces this; its `README.md` and `evals/` are exempt.
 
 ## Pull requests
 

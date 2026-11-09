@@ -13,7 +13,7 @@ out/
 # Local machine config — never commit
 local.properties
 
-# Private analysis/plan docs — never commit (see CLAUDE.md)
+# Private analysis/plan docs — never commit
 docs/
 
 # Claude Code — keep shareable config (skills/, agents/, settings.json) tracked;

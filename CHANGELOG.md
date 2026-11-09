@@ -2,10 +2,15 @@
 
 All notable changes to this project are documented in this file.
 
-The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/2.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
 ## [Unreleased]
+
+### Changed
+- **The README is shorter.** Client setup, configuration, protocol features and telemetry moved to
+  `guide/`, and building from source moved to `CONTRIBUTING.md`.
+- **Release pages lead with the changelog entry**, followed by the generated list of PRs.
 
 ## [0.10.1] - 2026-10-29
 
