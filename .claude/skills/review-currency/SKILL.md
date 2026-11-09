@@ -32,8 +32,6 @@ The panel is six dedicated currency subagents (defined in `.claude/agents/`):
 `kotlin-currency`, `mcp-currency`, `deps-currency`, `ci-currency`, `security-currency`,
 `claude-code-currency`. Each agent carries its own persona, inspection list, official
 sources, project gotchas, and output contract — they are the single source of truth.
-(`references/experts.md` is the human-readable copy of those briefs, kept in sync for
-reviewers.)
 
 If `$ARGUMENTS` is non-empty, launch only the experts whose keys it names (`kotlin`, `mcp`,
 `deps`, `ci`, `security`, `claude-code` → the matching `*-currency` agent); otherwise launch
@@ -58,9 +56,9 @@ When all experts have returned, merge their findings:
 - Dedupe overlaps (e.g. deps and security both flagging the same artifact) — keep the
   higher severity and both perspectives.
 - Rank by severity: blocker, high, medium, low, info.
-- Write the full report to `docs/reviews/currency-<YYYY-MM-DD>.md` (create the
-  directory if needed) — `docs/` is the repo's private, gitignored analysis dir (see
-  CLAUDE.md), so reports never land in the public history — with these sections:
+- Write the full report to the currency-report location named in `CLAUDE.local.md`, which must
+  be git-ignored so reports never land in the public history. If none is named, give the
+  report in the chat instead. Use these sections:
   1. **TL;DR** — overall currency verdict and a merged top-findings table
   2. One section per expert with their full findings table and commentary
   3. **Prioritized action list** — concrete next steps, highest severity first

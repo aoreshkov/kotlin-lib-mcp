@@ -8,37 +8,21 @@ Desktop dashboard runs the same server in-process for control, logs, and cache b
 
 ## Modules
 
-- `core/` — **KMP library**: domain model + use cases, no MCP and no UI.
-  - `commonMain`: model (`LibraryCoordinate`, `ApiSymbol`, `KDoc`, `DependencyNode`, …) and
-    interfaces (`MavenSourceFetcher`, `SourceAnalyzer`, `LibraryCache`).
-  - `jvmMain`: JVM implementations — `MavenSourceFetcher` (Ktor client + `.module`/`.pom`
-    parsing), `ZipExtractor`, `AnalysisApiSourceAnalyzer`, on-disk cache.
+- `core/` — **KMP library**: domain model and interfaces in `commonMain`, JVM implementations
+  (Maven fetcher, zip extractor, Analysis API analyzer, on-disk cache) in `jvmMain`. No MCP, no UI.
 - `server/` — **JVM app**: registers MCP tools and runs the transports. Runnable headless.
 - `dashboard/` — **Compose Desktop** control panel (optional). Embeds `server`, and takes its HTTP
   engine from `createHttpEngine` (`transport/HttpTransport.kt`) so `mcpStreamableHttp` is wired in
-  exactly one file. Keep it that way, or the SDK's 0.20.0 Ktor split breaks a file the map below misses.
-- `tools/` — **asset generator**, never shipped: the SEP-973 icon PNGs, and `assets/icon.svg` (the
-  brand mark in `server.json`) from the same geometry as the `server` glyph. Its *output* does ship —
-  `server/src/main/resources/icons/` is read by `icons/Icons.kt` and rides inline in every
-  `tools/list` — so the glyph geometry in `GenerateIcons.kt` is product source, not repo artwork.
-  Nothing depends on the module. Edit the geometry, never the outputs, then
-  `./gradlew :tools:generateIcons`: `GenerateIconsTest` (in `./gradlew build`) fails while a
-  committed PNG or the SVG differs from what the generator draws, or a PNG has no glyph.
+  exactly one file. Keep it that way, or the SDK's 0.20.0 Ktor split breaks a file the
+  `/mcp-sdk-bump` map misses.
+- `tools/` — **asset generator**, never shipped, but its output is. The glyph geometry in
+  `GenerateIcons.kt` is product source: edit it, never the PNGs or `assets/icon.svg`, then run
+  `./gradlew :tools:generateIcons`. `GenerateIconsTest` (in `./gradlew build`) fails on any mismatch.
+- `plugin/` — the Claude Code plugin packaging; not a Gradle module. Bump the plugin's own `version`
+  whenever anything but its README or `evals/` changes (CI enforces it).
 
-`server` and `dashboard` both depend on `core`. `server` runs without Compose.
-
-Not a Gradle module: **`plugin/`** — the Claude Code plugin packaging (`.mcp.json` running
-`launcher/KotlinLibMcpLauncher.java` on the user's JDK 25+, plus four skills), listed by the
-repo-root `.claude-plugin/marketplace.json` so `/plugin marketplace add aoreshkov/kotlin-lib-mcp`
-works. The launcher downloads the release zip into `${CLAUDE_PLUGIN_DATA}`, checks it against
-GitHub's asset digest and runs it in-process, taking the jar order from the zip's `bin/server`
-(the kotlin-compiler hoist — get it wrong and the server dies with `NoSuchMethodError`). It must
-compile with `javac --release 21` (CI checks) so an old JDK can still say what's wrong. Its
-security branches (zip-slip, digest matching, checksum) and error reporting are covered by
-`.github/launcher-test/`, an offline harness CI runs beside the compile. Docker is
-deliberately *not* the plugin's runtime: it stays the route for `claude mcp add`, the VS Code
-buttons and the MCP registry. Validate with `claude plugin validate ./plugin --strict`; bump the
-plugin's own `version` whenever `plugin/` changes (CI enforces it).
+`server` and `dashboard` both depend on `core`. `server` runs without Compose. User documentation
+is the README plus `guide/`.
 
 ## Build & run
 
@@ -58,9 +42,8 @@ changes are also checked by CI's `conformance` job — the official MCP conforma
 
 ## Tech stack (versions live ONLY in `gradle/libs.versions.toml`)
 
-- JDK **25** (Gradle toolchain, `jdk` in the catalog; CI `setup-java` and the Docker base image match)
-- Kotlin **2.4.x** · MCP `io.modelcontextprotocol:kotlin-sdk-server:0.16.0` · Ktor **3.5.x**
-- kotlinx-serialization-json · kotlinx-coroutines
+- JDK via a Gradle toolchain (`jdk` in the catalog; CI `setup-java` and the Docker base image match)
+- Kotlin · MCP Kotlin SDK (`kotlin-sdk-server`) · Ktor · kotlinx-serialization-json · kotlinx-coroutines
 - Source parsing: Kotlin **Analysis API (standalone mode)** — must be version-matched to Kotlin
 - Compose Multiplatform (Desktop)
 - Logging: Kermit (common) → SLF4J/Logback (JVM sink) · Tests: kotlin-test, coroutines-test, Ktor `MockEngine`
@@ -69,10 +52,11 @@ changes are also checked by CI's `conformance` job — the official MCP conforma
 
 - **Versions are centralized** in `gradle/libs.versions.toml`. Kotlin and the Analysis API
   artifacts must share the **exact same version** — always bump them together (use the
-  `/analysis-api-bump` skill; cut releases with `/release`). The catalog follows Gradle's
-  naming guidance (1–3 dash-separated segments, camelCase inside a segment) and carries **no
-  entry a build script doesn't consume** — in particular `[plugins]` holds only the one alias
-  a module applies with `alias(...)`; everything else is applied by id from `build-logic`.
+  `/analysis-api-bump` skill; `/mcp-sdk-bump` for the MCP SDK; cut releases with `/release`). The
+  catalog follows Gradle's naming guidance (1–3 dash-separated segments, camelCase inside a
+  segment) and carries **no entry a build script doesn't consume** — in particular `[plugins]` holds
+  only the one alias a module applies with `alias(...)`; everything else is applied by id from
+  `build-logic`.
 - **`core`'s public ABI is locked** by the Kotlin Gradle plugin's built-in `abiValidation`
   (`kmp-library.gradle.kts`; the standalone binary-compatibility-validator it replaces is
   frozen). `./gradlew build` runs `checkKotlinAbi`; intentional API changes need
@@ -82,139 +66,30 @@ changes are also checked by CI's `conformance` job — the official MCP conforma
   stderr or a file, or it corrupts the protocol stream. That includes the JVM's own unified logging,
   which defaults to stdout (an unusable AOT cache prints `[error][aot]` there before `main` runs):
   `applicationDefaultJvmArgs` in `server/build.gradle.kts` routes it to stderr — keep it.
-- **Core parsing/fetch gotchas** (Analysis API isolation, per-target KMP source jars) live in
-  `.claude/rules/analysis-api.md` — loaded automatically when you edit `core/` sources.
 - **Cache first.** Downloads + parsed index are cached on disk keyed by
   `group/artifact/version`; tools read the cache. Call `fetch_library` to warm it.
+- **Area-specific rules** load automatically from `.claude/rules/` when you touch matching files.
 
-## MCP tools
+## MCP surface
 
-`fetch_library` · `list_packages` · `list_declarations` · `get_api_signature` · `get_kdoc` ·
-`get_source` · `search_source` · `diff_versions` · `diff_api` · `get_dependencies` · `list_versions` ·
-`get_latest_version`
-
-`fetch_library` also accepts a version-less `group:artifact` or `group:artifact:latest` and
-resolves the latest stable release (canonical `<release>`/`<latest>` from `maven-metadata.xml`,
-with a semantic-version fallback in `core/util/MavenVersions.kt`).
-
-Cached library indexes are also exposed as MCP **resources** (one static resource per cached
-library plus a `kotlinlib://{group}/{artifact}/{version}/index` **resource template**, and a
-`…/package/{package}` template for one package's public API — both bounded, see
-`.claude/rules/mcp-server.md`), and an "explain the public API" **prompt** — exercising all three
-MCP primitives. `fetch_library` and `list_packages` (first 20 of the page) also return
-`resource_link` blocks to those resources, after the text block (`toolResult(value, links)`).
-
-**Icons (SEP-973)** are on `serverInfo`, every tool, the prompt and the resource/template
-(`icons/Icons.kt`, PNGs in `server/src/main/resources/icons/`, drawn by `:tools`). Inline `data:`
-PNG URIs, deliberately — see the file header for
-why PNG and why not `https://`; the `icons` traps in the SDK's `add*` overloads are in
-`.claude/rules/mcp-server.md`.
-
-Logs go to **stderr** by default (the 2025-11-25-blessed channel; `logback.xml`); the deprecated MCP **logging
-capability** (Kermit logs mirror to clients via `attachMcpLogForwarder`; `Logging.kt`) is **opt-in**
-behind `--forward-logs-to-client`, stdio only (on HTTP it would broadcast every session's logs to all). `fetch_library` emits **progress notifications** when the request
-carries a `progressToken`.
-
-**Elicitation** (`elicitation/VersionElicitation.kt`): a version-less `fetch_library` coordinate asks the
-user to pick a version via a **form-mode** `elicitation/create` — SEP-1330's titled `oneOf` single-select,
-default = latest stable. Gated purely on the client advertising `elicitation` (no flag); `accept` → that
-version, `decline` → latest stable, `cancel` → `isError`. **Everything elicitation-related lives in that one
-file on purpose**: the draft 2026-07-28 spec replaces this nested-request shape with MRTR
-(`InputRequiredResult` + a client retry), so the migration should be a single-file rewrite. Two traps:
-`ClientConnection` (the tool handler's receiver) exposes **only `sessionId`** — capabilities come from
-`server.sessions[sessionId]?.clientCapabilities`; and a client may advertise **url-mode only**, which must
-not be answered with a form (see `supportsForm`, the counterpart of the SDK's `supportsUrl`).
-
-Elicitation only works at all because **`Protocol` dispatches inbound requests concurrently** once
-`notifications/initialized` has arrived — otherwise a server→client request issued *inside* a tool
-handler would deadlock on its own answer, since the reply sits unread behind the handler waiting for
-it. That is the SDK's own behaviour as of 0.15.0; up to 0.14.0 it took a local decorator
-(`transport/ConcurrentDispatchTransport.kt`, now deleted). `ConcurrentDispatchTest` pins it and
-`.claude/rules/mcp-server.md` explains what must not be reintroduced.
-
-**Tasks (SEP-1686)** are **opt-in** behind `--tasks`, on **both transports** (`tasks/TaskStore.kt`,
-`tasks/TaskHandlers.kt`): `fetch_library` declares `execution.taskSupport: "optional"`, a
-task-augmented `tools/call` returns a handle immediately, and `tasks/get`/`result`/`list`/`cancel`
-plus `notifications/tasks/status` are served. The SDK ships the wire types but **no execution
-engine** — `Server.handleCallTool` ignores `params.task` — so we replace the `tools/call` handler
-via `Protocol.setRequestHandler`; the non-task path must stay identical to the SDK's, which
-`TaskDispatchTest` pins. Task records are **persisted** to `<cacheDir>/tasks` (`tasks/TaskRecordStore.kt`)
-and **owned by the session that created them**, so on HTTP each connection sees only its own. A
-record recovered after a restart is *orphaned* — its session is gone, so it is reachable by exact
-`taskId` from any caller but never returned by `tasks/list`; that split is the spec's model for a
-server with no authorization context, and the reasoning is in the `TaskStore` KDoc. Several live
-servers may share `<cacheDir>/tasks` (one per stdio session); each recovers only the records of a
-server that is *gone*, told apart by a per-instance OS file lock (`TaskRecordStore` KDoc). A task still
-running at shutdown ends up `failed` either way: `close()` marks and persists it on the calling
-thread before cancelling the scope, and `restore()` maps a record a *crash* left `working` (so
-`close()` never ran) the same way — leaving that to the cancelled job would race both the restart
-and JVM exit. A task whose body needs client
-input parks in `TaskStatus.InputRequired` and back: `TaskStore.start` puts a `TaskContext` in the
-**coroutine context** (same trick as the OTel span) so a tool body can call `awaitingInput { }` without
-any layer between it and the store knowing about tasks.
-
-Registration differs per transport because the SDK only sometimes gives us the session: stdio calls
-`registerTaskHandlers` on the `ServerSession` it owns, while HTTP goes through
-`installTaskHandlersOnEverySession`. Both that and the completion handler build on
-**`onEachSession` (`SessionSetup.kt`)**, which sweeps `server.sessions` from `Server.onConnect` —
-that callback takes no argument saying *which* session connected, and picking the newest loses a
-session when two connections are accepted concurrently.
-
-**OTel traces** over OTLP/HTTP are **opt-in** behind `--otel` (`telemetry/Telemetry.kt`): one
-`SERVER` span per MCP request, opened in `guarded`/`resourceSpan`/`promptSpan`/`completionSpan`,
-configured purely from the standard `OTEL_*` env vars via `AutoConfiguredOpenTelemetrySdk`. Off
-means inert (no-op tracer, no threads, no network). Attribute names follow the MCP semantic
-conventions and are all **Development** status — they live as `AttributeKey` constants in one
-place so a rename is a single edit.
-
-**Tool-authoring convention and the resource-template `NoSuchMethodError` gotcha** live in
-`.claude/rules/mcp-server.md` (loaded automatically when you edit `server/` sources).
+- Tools, cached-library **resources** and an "explain the public API" **prompt** are all served;
+  README has the tool table.
+- `fetch_library` also accepts a version-less `group:artifact` or `group:artifact:latest`, resolved
+  from `maven-metadata.xml` with a semantic-version fallback in `core/util/MavenVersions.kt`.
+- Logs go to **stderr** by default (`logback.xml`). The deprecated MCP logging capability
+  (`Logging.kt`) is opt-in behind `--forward-logs-to-client`, stdio only: on HTTP it would broadcast
+  every session's logs to all.
+- **Elicitation** has no flag: it is gated on the client advertising the capability.
+- **`--tasks`** (SEP-1686, both transports) and **`--otel`** (OTLP/HTTP traces) are opt-in; off means
+  inert.
 
 ## The 2026-07-28 horizon
 
 We target **2025-11-25**, because that is what the Kotlin SDK declares
-(`LATEST_PROTOCOL_VERSION`). Spec revision **2026-07-28** is stable, but the SDK has released none
-of it on the wire: as of **2026-10-28** the newest release is 0.16.0 (2026-10-27), which still
-declares 2025-11-25 and adds only experimental, unused SEP-2575 discovery types. This repo is on
-0.16.0, whose one decision for us is HTTP idle-session expiry: `SESSION_IDLE_TIMEOUT` in
-`transport/HttpTransport.kt` is tied to the task TTL ceiling, because tasks are session-owned.
-Work has started upstream — the stateless lifecycle is an open PR
-(`modelcontextprotocol/kotlin-sdk#985`) — and the SDK's milestones set the order: **0.17.0** puts
-2026-07-28 on the wire (per-request `_meta` envelope, `subscriptions/listen`, SEP-2243 headers),
-**0.18.0** brings MRTR, **0.20.0** moves the Ktor integration (`mcpStreamableHttp`) into a separate
-`kotlin-sdk-server-ktor` artifact, **0.23.0** ships the tasks extension, and **0.24.0** typed
-JSON Schema 2020-12 tool schemas. **There is nothing here to adopt yet, and adopting it early would
-mean inventing wire surface ahead of the SDK.** Re-check the SDK's releases and milestones before
-assuming otherwise — this paragraph carries a date precisely because it goes stale.
+(`LATEST_PROTOCOL_VERSION`). **Do not adopt 2026-07-28 ahead of the SDK**: that would mean inventing
+wire surface. `/mcp-sdk-bump` has the milestone map. Three decisions are load-bearing for that
+migration, so keep them:
 
-Three decisions in this repo are load-bearing for that migration. Keep them:
-
-- **`elicitation/VersionElicitation.kt` stays one file.** 2026-07-28 replaces the nested
-  request/response with MRTR (`InputRequiredResult` + a client retry), so a single-file rewrite is
-  the whole migration.
-- **`--tasks` stays opt-in.** Tasks become an `io.modelcontextprotocol/tasks` *extension*, gaining
-  `tasks/update`, dropping `tasks/result` (clients poll `tasks/get`) and `tasks/list`, and moving
-  notifications to one `subscriptions/listen` stream. Opt-in bounds the blast radius to operators
-  who asked for it.
-- **`logging` stays behind `--forward-logs-to-client`, stderr stays primary.** 2026-07-28 deprecates
-  Logging (alongside Roots and Sampling) on a ≥12-month window.
-
-What each milestone touches here, so a release lands on a map rather than a search:
-
-- **0.17.0** (2026-07-28 wire): session identity — below; plus `ttlMs`/`cacheScope` on list and
-  `resources/read` results, which the SDK should set rather than us.
-- **0.18.0** (MRTR): `elicitation/VersionElicitation.kt`, and nothing else.
-- **0.20.0** (Ktor split): `transport/HttpTransport.kt`'s `mcpStreamableHttp` import, plus a
-  `kotlin-sdk-server-ktor` catalog entry.
-- **0.23.0** (tasks extension): `tasks/`, all behind `--tasks`.
-- **0.24.0** (typed schemas, `kotlin-sdk#300`, which adds `additionalProperties`): declare
-  `additionalProperties: false` on every input schema. Keep `addTool`'s unknown-argument check
-  unless the SDK starts validating arguments itself.
-
-The exposure to look at first, when 0.17.0 lands, is **session identity** — 2026-07-28 retires
-`initialize`/`initialized` and `Mcp-Session-Id`, moving identity and capabilities into per-request
-`_meta`. Two things here rest on a session existing: the elicitation gate reads
-`server.sessions[sessionId]?.clientCapabilities`, and task records are *owned* by the session that
-created them. So the first two questions are what replaces that capability lookup, and what the task
-ownership model keys on instead. `SessionSetup.kt` goes with it. Note it; do not pre-emptively
-rewrite it.
+- `elicitation/VersionElicitation.kt` stays one file.
+- `--tasks` stays opt-in.
+- `logging` stays behind `--forward-logs-to-client`, and stderr stays primary.

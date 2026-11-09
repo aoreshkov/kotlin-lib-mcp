@@ -3,7 +3,7 @@ paths:
   - "server/src/**/*.kt"
 ---
 
-# MCP tool authoring & resource-template gotcha
+# MCP tool authoring and server-wide gotchas
 
 Every tool declares a `title`, behavior annotations (`readOnlyHint`/`openWorldHint`;
 `fetch_library` additionally `destructiveHint: false`, `idempotentHint: true`), an
@@ -76,59 +76,6 @@ listeners, so `resources/list` stays live). The trap is `ToolSupport.kt`'s `addT
 drop its `icon` argument and the call silently resolves back to the SDK's iconless *member*
 overload and still compiles. `ToolRegistrationTest.everyToolDeclaresADistinctIcon` pins that.
 
-**Classpath-shadowing gotcha:** `kotlin-compiler` (via `core`) is a fat jar bundling old,
-*unrelocated* copies of libraries we also depend on for real, and the first copy on the classpath
-wins. Gradle sorts the genuine artifacts well behind it (shared transitives sort late, so
-declaration order does **not** fix it), so the real jars are hoisted to the front of every
-classpath a JVM gets: `hoistOverKotlinCompiler` and `shadowedByKotlinCompiler` live in build-logic
-(`KotlinCompilerShadowing.kt`); `server/build.gradle.kts` applies them to `test`, `run` and
-`startScripts`, `dashboard/build.gradle.kts` to `test` and Compose's application classpath. Compose
-keeps the order for `run` and the uber jar, but **jpackage sorts the packaged app's jars by file
-name**, so the dashboard also copies the hoisted jars under a `0-` prefix (`kotlin-compiler-…`
-otherwise sorts ahead of `kotlinx-…` and `opentelemetry-…`); check
-`dashboard/build/compose/binaries/main/app/dashboard/app/dashboard.cfg` after touching it. Two families
-are known:
-
-- `kotlinx.collections.immutable` — 127 classes of a pre-0.5 release. Since kotlin-sdk 0.15.0 built
-  `Protocol` and `FeatureRegistry` on the newer `PersistentMap.putting`/`removing`, this took out
-  `Server.addTool` itself; before that it only surfaced inside the SDK's `PathSegmentTemplateMatcher`,
-  which is why `resources/SegmentTemplateMatcher.kt` exists and why `ServerOptions` passes
-  `segmentTemplateMatcherFactory`. The hoist likely makes the SDK's own matcher viable again, but the
-  custom one is tested and in use — don't swap it without re-verifying at runtime, not just in tests.
-- `io.opentelemetry.api` 1.41.0 — see below.
-
-When adding any dependency `kotlin-compiler` might also bundle, check with
-`unzip -l <kotlin-compiler.jar> | grep <package-path>` before trusting the classpath.
-
-**Same trap, OpenTelemetry:** `kotlin-compiler` also bundles ~83 *stripped stubs* of an old
-unrelocated `io.opentelemetry.api` (1.41.0 — `Attributes`, `OpenTelemetry`, `Tracer`,
-`TracerProvider` are empty shells), so without the hoist above `--otel` dies with
-`NoSuchMethodError: Attributes.empty()`. Keep both prefixes in `shadowedByKotlinCompiler`'s list, and
-keep that list *local to the function* — it once lived in a build script, where a script-level `val`
-captured in the filter is a Gradle script object reference the configuration cache refuses to
-serialize.
-
-**Tasks gotcha:** `tasks/TaskHandlers.kt` **replaces** the SDK's `tools/call` handler (that is the
-only way to answer with a `CreateTaskResult` — `Server.handleCallTool` is hard-typed to
-`CallToolResult` and ignores `params.task`). The replacement therefore applies to *every* tool, so
-its non-task branch must reproduce the SDK's semantics exactly: unknown tool → `isError` result,
-`CancellationException` and `UrlElicitationRequiredException` re-thrown, anything else flattened to
-`isError`. `TaskDispatchTest` pins this — if you touch `dispatchToolCall`, keep those tests green.
-The `tasks` capability and the handlers are both driven by `ServerConfig.tasks` so they can never
-disagree; advertising the capability without handlers makes the SDK route methods that answer
-nothing.
-
-**`io.modelcontextprotocol/related-task` goes where the message does not already name the task.**
-`tasks/result` MUST carry it (its payload is the tool's own result), merged into whatever `_meta`
-the tool set; so must server-to-client requests a task body makes (the elicitation). The
-`tasks/get`/`list`/`cancel` results and `notifications/tasks/status` SHOULD NOT, because `taskId`
-is already in them. `TaskHandlerInstallationTest` and `TaskDispatchTest` pin both directions.
-
-**Registering them differs per transport**, because the SDK only sometimes hands us the session.
-stdio calls `registerTaskHandlers` on the `ServerSession` `runStdioServer` owns. HTTP has no such
-object — `mcpStreamableHttp` creates a session per connection internally — so it goes through
-`installTaskHandlersOnEverySession`, which delegates to `onEachSession` (below).
-
 **Per-session registration goes through `onEachSession` (`SessionSetup.kt`).** Anything the SDK does
 not wire into sessions itself — the `completion/complete` handler, the `tasks/…` surface — has to be
 installed by us, and the only hook is `Server.onConnect`, which takes no argument saying *which*
@@ -140,67 +87,6 @@ other is left with no handler for its whole lifetime. Ordering is safe either wa
 fires `onConnect` before the Streamable HTTP route feeds the POST body to the transport.
 `SessionSetupTest.configuresEverySessionNotJustTheNewest` is the test that actually discriminates
 the sweep from the shortcut; keep it green.
-
-**Tasks are owned by a session.** One `TaskStore` serves every session, so every client-facing
-operation takes the caller's `sessionId` as `owner` and filters by it — `dispatchToolCall` takes it
-from `ClientConnection.sessionId`, the `tasks/…` handlers from `ServerSession.sessionId`, and they
-are the same id by construction. Since kotlin-sdk 0.16.0 an idle HTTP session *expires*, which
-strands its tasks, so `SESSION_IDLE_TIMEOUT` (`HttpTransport.kt`) must never drop below
-`MAX_TTL_MS` — raise the TTL ceiling and the timeout follows; `HttpSessionLifetimeTest` pins it.
-A `taskId` belonging to another session raises the *same*
-`UnknownTaskException` as one that never existed; keep it that way, or the error becomes an oracle
-for other sessions' ids. This is invisible with a single stdio client and load-bearing on HTTP,
-where `mcpStreamableHttp` creates a session per connection and `tasks/result` returns whole tool
-results. Never add an unscoped `list()`/`get()` back to `TaskStore`.
-
-**The one exception is an orphan** — a record `TaskRecordStore` recovered from a previous process.
-Its owning session died with that process, so strict binding would make every persisted task
-permanently unreachable. `get`/`payload`/`cancel` therefore accept an orphan from any caller
-presenting its exact `taskId`, while **`list` still never returns one**. That is the spec's model
-where no authorization context exists ("receivers MUST generate cryptographically secure task IDs
-with enough entropy"; "receivers that cannot identify requestors SHOULD NOT declare `tasks.list`" —
-we can identify live requestors, and we never list what we cannot attribute). Keep both halves:
-widening `list` to orphans, or dropping the bypass, each breaks a specific named test in
-`TaskPersistenceTest`.
-
-**Persistence ordering is load-bearing.** `update()` writes to disk *before* completing the
-`finished` deferred that `tasks/result` awaits. Completing it first lets a client observe a terminal
-task that a crash a moment later resurrects as `working`. Writes are synchronous on purpose —
-launching them lets `close()` cancel the final state a task reaches during shutdown, which is
-exactly the state a restart needs.
-
-For the same reason **`close()` writes the terminal state itself**, marking every non-terminal record
-`failed` on the calling thread *before* `scope.cancel()`. Left to the job's own
-`CancellationException` path it lands from a `Dispatchers.Default` thread — after `close()` returned,
-possibly after the JVM exited — so the same task came back `cancelled` or `failed` depending on
-thread timing (a real CI flake). `TaskPersistenceTest` pins both halves: the graceful path through
-`close()`, and the crash path (a record left `working` on disk, no `close()`) through `restore()`;
-neither test may simulate a crash by calling `TaskStore.close()` (the crash test closes only the
-`TaskRecordStore`, which drops the lock as the OS would). A record that is already terminal but whose
-write is still in flight on the job's thread gets written by `close()` too (`!finished.isCompleted`),
-so `close()` never returns ahead of a state another thread decided.
-
-**Terminal is final, enforced in one place.** Every status write goes through `update(record, to)`,
-which checks `canTransition(from, to)` *in the same critical section* as the write and does nothing
-— no file, no notification — when it refuses. That one check is what keeps a body that finishes, or
-throws while unwinding, from overwriting `cancelled` or `close()`'s `failed`, and keeps `close()` from
-relabelling a task that completed a moment earlier. Never write `record.status` outside it, and never
-split the "is it terminal?" check from the write. `tasks/cancel` marks the record *before* cancelling
-the job ("MUST transition the task to cancelled status before sending the response"). Saves of one
-record are serialized by `TaskRecord.writeLock`, with the snapshot taken *inside* it, so the last
-save always carries the latest state. The job catches `Throwable`, records `failed`, then re-throws
-only a fatal `VirtualMachineError` (not `StackOverflowError`). `TaskStoreRaceTest` races all of this
-on real threads, and each of its tests has been seen to fail with its guard removed.
-
-**Several live servers share one `tasks/` directory** — every stdio session launches its own on the
-default cache dir — so "a previous process" means *a server that is gone*, never just "a record I did
-not write". Each `TaskRecordStore` stamps its `instance` id on every record and temp file and holds an
-OS `FileChannel` lock on `<instance>.lock` while open (claimed on first save, released by
-`TaskStore.close()` *after* the final writes). `restore()` reads `loadRecoverable()`, not `loadAll()`,
-and `sweepTempFiles()` skips a live instance's files: failing a live server's `working` record or
-deleting its in-flight temp breaks a task that is still running. Inside one JVM a held lock throws
-`OverlappingFileLockException` instead of returning `null`, and both mean *live*; the two paths are
-pinned separately, the cross-process one by a test that kills a child JVM.
 
 **Dispatch concurrency is the SDK's job now (0.15.0):** `Protocol` launches inbound requests and
 notifications on a per-connection handler scope once `notifications/initialized` has arrived,
@@ -223,32 +109,16 @@ completion handler, `fetch_library`'s source-root lookup). Use `runCatchingCance
 code — replacing `cancelled` disables inbound cancellation outright. `ConcurrentDispatchTest` pins
 the anti-deadlock property, the serial handshake, and cancellation.
 
+**OTel traces** over OTLP/HTTP are **opt-in** behind `--otel` (`telemetry/Telemetry.kt`): one
+`SERVER` span per MCP request, opened in `guarded`/`resourceSpan`/`promptSpan`/`completionSpan`,
+configured purely from the standard `OTEL_*` env vars via `AutoConfiguredOpenTelemetrySdk`. Off
+means inert (no-op tracer, no threads, no network). Attribute names follow the MCP semantic
+conventions and are all **Development** status — they live as `AttributeKey` constants in one
+place so a rename is a single edit.
+
 **Telemetry authoring:** every MCP entry point opens its span through the helpers in
 `server/.../telemetry/Telemetry.kt` (`guarded` for tools — it is a `ClientConnection` extension so
 `mcp.session.id` comes free — plus `resourceSpan`/`promptSpan`/`completionSpan`). Attribute names
 are `AttributeKey` constants at the top of that file; do not inline `mcp.*`/`gen_ai.*` strings at
 call sites, since the upstream conventions are still Development status. Nothing in the exporter
 path may write to stdout.
-
-**CLI (`Cli.kt`, cli-kit):** every option is declared once in `Cli`, and `CliTest` pins the
-`--help` page as a golden file (`./gradlew :server:test -Dgolden.update=true`, then read the diff).
-The handler (`serve` in `Main.kt`) **never writes through `CommandContext.output` or `io.out*`** —
-stdout belongs to the transport; `CliTest.interruptReturnsOnlyOnceTheServerHasClosed` fails if it
-does. Its interrupt action must keep waiting for the latch counted down *after* `close()`, not for
-the serving job: the JVM halts the moment the action returns. `server.json`'s `packageArguments`
-are published command-line surface too: registry clients build the container's arguments from them,
-replacing the Dockerfile's `CMD`, so stdio must stay the parser's default. `RegistryManifestTest`
-runs them through the parser. Changing a default the manifest advertises is a breaking change for
-installed clients, and so is renaming an option outright: keep the old spelling in the option's
-`formerNames`, which the parser still accepts with a warning, and retire an option with
-`deprecated = "…"` rather than deleting it. Both warnings go to stderr, so they are safe on stdio,
-but they print on every launch that uses the option — so don't deprecate one the server still needs
-(`--forward-logs-to-client` and `--tasks` wait on the SDK's 2026-07-28 work, above). Check edits
-with `mcp-publisher validate server.json`.
-
-**No option declares `env` or `config`.** cli-kit counts a value from an environment variable or a
-configuration file as *given*, so `Constraint.RequiresValue` refuses it like a typed one: a `port`
-key in someone's config file would turn every stdio launch into an error, and a `transport` key would
-override the stdio default the registry relies on. A launch is configured in one place, the client's
-(`server.json`, the plugin's `.mcp.json`) — and the `--rm` container could not see a host config file
-anyway.

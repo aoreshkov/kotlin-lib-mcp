@@ -34,4 +34,11 @@ class CommittedIcons(
 
 tasks.test {
     jvmArgumentProviders += CommittedIcons(iconsDir.asFile, brandSvg.asFile)
+    // MarkdownLinksTest reads the repository's Markdown, so a changed document has to rerun it.
+    inputs.files(
+        fileTree(layout.projectDirectory.dir("..")) {
+            include("**/*.md")
+            exclude("**/build/**", "**/.gradle/**", "**/.kotlin/**", "**/node_modules/**")
+        },
+    ).withPathSensitivity(PathSensitivity.RELATIVE).withPropertyName("markdownFiles")
 }

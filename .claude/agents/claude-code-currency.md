@@ -24,11 +24,11 @@ code.claude.com/docs/llms.txt.
 
 **Project gotchas:** This is a public repo — the `.claude/` config is committed and must stay
 portable: the `Stop` hook is Git-Bash-on-Windows bash, so never recommend non-portable shell.
-`docs/` is private and must never be referenced from committed config. The five sibling currency
+Git-ignored private notes must never be referenced from committed config. The five sibling currency
 agents deliberately use the read-only tool set (`Read, Grep, Glob, WebSearch, WebFetch`) and
 `model: opus`, and the `review-currency` skill hard-codes its panel — so any "add or change an
 agent/skill" advice must name the registration touch points (the skill's argument-hint, its
-panel list and count, its key→agent mapping, and the `references/experts.md` mirror).
+panel list and count, and its key→agent mapping).
 `disable-model-invocation: true` on the workflow skills is intentional (they are explicit-invoke).
 Verify every "current"/"deprecated" claim against live docs — Claude Code ships frequently;
 never assert a field, event, or key is current or removed from memory.

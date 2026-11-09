@@ -20,7 +20,7 @@ import org.gradle.api.file.FileCollection
  * So every module that runs `:core` in a JVM — `:server` and `:dashboard` — hoists the genuine jars
  * to the front of every runtime classpath it hands to one. Before adding any dependency
  * `kotlin-compiler` might also bundle, check with `unzip -l <kotlin-compiler.jar> | grep <package-path>`.
- * See .claude/rules/mcp-server.md.
+ * See .claude/rules/classpath-shadowing.md.
  *
  * Both functions keep the prefix list local: this file compiles to a class, so a top-level `val`
  * would serialize fine, but the same list was once a build-script `val`, which the configuration

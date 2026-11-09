@@ -25,3 +25,7 @@ This server downloads and parses artifacts from Maven repositories (Maven Centra
 default) and writes them to a local cache directory. Reports about path traversal during
 zip extraction, cache poisoning, or protocol-stream injection over the stdio/HTTP
 transports are particularly relevant.
+
+The Claude Code plugin's launcher downloads a release zip from this repository, checks it against
+GitHub's recorded digest, and runs it. Reports about bypassing that check or the launcher's own
+zip extraction are in scope too.

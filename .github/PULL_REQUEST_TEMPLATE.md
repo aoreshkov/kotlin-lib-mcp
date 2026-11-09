@@ -11,4 +11,5 @@
 - [ ] `./gradlew build` passes locally (includes tests and `checkKotlinAbi`)
 - [ ] Ran `./gradlew updateKotlinAbi` and committed `core/api/core.api` (only if the public API of `core` changed intentionally)
 - [ ] `CHANGELOG.md` updated under `[Unreleased]` (user-visible changes only)
+- [ ] Bumped `version` in `plugin/.claude-plugin/plugin.json` (only if `plugin/` changed, apart from its `README.md` and `evals/`)
 - [ ] No stdout writes on the stdio path (logging goes to stderr)

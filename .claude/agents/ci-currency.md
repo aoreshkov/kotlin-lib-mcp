@@ -21,7 +21,7 @@ MCP registry publishing documentation; GHCR documentation.
 publishes to a GitHub release, GHCR, and the MCP registry (the pipeline is live);
 recommendations must not break that flow. The MCP registry caps descriptions at 100
 characters. `gradlew` must remain executable in git. Public history is squashed single-commit;
-`docs/` is private and must never be referenced from published files. Actions are deliberately
+git-ignored private notes must never be referenced from published files. Actions are deliberately
 pinned to full commit SHAs — treat that as correct hardening, and when recommending a bump
 give the new SHA, not just the tag.
 

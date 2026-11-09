@@ -85,7 +85,7 @@ library cache is separate and shared with every other way of running the server.
 
 | Component | What it does |
 |---|---|
-| `kotlin-lib` MCP server | 12 tools over the published sources jar, parsed with the Kotlin Analysis API (K2/FIR standalone). Cached on disk, offline after the first fetch |
+| `kotlin-lib` MCP server | Tools over the published sources jar, parsed with the Kotlin Analysis API (K2/FIR standalone). Cached on disk, offline after the first fetch |
 | `library-ground-truth` skill | Model-invoked. Makes Claude pin the coordinate from your build files and look the API up instead of guessing |
 | `/kotlin-lib:api` | Public-API summary of a library or one of its packages, with real signatures and KDoc |
 | `/kotlin-lib:migrate` | Diffs a library's public API across two versions and finds what actually breaks in *your* codebase |
